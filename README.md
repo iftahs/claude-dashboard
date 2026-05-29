@@ -2,6 +2,15 @@
 
 A beautiful, **local** dashboard for your [Claude Code](https://claude.com/claude-code) usage. It reads the JSON logs Claude Code already writes to `~/.claude` and visualizes them — no API key, no account login, no network calls. Everything runs on your machine and works offline.
 
+![Claude Dashboard](.github/hero.png)
+
+<details>
+<summary>See the full dashboard</summary>
+
+![Full dashboard](.github/dashboard.png)
+
+</details>
+
 ## Features
 
 - **Current 5-hour block** — effective tokens used in your active session window, with a usage ring.
