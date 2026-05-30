@@ -1,0 +1,12 @@
+services:
+  dashboard:
+    build: .
+    ports:
+      - "8787:8787"
+    volumes:
+      # Mac/Linux: works automatically (mounts ~/.claude)
+      # Windows: set CLAUDE_HOME=C:\Users\<username>\.claude before running
+      - ${CLAUDE_HOME:-~/.claude}:/root/.claude:ro
+    environment:
+      - SERVER_PORT=8787
+      - NODE_ENV=production
