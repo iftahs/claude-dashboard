@@ -30,6 +30,8 @@ export function ModelBreakdown({ models }: { models: ModelShare[] }) {
                 borderRadius: 12,
                 fontSize: 12,
               }}
+              itemStyle={{ color: '#e4e4e7' }}
+              labelStyle={{ color: '#e4e4e7' }}
               formatter={(value: number, name: string) => [compact(value), shortModel(name)]}
             />
           </PieChart>
