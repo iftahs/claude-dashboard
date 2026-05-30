@@ -17,8 +17,11 @@
     "dev:web": "vite",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
+    "//docker:up": "Rebuild image from current code and (re)start the container in the background. Run this after any code change.",
     "docker:up": "docker compose up -d --build",
+    "//docker:down": "Stop and remove the running container.",
     "docker:down": "docker compose down",
+    "//docker:logs": "Follow the container logs live (Ctrl+C to stop watching; container keeps running).",
     "docker:logs": "docker compose logs -f"
   },
   "dependencies": {
