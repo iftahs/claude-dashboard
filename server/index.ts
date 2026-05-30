@@ -1,10 +1,14 @@
 import express from 'express';
+import path from 'path';
 import { getEvents } from './cache.ts';
 import { buildRecent, buildWeekly, buildModels, buildActivity, buildTools } from './aggregate.ts';
 import { claudeDir } from './scan.ts';
 
 const app = express();
 const PORT = Number(process.env.SERVER_PORT ?? 8787);
+
+// Serve built frontend
+app.use(express.static(path.join(import.meta.dirname, '../dist')));
 
 function wrap(data: unknown, computedAt: number) {
   return { data, computedAt, claudeDir: claudeDir() };
@@ -61,6 +65,11 @@ app.get('/api/tools', async (req, res) => {
   } catch (e) {
     res.status(500).json({ error: String(e) });
   }
+});
+
+// Catch-all for SPA routing
+app.get('*', (_req, res) => {
+  res.sendFile(path.join(import.meta.dirname, '../dist/index.html'));
 });
 
 app.listen(PORT, () => {
