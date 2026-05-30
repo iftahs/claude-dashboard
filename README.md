@@ -33,12 +33,38 @@ npm install
 npm run dev
 ```
 
-Then open the URL Vite prints (default <http://localhost:5173>). The dashboard populates as soon as you've used Claude Code on this machine.
+Then open the URL Vite prints (default <http://localhost:5180>). The dashboard populates as soon as you've used Claude Code on this machine.
 
 `npm run dev` starts two processes via `concurrently`:
 
 - a small **Express backend** (port `8787`) that scans `~/.claude` and serves aggregated JSON,
 - the **Vite** dev server for the React UI, which proxies `/api` to the backend.
+
+## Run with Docker (always-on)
+
+Want the dashboard always available without running `npm` each time? Run it as a container. It builds the UI, serves everything from one Express process on port `8787`, and mounts your `~/.claude` folder **read-only**.
+
+1. Copy the env template and point it at your Claude data folder:
+
+   ```bash
+   cp .env.example .env
+   ```
+
+   Edit `.env` and set `CLAUDE_DIR_HOST` to your real path (use forward slashes on Windows):
+
+   ```
+   CLAUDE_DIR_HOST=C:/Users/you/.claude
+   ```
+
+2. Build and start:
+
+   ```bash
+   docker compose up -d --build
+   ```
+
+3. Open <http://localhost:8787>.
+
+The container uses `restart: unless-stopped`, so it comes back automatically after a crash or reboot (as long as Docker Desktop is set to start on login). Stop it with `docker compose down`. To change the host port, edit the `ports` mapping in `docker-compose.yml` (e.g. `"9000:8787"`).
 
 ## Changing the Claude data folder
 
