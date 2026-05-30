@@ -1,0 +1,17 @@
+services:
+  dashboard:
+    build: .
+    image: claude-dashboard
+    container_name: claude-dashboard
+    ports:
+      - "8787:8787"
+    volumes:
+      # Mount your real ~/.claude into the container, read-only.
+      # Set CLAUDE_DIR_HOST in a .env file (see .env.example).
+      - "${CLAUDE_DIR_HOST}:/data/.claude:ro"
+    environment:
+      - CLAUDE_DIR=/data/.claude
+      - SERVER_PORT=8787
+    # Always available: restarts on crash and on machine reboot
+    # (as long as Docker Desktop is set to start at login).
+    restart: unless-stopped

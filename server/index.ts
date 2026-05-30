@@ -1,3 +1,5 @@
+import { existsSync } from 'node:fs';
+import { join } from 'node:path';
 import express from 'express';
 import { getEvents } from './cache.ts';
 import { buildRecent, buildWeekly, buildModels, buildActivity, buildTools } from './aggregate.ts';
@@ -62,6 +64,17 @@ app.get('/api/tools', async (req, res) => {
     res.status(500).json({ error: String(e) });
   }
 });
+
+// Serve the built frontend when present (production / Docker). In dev the Vite
+// server handles the UI and proxies /api here, so dist usually won't exist.
+const distDir = join(process.cwd(), 'dist');
+if (existsSync(distDir)) {
+  app.use(express.static(distDir));
+  // SPA fallback: any non-/api route returns index.html.
+  app.get(/^(?!\/api).*/, (_req, res) => {
+    res.sendFile(join(distDir, 'index.html'));
+  });
+}
 
 app.listen(PORT, () => {
   console.log(`[server] listening on http://localhost:${PORT} (claudeDir=${claudeDir()})`);
