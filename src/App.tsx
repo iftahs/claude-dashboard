@@ -10,6 +10,15 @@ import { ActivityHeatmap } from './components/ActivityHeatmap';
 import { ToolUsage } from './components/ToolUsage';
 import { LiveBadge } from './components/LiveBadge';
 import { LimitsPanel } from './components/LimitsPanel';
+import {
+  StatCardSkeleton,
+  ChartSkeleton,
+  GaugeSkeleton,
+  DonutSkeleton,
+  BarsSkeleton,
+  HeatmapSkeleton,
+  Skeleton,
+} from './components/Skeleton';
 import { compact, usd, hourLabel, dayLabel, shortModel } from './lib/format';
 
 const POLL = 5000;
@@ -119,6 +128,14 @@ export default function App() {
         <div className="mt-6 space-y-6">
           {/* Stat cards */}
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+            {recent.loading || weekly.loading ? (
+              <>
+                <StatCardSkeleton />
+                <StatCardSkeleton />
+                <StatCardSkeleton />
+              </>
+            ) : (
+              <>
             <StatCard
               label="Effective tokens · current block"
               value={compact(block?.totals.effectiveTokens ?? 0)}
@@ -157,16 +174,20 @@ export default function App() {
               value={usd(weekly.data?.totals.cost ?? 0)}
               sub={topModel ? `top: ${shortModel(topModel.model)}` : undefined}
             />
+              </>
+            )}
           </div>
 
           {/* 5-hour panel */}
           <div className="grid grid-cols-1 items-stretch gap-6 lg:grid-cols-3">
-            <BlockGauge block={block} limits={limits} />
+            {recent.loading ? <GaugeSkeleton /> : <BlockGauge block={block} limits={limits} />}
             <div className="flex flex-col lg:col-span-2">
               <Section title="Last 5 hours · hourly tokens by model" grow>
-                {recent.data && (
+                {recent.data ? (
                   <UsageBarChart buckets={recent.data.buckets} labelFor={hourLabel} />
-                )}
+                ) : recent.loading ? (
+                  <ChartSkeleton />
+                ) : null}
               </Section>
             </div>
           </div>
@@ -205,9 +226,15 @@ export default function App() {
                   </div>
                 }
               >
-                {weekly.data && <UsageBarChart buckets={weekly.data.buckets} labelFor={dayLabel} />}
+                {weekly.data ? (
+                  <UsageBarChart buckets={weekly.data.buckets} labelFor={dayLabel} />
+                ) : weekly.loading ? (
+                  <ChartSkeleton />
+                ) : null}
                 <div className="mt-4 rounded-xl bg-ink-700/50 px-4 py-3">
-                  {limits.weeklyLimit ? (
+                  {weekly.loading ? (
+                    <Skeleton className="h-4 w-full rounded" />
+                  ) : limits.weeklyLimit ? (
                     <div className="flex-1">
                       <div className="flex justify-between text-xs text-zinc-400">
                         <span>
@@ -253,18 +280,28 @@ export default function App() {
           {/* Model + tool usage */}
           <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
             <Section title="Model breakdown · 7d">
-              {models.data && <ModelBreakdown models={models.data.models} />}
+              {models.data ? (
+                <ModelBreakdown models={models.data.models} />
+              ) : models.loading ? (
+                <DonutSkeleton />
+              ) : null}
             </Section>
             <Section title="Tool usage · 7d">
-              {tools.data && (
+              {tools.data ? (
                 <ToolUsage tools={tools.data.tools} totalCalls={tools.data.totalCalls} />
-              )}
+              ) : tools.loading ? (
+                <BarsSkeleton />
+              ) : null}
             </Section>
           </div>
 
           {/* Activity */}
           <Section title="Daily activity · last 18 weeks">
-            {activity.data && <ActivityHeatmap days={activity.data.dailyActivity} />}
+            {activity.data ? (
+              <ActivityHeatmap days={activity.data.dailyActivity} />
+            ) : activity.loading ? (
+              <HeatmapSkeleton />
+            ) : null}
           </Section>
         </div>
       )}
