@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react';
 import type { ActiveBlock, WeeklyData, LiveUsageData } from '../types';
-import type { Limits } from '../hooks/useLimits';
 
 const DEFAULT_BLOCK_LIMIT = 6000000; // 6.0M effective tokens
 const DEFAULT_WEEKLY_LIMIT = 35000000; // 35M effective tokens
@@ -20,12 +19,10 @@ function formatRemainingDays(ms: number): string {
 export function PlanUsage({
   block,
   weekly,
-  limits,
   liveUsage,
 }: {
   block: ActiveBlock | null;
   weekly: WeeklyData | null;
-  limits: Limits;
   liveUsage?: LiveUsageData | null;
 }) {
   const [, forceUpdate] = useState(0);
@@ -40,7 +37,7 @@ export function PlanUsage({
   const hasLive = liveUsage && !liveUsage.error;
 
   // 5-Hour Limit calculations
-  const blockLimit = limits.blockLimit ?? DEFAULT_BLOCK_LIMIT;
+  const blockLimit = DEFAULT_BLOCK_LIMIT;
   const blockPct = hasLive 
     ? Math.round(liveUsage.five_hour.utilization)
     : Math.min(100, Math.round(((block?.totals.effectiveTokens ?? 0) / blockLimit) * 100));
@@ -52,7 +49,7 @@ export function PlanUsage({
   const blockResetStr = noActiveBlock ? 'on next msg' : formatRemainingHours(blockRemainingMs);
 
   // Weekly calculations
-  const weeklyLimit = limits.weeklyLimit ?? DEFAULT_WEEKLY_LIMIT;
+  const weeklyLimit = DEFAULT_WEEKLY_LIMIT;
   const weeklyPct = hasLive
     ? Math.round(liveUsage.seven_day.utilization)
     : Math.min(100, Math.round(((weekly?.totals.effectiveTokens ?? 0) / weeklyLimit) * 100));

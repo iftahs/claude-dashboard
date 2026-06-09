@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react';
 import type { ActiveBlock, LiveUsageData } from '../types';
-import type { Limits } from '../hooks/useLimits';
 import { compact } from '../lib/format';
 
 const BLOCK_MS = 5 * 3600_000;
@@ -18,11 +17,9 @@ function formatRemaining(ms: number): string {
 
 export function BlockGauge({
   block,
-  limits,
   liveUsage,
 }: {
   block: ActiveBlock | null;
-  limits: Limits;
   liveUsage?: LiveUsageData | null;
 }) {
   const [, force] = useState(0);
@@ -35,7 +32,7 @@ export function BlockGauge({
   const effective = block?.totals.effectiveTokens ?? 0;
   const prevEffective = block?.prevTotals.effectiveTokens ?? 0;
   
-  const blockLimit = limits.blockLimit ?? DEFAULT_BLOCK_LIMIT;
+  const blockLimit = DEFAULT_BLOCK_LIMIT;
   
   const hasLive = liveUsage && !liveUsage.error;
   const tokPct = hasLive 
