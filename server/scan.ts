@@ -1,5 +1,5 @@
 import { createReadStream } from 'node:fs';
-import { readdir, stat } from 'node:fs/promises';
+import { readdir, stat, readFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { createInterface } from 'node:readline';
@@ -120,3 +120,111 @@ export async function scanEvents(): Promise<UsageEvent[]> {
   out.sort((a, b) => a.ts - b.ts);
   return out;
 }
+
+export async function readConfig(): Promise<any> {
+  try {
+    const filePath = join(claudeDir(), 'settings.json');
+    const content = await readFile(filePath, 'utf8');
+    return JSON.parse(content);
+  } catch (e) {
+    console.error('[server] failed to read settings.json:', e);
+    return null;
+  }
+}
+
+export async function readCredentials(): Promise<any> {
+  try {
+    const filePath = join(claudeDir(), '.credentials.json');
+    const content = await readFile(filePath, 'utf8');
+    return JSON.parse(content);
+  } catch (e) {
+    console.error('[server] failed to read .credentials.json:', e);
+    return null;
+  }
+}
+
+export async function readStatsSummary(): Promise<any> {
+  try {
+    const filePath = join(claudeDir(), 'stats-cache.json');
+    const content = await readFile(filePath, 'utf8');
+    return JSON.parse(content);
+  } catch (e) {
+    console.error('[server] failed to read stats-cache.json:', e);
+    return null;
+  }
+}
+
+export async function readSessionMetas(): Promise<any[]> {
+  try {
+    const dirPath = join(claudeDir(), 'usage-data', 'session-meta');
+    const dirents = await readdir(dirPath, { withFileTypes: true });
+    const jsonFiles = dirents
+      .filter((d) => d.isFile() && d.name.endsWith('.json'))
+      .map((d) => join(dirPath, d.name));
+
+    const sessions = await Promise.all(
+      jsonFiles.map(async (file) => {
+        try {
+          const content = await readFile(file, 'utf8');
+          return JSON.parse(content);
+        } catch {
+          return null;
+        }
+      })
+    );
+
+    return sessions
+      .filter(Boolean)
+      .sort((a, b) => Date.parse(b.start_time) - Date.parse(a.start_time));
+  } catch (e) {
+    console.error('[server] failed to read session-meta:', e);
+    return [];
+  }
+}
+
+let cachedLiveUsage: {
+  data: any;
+  fetchedAt: number;
+} | null = null;
+
+const CACHE_TTL = 30000; // 30 seconds local cache to avoid rate limit issues
+
+export async function fetchLiveUsage(): Promise<any> {
+  if (cachedLiveUsage && (Date.now() - cachedLiveUsage.fetchedAt < CACHE_TTL)) {
+    return cachedLiveUsage.data;
+  }
+
+  const credentials = await readCredentials();
+  if (!credentials?.claudeAiOauth?.accessToken) {
+    throw new Error('No access token found in credentials');
+  }
+
+  const expiresAt = credentials.claudeAiOauth.expiresAt;
+  if (expiresAt && Date.now() >= expiresAt) {
+    throw new Error('OAuth token expired. Please run any command in Claude CLI to refresh.');
+  }
+
+  const url = 'https://api.anthropic.com/api/oauth/usage';
+  const headers = {
+    'Authorization': `Bearer ${credentials.claudeAiOauth.accessToken}`,
+    'anthropic-beta': 'oauth-2025-04-20',
+    'User-Agent': 'claude-code/2.1.162',
+    'Accept': 'application/json',
+  };
+
+  const res = await fetch(url, { headers });
+  if (res.status === 403) {
+    throw new Error('OAuth token invalid (403). Please run any command in Claude CLI to refresh.');
+  }
+  if (!res.ok) {
+    throw new Error(`Failed to fetch live usage from Anthropic API: ${res.status} ${res.statusText}`);
+  }
+
+  const data = await res.json();
+  cachedLiveUsage = {
+    data,
+    fetchedAt: Date.now(),
+  };
+  return data;
+}
+

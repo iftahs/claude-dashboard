@@ -1,7 +1,7 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { usePolling } from './hooks/usePolling';
 import { useLimits } from './hooks/useLimits';
-import type { ActivityData, ModelsData, RecentData, WeeklyData, ToolsData } from './types';
+import type { ActivityData, ModelsData, RecentData, WeeklyData, ToolsData, ClaudeConfig, SessionMeta, LiveUsageData } from './types';
 import { StatCard } from './components/StatCard';
 import { BlockGauge } from './components/BlockGauge';
 import { UsageBarChart } from './components/UsageBarChart';
@@ -10,6 +10,11 @@ import { ActivityHeatmap } from './components/ActivityHeatmap';
 import { ToolUsage } from './components/ToolUsage';
 import { LiveBadge } from './components/LiveBadge';
 import { LimitsPanel } from './components/LimitsPanel';
+import { CostCalculation } from './components/CostCalculation';
+import { ConfigProfile } from './components/ConfigProfile';
+import { PlanUsage } from './components/PlanUsage';
+import { ProjectBreakdown } from './components/ProjectBreakdown';
+import { SessionHistoryTable } from './components/SessionHistoryTable';
 import {
   StatCardSkeleton,
   ChartSkeleton,
@@ -47,9 +52,9 @@ function Section({
   );
 }
 
-function UsageBar({ used, total, label }: { used: number; total: number | null; label?: string }) {
-  if (!total) return null;
-  const pct = Math.min(100, (used / total) * 100);
+function UsageBar({ used, total, label, overridePct }: { used: number; total: number | null; label?: string; overridePct?: number }) {
+  if (!total && overridePct === undefined) return null;
+  const pct = overridePct !== undefined ? overridePct : Math.min(100, (used / total!) * 100);
   const color = pct > 90 ? '#ef4444' : pct > 70 ? '#f59e0b' : '#d97757';
   return (
     <div className="mt-3">
@@ -71,11 +76,15 @@ function UsageBar({ used, total, label }: { used: number; total: number | null; 
 
 export default function App() {
   const [weekDays, setWeekDays] = useState(7);
-  const recent = usePolling<RecentData>('/api/usage/recent', POLL);
+  const [recentHours, setRecentHours] = useState(12);
+  const recent = usePolling<RecentData>(`/api/usage/recent?hours=${recentHours}`, POLL);
   const weekly = usePolling<WeeklyData>(`/api/usage/weekly?days=${weekDays}`, POLL);
   const models = usePolling<ModelsData>('/api/usage/models?days=7', POLL);
   const activity = usePolling<ActivityData>('/api/activity', 30000);
   const tools = usePolling<ToolsData>('/api/tools?days=7', 30000);
+  const config = usePolling<ClaudeConfig>('/api/config', 60000);
+  const sessions = usePolling<SessionMeta[]>('/api/sessions', 10000);
+  const liveUsage = usePolling<LiveUsageData>('/api/usage/live', 15000);
   const [limits, setLimits] = useLimits();
   const [showLimits, setShowLimits] = useState(false);
 
@@ -90,6 +99,17 @@ export default function App() {
   const topModel = models.data?.models[0];
   const weeklyEffective = weekly.data?.totals.effectiveTokens ?? 0;
   const prevWeeklyEffective = weekly.data?.prevTotals.effectiveTokens ?? 0;
+
+  const totalPeriodDays = useMemo(() => {
+    if (!sessions.data || sessions.data.length === 0) return 0;
+    const timestamps = sessions.data
+      .map((s) => Date.parse(s.start_time))
+      .filter((t) => !isNaN(t));
+    if (timestamps.length === 0) return 0;
+    const oldest = Math.min(...timestamps);
+    const diffMs = Date.now() - oldest;
+    return Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+  }, [sessions.data]);
 
   return (
     <div className="mx-auto max-w-6xl px-5 py-8">
@@ -136,8 +156,8 @@ export default function App() {
               </>
             ) : (
               <>
-            <StatCard
-              label="Effective tokens · current block"
+             <StatCard
+              label="Effective tokens · current 5 hours block"
               value={compact(block?.totals.effectiveTokens ?? 0)}
               accent="#d97757"
               sub={
@@ -147,30 +167,32 @@ export default function App() {
                     : 'no cache reads'}
                   <UsageBar
                     used={block?.totals.effectiveTokens ?? 0}
-                    total={limits.blockLimit}
+                    total={limits.blockLimit ?? 6000000}
                     label="of 5h limit"
+                    overridePct={liveUsage.data && !liveUsage.data.error ? liveUsage.data.five_hour.utilization : undefined}
                   />
                 </>
               }
             />
-            <StatCard
-              label="Effective tokens · last 7 days"
+             <StatCard
+              label={`Effective tokens · last ${weekDays} days`}
               value={compact(weeklyEffective)}
               sub={
                 <>
                   {prevWeeklyEffective > 0
-                    ? `prev week: ${compact(prevWeeklyEffective)}`
+                    ? `${weekDays === 7 ? 'prev week' : `prev ${weekDays / 7} weeks`}: ${compact(prevWeeklyEffective)}`
                     : `${compact(weekly.data?.totals.outputTokens ?? 0)} output`}
                   <UsageBar
                     used={weeklyEffective}
-                    total={limits.weeklyLimit}
+                    total={limits.weeklyLimit ?? 35000000}
                     label="of weekly limit"
+                    overridePct={liveUsage.data && !liveUsage.data.error ? liveUsage.data.seven_day.utilization : undefined}
                   />
                 </>
               }
             />
             <StatCard
-              label="Est. equivalent cost · 7d"
+              label={`Est. equivalent cost · ${weekDays}d`}
               value={usd(weekly.data?.totals.cost ?? 0)}
               sub={topModel ? `top: ${shortModel(topModel.model)}` : undefined}
             />
@@ -180,9 +202,29 @@ export default function App() {
 
           {/* 5-hour panel */}
           <div className="grid grid-cols-1 items-stretch gap-6 lg:grid-cols-3">
-            {recent.loading ? <GaugeSkeleton /> : <BlockGauge block={block} limits={limits} />}
+            {recent.loading ? <GaugeSkeleton /> : <BlockGauge block={block} limits={limits} liveUsage={liveUsage.data} />}
             <div className="flex flex-col lg:col-span-2">
-              <Section title="Last 5 hours · hourly tokens by model" grow>
+              <Section
+                title={`Last ${recentHours} hours · hourly tokens by model`}
+                right={
+                  <div className="flex overflow-hidden rounded-lg ring-1 ring-white/10">
+                    {[5, 12, 24, 48].map((h) => (
+                      <button
+                        key={h}
+                        onClick={() => setRecentHours(h)}
+                        className={`px-2.5 py-1 text-xs tabular-nums transition-colors ${
+                          recentHours === h
+                            ? 'bg-clay-500/20 text-clay-400'
+                            : 'text-zinc-500 hover:text-zinc-300'
+                        }`}
+                      >
+                        {h}h
+                      </button>
+                    ))}
+                  </div>
+                }
+                grow
+              >
                 {recent.data ? (
                   <UsageBarChart buckets={recent.data.buckets} labelFor={hourLabel} />
                 ) : recent.loading ? (
@@ -234,42 +276,27 @@ export default function App() {
                 <div className="mt-4 rounded-xl bg-ink-700/50 px-4 py-3">
                   {weekly.loading ? (
                     <Skeleton className="h-4 w-full rounded" />
-                  ) : limits.weeklyLimit ? (
+                  ) : (
                     <div className="flex-1">
                       <div className="flex justify-between text-xs text-zinc-400">
                         <span>
                           <span className="text-zinc-200">{compact(weeklyEffective)}</span> used
                           {prevWeeklyEffective > 0 && (
                             <span className="ml-2 text-zinc-500">
-                              · prev week {compact(prevWeeklyEffective)}
+                              · {weekDays === 7 ? 'prev week' : `prev ${weekDays / 7} weeks`} {compact(prevWeeklyEffective)}
                             </span>
                           )}
                         </span>
                         <span className="font-semibold text-zinc-300">
-                          {((weeklyEffective / limits.weeklyLimit) * 100).toFixed(0)}%
+                          {((weeklyEffective / (limits.weeklyLimit ?? 35000000)) * 100).toFixed(0)}%
                         </span>
                       </div>
                       <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-ink-600">
                         <div
                           className="h-full rounded-full bg-clay-500 transition-all duration-700"
-                          style={{ width: `${Math.min(100, (weeklyEffective / limits.weeklyLimit) * 100)}%` }}
+                          style={{ width: `${Math.min(100, (weeklyEffective / (limits.weeklyLimit ?? 35000000)) * 100)}%` }}
                         />
                       </div>
-                    </div>
-                  ) : (
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="text-zinc-400">
-                        <span className="text-zinc-200">{compact(weeklyEffective)}</span> used · {weekDays}d
-                        {prevWeeklyEffective > 0 && (
-                          <span className="ml-2 text-zinc-500">· prev week {compact(prevWeeklyEffective)}</span>
-                        )}
-                      </span>
-                      <button
-                        onClick={() => setShowLimits(true)}
-                        className="ml-4 shrink-0 rounded-lg px-3 py-1 text-xs text-clay-400 ring-1 ring-clay-500/40 hover:bg-clay-500/10"
-                      >
-                        ⚙ set limit to see %
-                      </button>
                     </div>
                   )}
                 </div>
@@ -295,6 +322,40 @@ export default function App() {
             </Section>
           </div>
 
+          {/* Config Profile & Workspace Insights Grid */}
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+            <div className="lg:col-span-1 flex flex-col gap-6">
+              {config.data ? (
+                <ConfigProfile config={config.data} />
+              ) : config.loading ? (
+                <div className="card p-5 h-full flex items-center justify-center min-h-[200px]">
+                  <Skeleton className="h-full w-full rounded-2xl" />
+                </div>
+              ) : null}
+              {config.data && (
+                <PlanUsage block={block} weekly={weekly.data} limits={limits} liveUsage={liveUsage.data} />
+              )}
+            </div>
+            <div className="lg:col-span-2">
+              {sessions.data ? (
+                <ProjectBreakdown sessions={sessions.data} periodDays={totalPeriodDays} />
+              ) : sessions.loading ? (
+                <div className="card p-5 h-full flex items-center justify-center min-h-[200px]">
+                  <Skeleton className="h-full w-full rounded-2xl" />
+                </div>
+              ) : null}
+            </div>
+          </div>
+
+          {/* Session History Log */}
+          {sessions.data ? (
+            <SessionHistoryTable sessions={sessions.data} periodDays={totalPeriodDays} />
+          ) : sessions.loading ? (
+            <div className="card p-5 min-h-[150px] flex items-center justify-center">
+              <Skeleton className="h-full w-full rounded-2xl" />
+            </div>
+          ) : null}
+
           {/* Activity */}
           <Section title="Daily activity · last 18 weeks">
             {activity.data ? (
@@ -303,6 +364,9 @@ export default function App() {
               <HeatmapSkeleton />
             ) : null}
           </Section>
+
+          {/* Cost Calculation Explanation */}
+          <CostCalculation />
         </div>
       )}
     </div>

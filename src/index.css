@@ -54,3 +54,20 @@ body {
     box-shadow: 0 0 0 0 rgba(52, 211, 153, 0);
   }
 }
+
+/* Custom scrollbar styling */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #0c0c0f; /* bg-ink-900 */
+  border-radius: 8px;
+}
+::-webkit-scrollbar-thumb {
+  background: #26262f; /* bg-ink-600 */
+  border-radius: 8px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #d97757; /* bg-clay-500 */
+}

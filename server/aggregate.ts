@@ -164,8 +164,8 @@ export interface PrevPeriod {
   rangeTo: number;
 }
 
-export function buildRecent(events: UsageEvent[], now: number) {
-  const from = now - 5 * HOUR;
+export function buildRecent(events: UsageEvent[], now: number, hours = 5) {
+  const from = now - hours * HOUR;
   const windowEvents = events.filter((e) => e.ts >= from);
   return {
     rangeFrom: from,
@@ -217,10 +217,37 @@ export interface DailyActivity {
 
 /** Daily activity derived live from JSONL events (always current, unlike the
  *  stale stats-cache.json). Fills every day in the window so the heatmap is dense. */
-export function buildActivity(events: UsageEvent[], now: number, days: number) {
+export function buildActivity(events: UsageEvent[], now: number, days: number, stats?: any) {
   const DAY = 24 * HOUR;
   const map = new Map<string, DailyActivity>();
   const from = now - days * DAY;
+
+  const cacheActivityMap = new Map<string, { messageCount: number; toolCallCount: number }>();
+  if (stats?.dailyActivity) {
+    for (const item of stats.dailyActivity) {
+      if (item.date) {
+        cacheActivityMap.set(item.date, {
+          messageCount: item.messageCount ?? 0,
+          toolCallCount: item.toolCallCount ?? 0,
+        });
+      }
+    }
+  }
+
+  const cacheTokensMap = new Map<string, number>();
+  if (stats?.dailyModelTokens) {
+    for (const item of stats.dailyModelTokens) {
+      if (item.date && item.tokensByModel) {
+        let sum = 0;
+        for (const modelKey of Object.keys(item.tokensByModel)) {
+          const val = item.tokensByModel[modelKey];
+          sum += typeof val === 'number' ? val : 0;
+        }
+        cacheTokensMap.set(item.date, sum);
+      }
+    }
+  }
+
   for (const e of events) {
     if (e.ts < from) continue;
     const key = localDateKey(e.ts);
@@ -239,7 +266,28 @@ export function buildActivity(events: UsageEvent[], now: number, days: number) {
   start.setHours(0, 0, 0, 0);
   for (let t = start.getTime(); t <= now; t += DAY) {
     const key = localDateKey(t);
-    out.push(map.get(key) ?? { date: key, effectiveTokens: 0, messageCount: 0, toolCallCount: 0 });
+    const live = map.get(key);
+    if (live) {
+      out.push(live);
+    } else {
+      const cacheAct = cacheActivityMap.get(key);
+      const cacheTok = cacheTokensMap.get(key);
+      if (cacheAct || cacheTok) {
+        out.push({
+          date: key,
+          effectiveTokens: cacheTok ?? 0,
+          messageCount: cacheAct?.messageCount ?? 0,
+          toolCallCount: cacheAct?.toolCallCount ?? 0,
+        });
+      } else {
+        out.push({
+          date: key,
+          effectiveTokens: 0,
+          messageCount: 0,
+          toolCallCount: 0,
+        });
+      }
+    }
   }
   return { rangeFrom: from, rangeTo: now, dailyActivity: out };
 }

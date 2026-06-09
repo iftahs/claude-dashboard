@@ -1,3 +1,4 @@
+import { Fragment } from 'react';
 import type { DailyActivity } from '../types';
 import { compact } from '../lib/format';
 
@@ -56,43 +57,75 @@ export function ActivityHeatmap({ days }: { days: DailyActivity[] }) {
 
   return (
     <div>
-      <p className="mb-3 text-xs text-zinc-500">
-        Each square is one day · darker = more effective tokens used. Hover for detail.
+      <p className="mb-4 text-xs text-zinc-500">
+        Each square is one day · darker = more effective tokens used. Numbers represent day of month, messages count (m), effective tokens, and tool calls (t).
       </p>
       <div className="overflow-x-auto">
-        <div className="flex gap-1">
-          {/* weekday labels */}
-          <div className="mr-1 flex flex-col gap-1 pt-[18px] text-[9px] leading-3 text-zinc-600">
-            {WEEKDAYS.map((w, i) => (
-              <span key={i} className="h-3 w-6 text-right">
-                {w}
-              </span>
-            ))}
-          </div>
-          {columns.map((col, ci) => (
-            <div key={ci} className="flex flex-col gap-1">
-              <span className="h-[14px] text-[9px] leading-3 text-zinc-600">
-                {monthLabels[ci]}
-              </span>
-              {col.map((cell) => (
-                <div
-                  key={cell.date}
-                  title={
-                    isFuture(cell.date)
-                      ? cell.date
-                      : `${cell.date} · ${compact(cell.effectiveTokens)} tokens · ${cell.messageCount} msgs · ${cell.toolCallCount} tool calls`
-                  }
-                  className="h-3 w-3 rounded-sm"
-                  style={{
-                    background: isFuture(cell.date) ? 'transparent' : color(cell.effectiveTokens, max),
-                  }}
-                />
-              ))}
+        <div className="grid grid-cols-[auto_repeat(18,1fr)] gap-1.5 w-full min-w-[900px]">
+          {/* Row 0: Month labels */}
+          <div /> {/* Top left cell is empty */}
+          {monthLabels.map((m, ci) => (
+            <div key={ci} className="text-[10px] font-bold text-zinc-500 pb-1 text-left truncate select-none">
+              {m}
             </div>
           ))}
+
+          {/* Rows 1-7: Weekdays */}
+          {Array.from({ length: 7 }).map((_, rowIndex) => {
+            const weekdayLabel = WEEKDAYS[rowIndex];
+            return (
+              <Fragment key={rowIndex}>
+                <div className="text-[10px] font-bold text-zinc-500 pr-2 flex items-center justify-end h-full min-w-[28px] select-none">
+                  {weekdayLabel}
+                </div>
+                {columns.map((col) => {
+                  const cell = col[rowIndex];
+                  const isFutureDay = isFuture(cell.date);
+                  const d = new Date(cell.date + 'T00:00:00');
+                  const dayNum = d.getDate();
+                  const hasActivity = cell.effectiveTokens > 0;
+                  return (
+                    <div
+                      key={cell.date}
+                      title={`${cell.date} · ${compact(cell.effectiveTokens)} tokens · ${cell.messageCount} msgs · ${cell.toolCallCount} tool calls`}
+                      className="relative flex flex-col justify-between p-1.5 rounded-md transition-all duration-300 aspect-square select-none text-left border"
+                      style={{
+                        background: isFutureDay ? 'transparent' : color(cell.effectiveTokens, max),
+                        borderColor: isFutureDay ? '#27272a' : 'rgba(255,255,255,0.05)',
+                        borderStyle: isFutureDay ? 'dashed' : 'solid',
+                      }}
+                    >
+                      <div className="flex justify-between items-start">
+                        <span className={`text-[10px] font-extrabold leading-none ${hasActivity ? 'text-white' : 'text-zinc-600'}`}>
+                          {dayNum}
+                        </span>
+                        {hasActivity && cell.messageCount > 0 && (
+                          <span className="text-[8px] text-zinc-300 opacity-90 font-mono leading-none">
+                            {cell.messageCount}m
+                          </span>
+                        )}
+                      </div>
+                      {hasActivity ? (
+                        <div className="mt-auto flex flex-col leading-none">
+                          <span className="text-[10px] font-black text-white font-mono leading-tight">
+                            {compact(cell.effectiveTokens)}
+                          </span>
+                          {cell.toolCallCount > 0 && (
+                            <span className="text-[7px] text-zinc-200/90 font-mono mt-0.5 leading-none">
+                              {cell.toolCallCount}t
+                            </span>
+                          )}
+                        </div>
+                      ) : null}
+                    </div>
+                  );
+                })}
+              </Fragment>
+            );
+          })}
         </div>
       </div>
-      <div className="mt-3 flex items-center gap-2 text-xs text-zinc-500">
+      <div className="mt-4 flex items-center gap-2 text-xs text-zinc-500">
         <span>less</span>
         {[0, 0.25, 0.5, 0.75, 1].map((t) => (
           <span
