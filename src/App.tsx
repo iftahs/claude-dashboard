@@ -169,7 +169,7 @@ export default function App() {
                     used={block?.totals.effectiveTokens ?? 0}
                     total={limits.blockLimit ?? 6000000}
                     label="of 5h limit"
-                    overridePct={liveUsage.data && !liveUsage.data.error ? liveUsage.data.five_hour.utilization : undefined}
+                    overridePct={liveUsage.data && !liveUsage.data.error && liveUsage.data.five_hour.resets_at != null ? liveUsage.data.five_hour.utilization : undefined}
                   />
                 </>
               }
@@ -186,7 +186,7 @@ export default function App() {
                     used={weeklyEffective}
                     total={limits.weeklyLimit ?? 35000000}
                     label="of weekly limit"
-                    overridePct={liveUsage.data && !liveUsage.data.error ? liveUsage.data.seven_day.utilization : undefined}
+                    overridePct={liveUsage.data && !liveUsage.data.error && liveUsage.data.seven_day.resets_at != null ? liveUsage.data.seven_day.utilization : undefined}
                   />
                 </>
               }
