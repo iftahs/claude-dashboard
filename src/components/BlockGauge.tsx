@@ -37,8 +37,7 @@ export function BlockGauge({
   
   const blockLimit = limits.blockLimit ?? DEFAULT_BLOCK_LIMIT;
   
-  // Only trust live utilization when there's an active block (resets_at != null)
-  const hasLive = liveUsage && !liveUsage.error && liveUsage.five_hour.resets_at != null;
+  const hasLive = liveUsage && !liveUsage.error;
   const tokPct = hasLive 
     ? liveUsage.five_hour.utilization 
     : Math.min(100, (effective / blockLimit) * 100);
@@ -58,9 +57,8 @@ export function BlockGauge({
   const resetStr = formatRemaining(remainingMs);
 
   // Status indicator
-  const hasLiveConnection = liveUsage && !liveUsage.error;
   let statusBadge = null;
-  if (hasLiveConnection) {
+  if (hasLive) {
     statusBadge = (
       <div className="mt-0.5 text-[10px] text-emerald-400 font-semibold flex items-center justify-center gap-1 select-none">
         <span className="animate-pulse">●</span> Live from Claude.ai

@@ -37,28 +37,26 @@ export function PlanUsage({
 
   const now = Date.now();
 
-  // Only trust live utilization when there's an active block (resets_at != null)
-  const hasLiveBlock = liveUsage && !liveUsage.error && liveUsage.five_hour.resets_at != null;
-  const hasLiveWeekly = liveUsage && !liveUsage.error && liveUsage.seven_day.resets_at != null;
+  const hasLive = liveUsage && !liveUsage.error;
 
   // 5-Hour Limit calculations
   const blockLimit = limits.blockLimit ?? DEFAULT_BLOCK_LIMIT;
-  const blockPct = hasLiveBlock 
+  const blockPct = hasLive 
     ? Math.round(liveUsage.five_hour.utilization)
     : Math.min(100, Math.round(((block?.totals.effectiveTokens ?? 0) / blockLimit) * 100));
   
-  const liveResetsAt = hasLiveBlock ? Date.parse(liveUsage.five_hour.resets_at!) : null;
+  const liveResetsAt = hasLive ? Date.parse(liveUsage.five_hour.resets_at) : null;
   const blockResetsAt = liveResetsAt && !isNaN(liveResetsAt) ? liveResetsAt : (block?.resetsAt ?? (now + 5 * 3600_000));
   const blockRemainingMs = Math.max(0, blockResetsAt - now);
   const blockResetStr = formatRemainingHours(blockRemainingMs);
 
   // Weekly calculations
   const weeklyLimit = limits.weeklyLimit ?? DEFAULT_WEEKLY_LIMIT;
-  const weeklyPct = hasLiveWeekly
+  const weeklyPct = hasLive
     ? Math.round(liveUsage.seven_day.utilization)
     : Math.min(100, Math.round(((weekly?.totals.effectiveTokens ?? 0) / weeklyLimit) * 100));
 
-  const liveWeeklyResetsAt = hasLiveWeekly ? Date.parse(liveUsage.seven_day.resets_at!) : null;
+  const liveWeeklyResetsAt = hasLive ? Date.parse(liveUsage.seven_day.resets_at) : null;
   const weeklyResetsAt = liveWeeklyResetsAt && !isNaN(liveWeeklyResetsAt) ? liveWeeklyResetsAt : (weekly?.weeklyResetsAt ?? (now + 5 * 24 * 3600_000));
   const weeklyRemainingMs = Math.max(0, weeklyResetsAt - now);
   const weeklyResetStr = formatRemainingDays(weeklyRemainingMs);
