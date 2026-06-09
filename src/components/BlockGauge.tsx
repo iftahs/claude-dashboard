@@ -50,11 +50,12 @@ export function BlockGauge({
   const dash = c * Math.max(0, Math.min(1, ringFrac));
   const ringColor = tokPct > 90 ? '#ef4444' : tokPct > 70 ? '#f59e0b' : '#d97757';
 
-  // Resets in
+  // Resets in — when live API has no active block (resets_at=null), show helpful hint
   const liveResetsAt = hasLive ? Date.parse(liveUsage.five_hour.resets_at) : null;
+  const noActiveBlock = hasLive && liveUsage.five_hour.resets_at == null;
   const blockResetsAt = liveResetsAt && !isNaN(liveResetsAt) ? liveResetsAt : (block?.resetsAt ?? (now + BLOCK_MS));
   const remainingMs = Math.max(0, blockResetsAt - now);
-  const resetStr = formatRemaining(remainingMs);
+  const resetStr = noActiveBlock ? 'on next message' : formatRemaining(remainingMs);
 
   // Status indicator
   let statusBadge = null;

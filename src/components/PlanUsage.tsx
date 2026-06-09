@@ -46,9 +46,10 @@ export function PlanUsage({
     : Math.min(100, Math.round(((block?.totals.effectiveTokens ?? 0) / blockLimit) * 100));
   
   const liveResetsAt = hasLive ? Date.parse(liveUsage.five_hour.resets_at) : null;
+  const noActiveBlock = hasLive && liveUsage.five_hour.resets_at == null;
   const blockResetsAt = liveResetsAt && !isNaN(liveResetsAt) ? liveResetsAt : (block?.resetsAt ?? (now + 5 * 3600_000));
   const blockRemainingMs = Math.max(0, blockResetsAt - now);
-  const blockResetStr = formatRemainingHours(blockRemainingMs);
+  const blockResetStr = noActiveBlock ? 'on next msg' : formatRemainingHours(blockRemainingMs);
 
   // Weekly calculations
   const weeklyLimit = limits.weeklyLimit ?? DEFAULT_WEEKLY_LIMIT;
@@ -57,9 +58,10 @@ export function PlanUsage({
     : Math.min(100, Math.round(((weekly?.totals.effectiveTokens ?? 0) / weeklyLimit) * 100));
 
   const liveWeeklyResetsAt = hasLive ? Date.parse(liveUsage.seven_day.resets_at) : null;
+  const noActiveWeekly = hasLive && liveUsage.seven_day.resets_at == null;
   const weeklyResetsAt = liveWeeklyResetsAt && !isNaN(liveWeeklyResetsAt) ? liveWeeklyResetsAt : (weekly?.weeklyResetsAt ?? (now + 5 * 24 * 3600_000));
   const weeklyRemainingMs = Math.max(0, weeklyResetsAt - now);
-  const weeklyResetStr = formatRemainingDays(weeklyRemainingMs);
+  const weeklyResetStr = noActiveWeekly ? 'on next msg' : formatRemainingDays(weeklyRemainingMs);
 
 
   // Progress Bar Colors
