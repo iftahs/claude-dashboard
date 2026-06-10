@@ -1,24 +1,26 @@
 import { useState, useMemo } from 'react';
 import { usePolling } from './hooks/usePolling';
 import { useLimits } from './hooks/useLimits';
-import type { Limits } from './hooks/useLimits';
 import type { ActivityData, ModelsData, RecentData, WeeklyData, ToolsData, ClaudeConfig, SessionMeta, LiveUsageData, HeatmapData, ProjectData } from './types';
-import { StatCard } from './components/StatCard';
-import { BlockGauge } from './components/BlockGauge';
-import { UsageBarChart } from './components/UsageBarChart';
-import { ModelBreakdown } from './components/ModelBreakdown';
-import { ActivityHeatmap } from './components/ActivityHeatmap';
-import { PeakHoursHeatmap } from './components/PeakHoursHeatmap';
-import { CacheEfficiencyChart } from './components/CacheEfficiencyChart';
-import { ToolUsage } from './components/ToolUsage';
-import { LiveBadge } from './components/LiveBadge';
-import { LimitsPanel } from './components/LimitsPanel';
-import { CostCalculation } from './components/CostCalculation';
-import { ConfigProfile } from './components/ConfigProfile';
-import { PlanUsage } from './components/PlanUsage';
-import { ProjectBreakdown } from './components/ProjectBreakdown';
-import { SessionHistoryTable } from './components/SessionHistoryTable';
-import { ExportButton } from './components/ExportButton';
+import { StatCard } from './components/design-system/atoms/StatCard/StatCard';
+import { BlockGauge } from './components/design-system/organisms/BlockGauge/BlockGauge';
+import { UsageBarChart } from './components/design-system/organisms/UsageBarChart/UsageBarChart';
+import { ModelBreakdown } from './components/design-system/organisms/ModelBreakdown/ModelBreakdown';
+import { ActivityHeatmap } from './components/design-system/organisms/ActivityHeatmap/ActivityHeatmap';
+import { PeakHoursHeatmap } from './components/design-system/organisms/PeakHoursHeatmap/PeakHoursHeatmap';
+import { CacheEfficiencyChart } from './components/design-system/organisms/CacheEfficiencyChart/CacheEfficiencyChart';
+import { ToolUsage } from './components/design-system/organisms/ToolUsage/ToolUsage';
+import { LiveBadge } from './components/design-system/atoms/LiveBadge/LiveBadge';
+import { LimitsPanel } from './components/design-system/molecules/LimitsPanel/LimitsPanel';
+import { CostCalculation } from './components/design-system/organisms/CostCalculation/CostCalculation';
+import { ConfigProfile } from './components/design-system/organisms/ConfigProfile/ConfigProfile';
+import { PlanUsage } from './components/design-system/molecules/PlanUsage/PlanUsage';
+import { ProjectBreakdown } from './components/design-system/organisms/ProjectBreakdown/ProjectBreakdown';
+import { SessionHistoryTable } from './components/design-system/organisms/SessionHistoryTable/SessionHistoryTable';
+import { ExportButton } from './components/design-system/molecules/ExportButton/ExportButton';
+import { Section } from './components/design-system/molecules/Section/Section';
+import { OfflineBanner } from './components/design-system/molecules/OfflineBanner/OfflineBanner';
+import { SpendingLimits } from './components/design-system/molecules/SpendingLimits/SpendingLimits';
 import {
   StatCardSkeleton,
   ChartSkeleton,
@@ -27,7 +29,7 @@ import {
   BarsSkeleton,
   HeatmapSkeleton,
   Skeleton,
-} from './components/Skeleton';
+} from './components/design-system/atoms/Skeleton/Skeleton';
 import { compact, usd, hourLabel, dayLabel, shortModel } from './lib/format';
 
 const POLL = 5000;
@@ -40,130 +42,6 @@ const TABS: { id: Tab; label: string }[] = [
   { id: 'models', label: '🧠 Models' },
   { id: 'sessions', label: '📋 Sessions' },
 ];
-
-function Section({
-  title,
-  children,
-  right,
-  className = '',
-  grow = false,
-}: {
-  title: string;
-  children: React.ReactNode;
-  right?: React.ReactNode;
-  className?: string;
-  grow?: boolean;
-}) {
-  return (
-    <div className={`card p-5 ${grow ? 'flex flex-col h-full' : ''} ${className}`}>
-      <div className="mb-4 flex items-center justify-between">
-        <h2 className="text-sm font-semibold text-zinc-300">{title}</h2>
-        {right}
-      </div>
-      <div className={grow ? 'flex-1 flex flex-col justify-end' : ''}>{children}</div>
-    </div>
-  );
-}
-
-/** API spending gauges — only rendered when at least one limit is configured */
-function SpendingLimits({ limits, costPerDay }: { limits: Limits; costPerDay: number }) {
-  const rows = [
-    limits.dailyLimit != null
-      ? { label: 'Daily', cost: costPerDay, limit: limits.dailyLimit }
-      : null,
-    limits.weeklyLimit != null
-      ? { label: 'Weekly', cost: costPerDay * 7, limit: limits.weeklyLimit }
-      : null,
-    limits.monthlyLimit != null
-      ? { label: 'Monthly (est.)', cost: costPerDay * 30, limit: limits.monthlyLimit }
-      : null,
-  ].filter(Boolean) as { label: string; cost: number; limit: number }[];
-
-  if (rows.length === 0) return null;
-
-  return (
-    <div className="card p-5">
-      <div className="mb-4 flex items-center justify-between">
-        <h3 className="text-sm font-bold uppercase tracking-wider text-zinc-500">API Spending</h3>
-        <span className="text-xs text-zinc-600">estimated from local logs</span>
-      </div>
-      <div className="space-y-4">
-        {rows.map(({ label, cost, limit }) => {
-          const pct = Math.min(100, (cost / limit) * 100);
-          const color = pct > 90 ? '#ef4444' : pct > 70 ? '#f59e0b' : '#10b981';
-          return (
-            <div key={label}>
-              <div className="mb-1.5 flex items-center justify-between text-xs">
-                <span className="font-medium text-zinc-300">{label}</span>
-                <span className="font-mono" style={{ color }}>
-                  ${cost.toFixed(2)}{' '}
-                  <span className="text-zinc-600">/ ${limit}</span>
-                  <span className="ml-1.5 text-zinc-500">({pct.toFixed(0)}%)</span>
-                </span>
-              </div>
-              <div className="h-1.5 w-full overflow-hidden rounded-full bg-ink-600">
-                <div
-                  className="h-full rounded-full transition-all duration-700"
-                  style={{ width: `${pct}%`, background: color }}
-                />
-              </div>
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-function OfflineBanner({ error }: { error: string }) {
-  const [dismissed, setDismissed] = useState(false);
-  if (dismissed) return null;
-
-  const isExpired = error.toLowerCase().includes('expired');
-  const isNoToken = error.toLowerCase().includes('no access token');
-
-  return (
-    <div className="flex items-start gap-3 rounded-xl border border-amber-500/20 bg-amber-500/8 px-4 py-3 text-sm">
-      <span className="text-xl mt-0.5 shrink-0">{isExpired ? '🔑' : '📡'}</span>
-      <div className="flex-1 min-w-0">
-        <p className="font-semibold text-amber-300">
-          {isExpired || isNoToken
-            ? 'Claude.ai session expired'
-            : 'Claude.ai connection offline'}
-        </p>
-        <p className="text-amber-300/70 text-xs mt-0.5 font-sans leading-relaxed">
-          {isExpired || isNoToken ? (
-            <>
-              Token needs a refresh — just run Claude Code in your terminal and it refreshes automatically.
-              <br />
-              <span className="font-mono text-amber-400 mt-1.5 inline-block">
-                # macOS Terminal / Linux / Windows:
-              </span>
-              <br />
-              <code className="font-mono text-amber-200 bg-amber-500/10 px-1.5 py-0.5 rounded">claude</code>
-              <span className="text-amber-400 mx-2">&nbsp;or&nbsp;</span>
-              <code className="font-mono text-amber-200 bg-amber-500/10 px-1.5 py-0.5 rounded">claude --help</code>
-            </>
-          ) : (
-            <>
-              {error}{' '}
-              <span className="text-amber-400 font-semibold">
-                — try running <code className="font-mono bg-amber-500/10 px-1.5 py-0.5 rounded text-amber-200">claude</code> in a terminal.
-              </span>
-            </>
-          )}
-        </p>
-      </div>
-      <button
-        onClick={() => setDismissed(true)}
-        className="text-amber-500/50 hover:text-amber-300 transition-colors text-lg leading-none shrink-0 mt-0.5"
-        title="Dismiss"
-      >
-        ×
-      </button>
-    </div>
-  );
-}
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<Tab>('live');

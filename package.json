@@ -25,6 +25,7 @@
     "docker:logs": "docker compose logs -f"
   },
   "dependencies": {
+    "class-variance-authority": "^0.7.1",
     "express": "^4.21.2",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
