@@ -11,6 +11,7 @@ export interface TokenTotals {
 export interface Bucket extends TokenTotals {
   start: number;
   byModel: Record<string, number>;
+  byModelCost: Record<string, number>;
 }
 
 export interface ModelShare extends TokenTotals {
@@ -43,6 +44,7 @@ export interface WeeklyData {
   totals: TokenTotals;
   prevTotals: TokenTotals;
   byModel: ModelShare[];
+  cacheEfficiency?: { date: string; hitRate: number; cacheReadTokens: number; totalTokens: number }[];
 }
 
 export interface ModelsData {
@@ -134,5 +136,26 @@ export interface LiveUsageData {
   seven_day_cowork?: LiveLimitInfo | null;
   seven_day_omelette?: LiveLimitInfo | null;
   error?: string;
+}
+
+export interface HeatmapData {
+  /** 7 rows (Mon=0 … Sun=6) × 24 cols (hour 0 … 23), values = effective tokens */
+  grid: number[][];
+  rangeFrom: number;
+  rangeTo: number;
+}
+
+export interface ProjectStat {
+  path: string;
+  name: string;
+  effectiveTokens: number;
+  cost: number;
+  sessionCount: number;
+}
+
+export interface ProjectData {
+  rangeFrom: number;
+  rangeTo: number;
+  projects: ProjectStat[];
 }
 

@@ -17,6 +17,7 @@ export interface TokenTotals {
 export interface Bucket extends TokenTotals {
   start: number;
   byModel: Record<string, number>;
+  byModelCost: Record<string, number>;
 }
 
 export interface ModelShare extends TokenTotals {
@@ -53,7 +54,7 @@ function bucketize(events: UsageEvent[], from: number, to: number, width: number
   const buckets: Bucket[] = [];
   const start0 = Math.floor(from / width) * width;
   for (let s = start0; s < to; s += width) {
-    buckets.push({ start: s, byModel: {}, ...emptyTotals() });
+    buckets.push({ start: s, byModel: {}, byModelCost: {}, ...emptyTotals() });
   }
   for (const e of events) {
     if (e.ts < start0 || e.ts >= to) continue;
@@ -62,6 +63,7 @@ function bucketize(events: UsageEvent[], from: number, to: number, width: number
     if (!b) continue;
     add(b, e);
     b.byModel[e.model] = (b.byModel[e.model] ?? 0) + eventTokens(e);
+    b.byModelCost[e.model] = (b.byModelCost[e.model] ?? 0) + estimateCost(e.model, e);
   }
   return buckets;
 }
@@ -183,6 +185,18 @@ export function buildWeekly(events: UsageEvent[], now: number, days = 7) {
   const prevFrom = from - days * DAY;
   const windowEvents = events.filter((e) => e.ts >= from);
   const prevEvents = events.filter((e) => e.ts >= prevFrom && e.ts < from);
+
+  // Cache efficiency per day
+  const dayBuckets = bucketize(windowEvents, from, now, DAY);
+  const cacheEfficiency = dayBuckets
+    .filter((b) => b.totalTokens > 0)
+    .map((b) => ({
+      date: new Date(b.start).toISOString().slice(0, 10),
+      hitRate: b.totalTokens > 0 ? (b.cacheReadTokens / b.totalTokens) * 100 : 0,
+      cacheReadTokens: b.cacheReadTokens,
+      totalTokens: b.totalTokens,
+    }));
+
   return {
     rangeFrom: from,
     rangeTo: now,
@@ -191,6 +205,7 @@ export function buildWeekly(events: UsageEvent[], now: number, days = 7) {
     totals: sumTotals(windowEvents),
     prevTotals: sumTotals(prevEvents),
     byModel: modelShares(windowEvents),
+    cacheEfficiency,
   };
 }
 
@@ -313,4 +328,60 @@ export function buildTools(events: UsageEvent[], now: number, days: number) {
     .map(([name, count]) => ({ name, count }))
     .sort((a, b) => b.count - a.count);
   return { rangeFrom: from, rangeTo: now, totalCalls, tools };
+}
+
+/** Per-project cost & token breakdown derived from UsageEvents. */
+export function buildProjectStats(events: UsageEvent[], now: number, days: number) {
+  const from = now - days * 24 * HOUR;
+  const map = new Map<string, {
+    path: string;
+    effectiveTokens: number;
+    cost: number;
+    sessionIds: Set<string>;
+  }>();
+
+  for (const e of events) {
+    if (e.ts < from || !e.projectPath) continue;
+    let p = map.get(e.projectPath);
+    if (!p) {
+      p = { path: e.projectPath, effectiveTokens: 0, cost: 0, sessionIds: new Set() };
+      map.set(e.projectPath, p);
+    }
+    p.effectiveTokens += e.inputTokens + e.outputTokens + e.cacheCreateTokens;
+    p.cost += estimateCost(e.model, e);
+    if (e.sessionId) p.sessionIds.add(e.sessionId);
+  }
+
+  const projects = [...map.values()]
+    .map((p) => ({
+      path: p.path,
+      name: p.path.split(/[\\\/]/).filter(Boolean).pop() ?? p.path,
+      effectiveTokens: p.effectiveTokens,
+      cost: p.cost,
+      sessionCount: p.sessionIds.size,
+    }))
+    .sort((a, b) => b.cost - a.cost);
+
+  return { rangeFrom: from, rangeTo: now, projects };
+}
+
+/** Peak usage heatmap: 7 rows (Mon=0..Sun=6) × 24 cols (hour 0..23),
+ *  values are sum of effective tokens in that slot over the window. */
+export function buildHourlyHeatmap(events: UsageEvent[], now: number, days: number) {
+  const from = now - days * 24 * HOUR;
+  // grid[dayOfWeek][hour] — dayOfWeek: 0=Mon..6=Sun
+  const grid: number[][] = Array.from({ length: 7 }, () => new Array(24).fill(0));
+
+  for (const e of events) {
+    if (e.ts < from) continue;
+    const d = new Date(e.ts);
+    // getDay(): 0=Sun,1=Mon..6=Sat → remap to Mon=0..Sun=6
+    const rawDay = d.getDay();
+    const dayIdx = rawDay === 0 ? 6 : rawDay - 1;
+    const hourIdx = d.getHours();
+    const effective = e.inputTokens + e.outputTokens + e.cacheCreateTokens;
+    grid[dayIdx][hourIdx] += effective;
+  }
+
+  return { rangeFrom: from, rangeTo: now, grid };
 }

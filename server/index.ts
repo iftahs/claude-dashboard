@@ -2,7 +2,7 @@ import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import express from 'express';
 import { getEvents } from './cache.ts';
-import { buildRecent, buildWeekly, buildModels, buildActivity, buildTools } from './aggregate.ts';
+import { buildRecent, buildWeekly, buildModels, buildActivity, buildTools, buildHourlyHeatmap, buildProjectStats } from './aggregate.ts';
 import { claudeDir, readConfig, readCredentials, readStatsSummary, readSessionMetas, fetchLiveUsage } from './scan.ts';
 
 const app = express();
@@ -163,6 +163,26 @@ app.get('/api/tools', async (req, res) => {
     const days = Math.max(1, Math.min(31, Number(req.query.days ?? 7)));
     const { events, computedAt } = await getEvents();
     res.json(wrap(buildTools(events, Date.now(), days), computedAt));
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+app.get('/api/heatmap', async (req, res) => {
+  try {
+    const days = Math.max(7, Math.min(365, Number(req.query.days ?? 90)));
+    const { events, computedAt } = await getEvents();
+    res.json(wrap(buildHourlyHeatmap(events, Date.now(), days), computedAt));
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+app.get('/api/projects', async (req, res) => {
+  try {
+    const days = Math.max(7, Math.min(365, Number(req.query.days ?? 30)));
+    const { events, computedAt } = await getEvents();
+    res.json(wrap(buildProjectStats(events, Date.now(), days), computedAt));
   } catch (e) {
     res.status(500).json({ error: String(e) });
   }

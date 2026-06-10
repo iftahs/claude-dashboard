@@ -1,25 +1,45 @@
 import { useMemo, useState } from 'react';
-import type { SessionMeta } from '../types';
-import { compact } from '../lib/format';
+import type { SessionMeta, ProjectStat } from '../types';
+import { compact, usd } from '../lib/format';
 
-interface ProjectStat {
+const normalizePath = (p: string) => p.toLowerCase().replace(/[^a-z0-9]/g, '');
+
+interface LocalProjectStat {
   path: string;
   name: string;
   totalTimeMinutes: number;
-  totalTokens: number;
   effectiveTokens: number;
   cacheReadTokens: number;
   filesModified: number;
   linesAdded: number;
   linesRemoved: number;
   sessionCount: number;
+  cost: number; // from /api/projects
 }
 
-export function ProjectBreakdown({ sessions, periodDays }: { sessions: SessionMeta[]; periodDays: number }) {
-  const [sortBy, setSortBy] = useState<'time' | 'tokens' | 'files'>('time');
+export function ProjectBreakdown({
+  sessions,
+  periodDays,
+  projectCosts,
+}: {
+  sessions: SessionMeta[];
+  periodDays: number;
+  projectCosts?: ProjectStat[];
+}) {
+  const [sortBy, setSortBy] = useState<'cost' | 'time' | 'tokens' | 'files'>('cost');
+
+  // Build a cost lookup map keyed by normalized project name and full path
+  const costByName = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const p of projectCosts ?? []) {
+      m.set(normalizePath(p.name), p.cost);
+      m.set(normalizePath(p.path), p.cost);
+    }
+    return m;
+  }, [projectCosts]);
 
   const stats = useMemo(() => {
-    const map = new Map<string, ProjectStat>();
+    const map = new Map<string, LocalProjectStat>();
 
     for (const s of sessions) {
       if (!s.project_path) continue;
@@ -27,26 +47,24 @@ export function ProjectBreakdown({ sessions, periodDays }: { sessions: SessionMe
 
       let stat = map.get(path);
       if (!stat) {
-        // Extract leaf folder name
-        const parts = path.split(/[\\/]/);
+        const parts = path.split(/[\\\/]/);
         const name = parts[parts.length - 1] || path;
         stat = {
           path,
           name,
           totalTimeMinutes: 0,
-          totalTokens: 0,
           effectiveTokens: 0,
           cacheReadTokens: 0,
           filesModified: 0,
           linesAdded: 0,
           linesRemoved: 0,
           sessionCount: 0,
+          cost: 0,
         };
         map.set(path, stat);
       }
 
       stat.totalTimeMinutes += s.duration_minutes ?? 0;
-      stat.totalTokens += s.total_tokens ?? (s.input_tokens ?? 0) + (s.output_tokens ?? 0);
       stat.effectiveTokens += s.effective_tokens ?? (s.input_tokens ?? 0) + (s.output_tokens ?? 0);
       stat.cacheReadTokens += s.cache_read_tokens ?? 0;
       stat.filesModified += s.files_modified ?? 0;
@@ -55,21 +73,25 @@ export function ProjectBreakdown({ sessions, periodDays }: { sessions: SessionMe
       stat.sessionCount += 1;
     }
 
-    const list = [...map.values()];
-
-    if (sortBy === 'time') {
-      list.sort((a, b) => b.totalTimeMinutes - a.totalTimeMinutes);
-    } else if (sortBy === 'tokens') {
-      list.sort((a, b) => b.effectiveTokens - a.effectiveTokens);
-    } else {
-      list.sort((a, b) => b.filesModified - a.filesModified);
+    // Merge cost data from /api/projects using normalized paths for robust matching
+    for (const stat of map.values()) {
+      stat.cost = costByName.get(normalizePath(stat.path)) ?? costByName.get(normalizePath(stat.name)) ?? 0;
     }
 
+
+    const list = [...map.values()];
+
+    if (sortBy === 'cost') list.sort((a, b) => b.cost - a.cost);
+    else if (sortBy === 'time') list.sort((a, b) => b.totalTimeMinutes - a.totalTimeMinutes);
+    else if (sortBy === 'tokens') list.sort((a, b) => b.effectiveTokens - a.effectiveTokens);
+    else list.sort((a, b) => b.filesModified - a.filesModified);
+
     return list;
-  }, [sessions, sortBy]);
+  }, [sessions, sortBy, costByName]);
 
   const maxVal = useMemo(() => {
     if (stats.length === 0) return 1;
+    if (sortBy === 'cost') return Math.max(...stats.map((s) => s.cost), 0.0001);
     if (sortBy === 'time') return Math.max(...stats.map((s) => s.totalTimeMinutes)) || 1;
     if (sortBy === 'tokens') return Math.max(...stats.map((s) => s.effectiveTokens)) || 1;
     return Math.max(...stats.map((s) => s.filesModified)) || 1;
@@ -102,7 +124,7 @@ export function ProjectBreakdown({ sessions, periodDays }: { sessions: SessionMe
         </div>
 
         <div className="flex overflow-hidden rounded-lg ring-1 ring-white/10 text-xs self-start sm:self-center">
-          {(['time', 'tokens', 'files'] as const).map((mode) => (
+          {(['cost', 'time', 'tokens', 'files'] as const).map((mode) => (
             <button
               key={mode}
               onClick={() => setSortBy(mode)}
@@ -118,31 +140,33 @@ export function ProjectBreakdown({ sessions, periodDays }: { sessions: SessionMe
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto space-y-4 pr-1 scrollbar-thin">
+      <div className="flex-1 overflow-y-auto space-y-4 pr-1">
         {stats.map((project) => {
           const barVal =
-            sortBy === 'time'
+            sortBy === 'cost'
+              ? project.cost
+              : sortBy === 'time'
               ? project.totalTimeMinutes
               : sortBy === 'tokens'
               ? project.effectiveTokens
               : project.filesModified;
 
-          const pct = Math.min(100, (barVal / maxVal) * 100);
+          const pct = Math.min(100, maxVal > 0 ? (barVal / maxVal) * 100 : 0);
 
           return (
             <div key={project.path} className="space-y-1">
               <div className="flex justify-between text-xs items-end">
-                <span className="font-semibold text-zinc-200 truncate pr-4 animate-fade-in" title={project.path}>
+                <span className="font-semibold text-zinc-200 truncate pr-4" title={project.path}>
                   {project.name}
                 </span>
                 <span className="text-zinc-400 font-mono text-xs shrink-0">
+                  {sortBy === 'cost' && (project.cost > 0 ? usd(project.cost) : <span className="text-zinc-600">no cost data</span>)}
                   {sortBy === 'time' && `${project.totalTimeMinutes}m`}
                   {sortBy === 'tokens' && `${compact(project.effectiveTokens)} tokens`}
                   {sortBy === 'files' && `${project.filesModified} files`}
                 </span>
               </div>
 
-              {/* Progress bar */}
               <div className="h-1.5 w-full overflow-hidden rounded-full bg-ink-600">
                 <div
                   className="h-full rounded-full bg-clay-500 transition-all duration-500"
@@ -150,13 +174,14 @@ export function ProjectBreakdown({ sessions, periodDays }: { sessions: SessionMe
                 />
               </div>
 
-              {/* Extra stats */}
               <div className="flex justify-between text-xs text-zinc-500 font-mono pt-0.5">
                 <span>
                   {project.sessionCount} session{project.sessionCount !== 1 && 's'}
                 </span>
                 <span>
-                  {sortBy === 'tokens' && project.cacheReadTokens > 0
+                  {sortBy === 'cost' && project.effectiveTokens > 0
+                    ? `${compact(project.effectiveTokens)} tokens`
+                    : sortBy === 'tokens' && project.cacheReadTokens > 0
                     ? `+${compact(project.cacheReadTokens)} cache reads`
                     : `+${project.linesAdded} / -${project.linesRemoved} lines`}
                 </span>

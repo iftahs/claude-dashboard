@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { ActiveBlock, LiveUsageData } from '../types';
 import { compact } from '../lib/format';
+import { useBlockAlerts } from '../hooks/useBlockAlerts';
 
 const BLOCK_MS = 5 * 3600_000;
 const DEFAULT_BLOCK_LIMIT = 6000000; // 6.0M effective tokens
@@ -31,12 +32,12 @@ export function BlockGauge({
   const now = Date.now();
   const effective = block?.totals.effectiveTokens ?? 0;
   const prevEffective = block?.prevTotals.effectiveTokens ?? 0;
-  
+
   const blockLimit = DEFAULT_BLOCK_LIMIT;
-  
+
   const hasLive = liveUsage && !liveUsage.error;
-  const tokPct = hasLive 
-    ? liveUsage.five_hour.utilization 
+  const tokPct = hasLive
+    ? liveUsage.five_hour.utilization
     : Math.min(100, (effective / blockLimit) * 100);
 
   // Ring: show token %
@@ -54,6 +55,33 @@ export function BlockGauge({
   const remainingMs = Math.max(0, blockResetsAt - now);
   const resetStr = noActiveBlock ? 'on next message' : formatRemaining(remainingMs);
 
+  // ── Burn rate calculation ────────────────────────────────────────────────
+  // Tokens consumed so far ÷ elapsed block time = tokens/hour pace
+  const blockStart = block?.start ?? now;
+  const elapsedMs = Math.max(60_000, now - blockStart); // floor at 1 min to avoid div-by-zero
+  const burnRatePerHour = effective > 0 ? Math.round((effective / elapsedMs) * 3600_000) : 0;
+  const remainingCapacity = Math.max(0, blockLimit - effective);
+  const minsUntilLimit =
+    burnRatePerHour > 0 ? Math.round((remainingCapacity / burnRatePerHour) * 60) : null;
+
+  const burnRateStr = burnRatePerHour > 0 ? `${compact(burnRatePerHour)} / hr` : null;
+  const limitEtaStr =
+    minsUntilLimit !== null && tokPct < 100
+      ? minsUntilLimit < 60
+        ? `limit in ~${minsUntilLimit}m`
+        : `limit in ~${Math.round(minsUntilLimit / 60)}h ${minsUntilLimit % 60}m`
+      : null;
+
+  const burnColor =
+    minsUntilLimit !== null && minsUntilLimit < 30
+      ? '#ef4444'
+      : minsUntilLimit !== null && minsUntilLimit < 60
+      ? '#f59e0b'
+      : '#71717a';
+
+  // ── Budget alerts ────────────────────────────────────────────────────────
+  const { permission } = useBlockAlerts(Math.round(tokPct));
+
   // Status indicator
   let statusBadge = null;
   if (hasLive) {
@@ -63,9 +91,17 @@ export function BlockGauge({
       </div>
     );
   } else if (liveUsage?.error) {
+    const isExpired = liveUsage.error.toLowerCase().includes('expired');
     statusBadge = (
-      <div className="mt-0.5 text-[10px] text-amber-500/70 cursor-help" title={liveUsage.error}>
-        Local logs (Claude.ai connection paused)
+      <div
+        className={`mt-0.5 text-[10px] cursor-help ${
+          isExpired ? 'text-amber-400' : 'text-amber-500/70'
+        }`}
+        title={liveUsage.error}
+      >
+        {isExpired
+          ? '⚠️ Token expired — run any Claude Code cmd to refresh'
+          : '⚠️ Local logs only (hover for details)'}
       </div>
     );
   } else {
@@ -128,7 +164,27 @@ export function BlockGauge({
           <span>Resets in</span>
           <span className="tabular-nums text-zinc-400 font-semibold">{resetStr}</span>
         </div>
+
+        {/* Burn rate row */}
+        {burnRateStr && (
+          <div className="flex justify-between pt-1 mt-1 border-t border-white/5" style={{ color: burnColor }}>
+            <span className="text-zinc-500">Burn rate</span>
+            <span className="tabular-nums font-semibold text-xs">
+              {burnRateStr}
+              {limitEtaStr && (
+                <span className="ml-1.5 font-normal opacity-80">· {limitEtaStr}</span>
+              )}
+            </span>
+          </div>
+        )}
       </div>
+
+      {/* Notification permission badge */}
+      {permission !== 'granted' && (
+        <div className="mt-3 w-full text-center text-[10px] text-zinc-600">
+          {permission === 'denied' ? '🔕 Alerts blocked by browser' : '🔔 Allow notifications for limit alerts'}
+        </div>
+      )}
     </div>
   );
 }

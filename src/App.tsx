@@ -2,12 +2,14 @@ import { useState, useMemo } from 'react';
 import { usePolling } from './hooks/usePolling';
 import { useLimits } from './hooks/useLimits';
 import type { Limits } from './hooks/useLimits';
-import type { ActivityData, ModelsData, RecentData, WeeklyData, ToolsData, ClaudeConfig, SessionMeta, LiveUsageData } from './types';
+import type { ActivityData, ModelsData, RecentData, WeeklyData, ToolsData, ClaudeConfig, SessionMeta, LiveUsageData, HeatmapData, ProjectData } from './types';
 import { StatCard } from './components/StatCard';
 import { BlockGauge } from './components/BlockGauge';
 import { UsageBarChart } from './components/UsageBarChart';
 import { ModelBreakdown } from './components/ModelBreakdown';
 import { ActivityHeatmap } from './components/ActivityHeatmap';
+import { PeakHoursHeatmap } from './components/PeakHoursHeatmap';
+import { CacheEfficiencyChart } from './components/CacheEfficiencyChart';
 import { ToolUsage } from './components/ToolUsage';
 import { LiveBadge } from './components/LiveBadge';
 import { LimitsPanel } from './components/LimitsPanel';
@@ -16,6 +18,7 @@ import { ConfigProfile } from './components/ConfigProfile';
 import { PlanUsage } from './components/PlanUsage';
 import { ProjectBreakdown } from './components/ProjectBreakdown';
 import { SessionHistoryTable } from './components/SessionHistoryTable';
+import { ExportButton } from './components/ExportButton';
 import {
   StatCardSkeleton,
   ChartSkeleton,
@@ -112,10 +115,61 @@ function SpendingLimits({ limits, costPerDay }: { limits: Limits; costPerDay: nu
   );
 }
 
+function OfflineBanner({ error }: { error: string }) {
+  const [dismissed, setDismissed] = useState(false);
+  if (dismissed) return null;
+
+  const isExpired = error.toLowerCase().includes('expired');
+  const isNoToken = error.toLowerCase().includes('no access token');
+
+  return (
+    <div className="flex items-start gap-3 rounded-xl border border-amber-500/20 bg-amber-500/8 px-4 py-3 text-sm">
+      <span className="text-xl mt-0.5 shrink-0">{isExpired ? '🔑' : '📡'}</span>
+      <div className="flex-1 min-w-0">
+        <p className="font-semibold text-amber-300">
+          {isExpired || isNoToken
+            ? 'Claude.ai session expired'
+            : 'Claude.ai connection offline'}
+        </p>
+        <p className="text-amber-300/70 text-xs mt-0.5 font-sans leading-relaxed">
+          {isExpired || isNoToken ? (
+            <>
+              Token needs a refresh — just run Claude Code in your terminal and it refreshes automatically.
+              <br />
+              <span className="font-mono text-amber-400 mt-1.5 inline-block">
+                # macOS Terminal / Linux / Windows:
+              </span>
+              <br />
+              <code className="font-mono text-amber-200 bg-amber-500/10 px-1.5 py-0.5 rounded">claude</code>
+              <span className="text-amber-400 mx-2">&nbsp;or&nbsp;</span>
+              <code className="font-mono text-amber-200 bg-amber-500/10 px-1.5 py-0.5 rounded">claude --help</code>
+            </>
+          ) : (
+            <>
+              {error}{' '}
+              <span className="text-amber-400 font-semibold">
+                — try running <code className="font-mono bg-amber-500/10 px-1.5 py-0.5 rounded text-amber-200">claude</code> in a terminal.
+              </span>
+            </>
+          )}
+        </p>
+      </div>
+      <button
+        onClick={() => setDismissed(true)}
+        className="text-amber-500/50 hover:text-amber-300 transition-colors text-lg leading-none shrink-0 mt-0.5"
+        title="Dismiss"
+      >
+        ×
+      </button>
+    </div>
+  );
+}
+
 export default function App() {
   const [activeTab, setActiveTab] = useState<Tab>('live');
   const [weekDays, setWeekDays] = useState(7);
   const [recentHours, setRecentHours] = useState(12);
+  const [dailyMetric, setDailyMetric] = useState<'tokens' | 'cost'>('tokens');
   const recent = usePolling<RecentData>(`/api/usage/recent?hours=${recentHours}`, POLL);
   const weekly = usePolling<WeeklyData>(`/api/usage/weekly?days=${weekDays}`, POLL);
   const models = usePolling<ModelsData>('/api/usage/models?days=7', POLL);
@@ -124,6 +178,8 @@ export default function App() {
   const config = usePolling<ClaudeConfig>('/api/config', 60000);
   const sessions = usePolling<SessionMeta[]>('/api/sessions', 10000);
   const liveUsage = usePolling<LiveUsageData>('/api/usage/live', 15000);
+  const heatmap = usePolling<HeatmapData>('/api/heatmap?days=90', 60000);
+  const projectCosts = usePolling<ProjectData>('/api/projects?days=90', 30000);
   const [limits, setLimits] = useLimits();
   const [showLimits, setShowLimits] = useState(false);
 
@@ -143,6 +199,12 @@ export default function App() {
   const costPerDay = (weekly.data?.totals.cost ?? 0) / weekDays;
   const hasSpendingLimits =
     limits.dailyLimit != null || limits.weeklyLimit != null || limits.monthlyLimit != null;
+
+  // F3: Projected month-end cost
+  const now = new Date();
+  const daysLeftInMonth =
+    new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate() - now.getDate();
+  const projectedMonthCost = costPerDay * (now.getDate() + daysLeftInMonth);
 
   const totalPeriodDays = useMemo(() => {
     if (!sessions.data || sessions.data.length === 0) return 0;
@@ -193,7 +255,7 @@ export default function App() {
             className={`flex-1 rounded-lg px-4 py-2.5 text-sm font-medium transition-all duration-200 ${
               activeTab === id
                 ? 'bg-ink-700 text-zinc-100 shadow-sm ring-1 ring-white/10'
-                : 'text-zinc-500 hover:text-zinc-300'
+                : 'text-zinc-500 hover:text-zinc-300 hover:bg-ink-700/40'
             }`}
           >
             {label}
@@ -211,45 +273,12 @@ export default function App() {
           {/* ── LIVE TAB ── */}
           {activeTab === 'live' && (
             <>
-              {/* Stat cards */}
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-                {recent.loading || weekly.loading ? (
-                  <>
-                    <StatCardSkeleton />
-                    <StatCardSkeleton />
-                    <StatCardSkeleton />
-                  </>
-                ) : (
-                  <>
-                    <StatCard
-                      label="Effective tokens · current 5h block"
-                      value={compact(block?.totals.effectiveTokens ?? 0)}
-                      accent="#d97757"
-                      sub={
-                        block?.totals.cacheReadTokens
-                          ? `+${compact(block.totals.cacheReadTokens)} cache reads`
-                          : 'no cache reads'
-                      }
-                    />
-                    <StatCard
-                      label={`Effective tokens · last ${weekDays} days`}
-                      value={compact(weeklyEffective)}
-                      sub={
-                        prevWeeklyEffective > 0
-                          ? `${weekDays === 7 ? 'prev week' : `prev ${weekDays / 7} weeks`}: ${compact(prevWeeklyEffective)}`
-                          : `${compact(weekly.data?.totals.outputTokens ?? 0)} output`
-                      }
-                    />
-                    <StatCard
-                      label={`Est. equivalent cost · ${weekDays}d`}
-                      value={usd(weekly.data?.totals.cost ?? 0)}
-                      sub={topModel ? `top: ${shortModel(topModel.model)}` : undefined}
-                    />
-                  </>
-                )}
-              </div>
+              {/* Offline banner */}
+          {liveUsage.data?.error && (
+            <OfflineBanner error={liveUsage.data.error} />
+          )}
 
-              {/* Block gauge + hourly chart */}
+          {/* Block gauge + hourly chart */}
               <div className="grid grid-cols-1 items-stretch gap-6 lg:grid-cols-3">
                 {recent.loading ? (
                   <GaugeSkeleton />
@@ -302,17 +331,59 @@ export default function App() {
           {/* ── TRENDS TAB ── */}
           {activeTab === 'trends' && (
             <>
-              {/* Daily chart */}
+              {/* Cost stat cards */}
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-4">
+                {weekly.loading ? (
+                  <>
+                    <StatCardSkeleton />
+                    <StatCardSkeleton />
+                    <StatCardSkeleton />
+                    <StatCardSkeleton />
+                  </>
+                ) : (
+                  <>
+                    <StatCard
+                      label={`Est. equivalent cost · ${weekDays}d`}
+                      value={usd(weekly.data?.totals.cost ?? 0)}
+                      sub={topModel ? `top: ${shortModel(topModel.model)}` : undefined}
+                    />
+                    <StatCard
+                      label={`Effective tokens · last ${weekDays} days`}
+                      value={compact(weeklyEffective)}
+                      sub={
+                        prevWeeklyEffective > 0
+                          ? `${weekDays === 7 ? 'prev week' : `prev ${weekDays / 7} weeks`}: ${compact(prevWeeklyEffective)}`
+                          : `${compact(weekly.data?.totals.outputTokens ?? 0)} output`
+                      }
+                    />
+                    <StatCard
+                      label="Cost per day (avg)"
+                      value={usd(costPerDay)}
+                      sub={`over ${weekDays} days`}
+                    />
+                    <StatCard
+                      label="Projected this month"
+                      value={usd(projectedMonthCost)}
+                      sub={`${daysLeftInMonth}d left in month`}
+                      accent="#6366f1"
+                    />
+                  </>
+                )}
+              </div>
+
+              {/* Daily chart with projection */}
               {(() => {
+                const currentVal = dailyMetric === 'cost' ? (weekly.data?.totals.cost ?? 0) : weeklyEffective;
+                const prevVal = dailyMetric === 'cost' ? (weekly.data?.prevTotals.cost ?? 0) : prevWeeklyEffective;
                 const delta =
-                  prevWeeklyEffective > 0
+                  prevVal > 0
                     ? Math.round(
-                        ((weeklyEffective - prevWeeklyEffective) / prevWeeklyEffective) * 100
+                        ((currentVal - prevVal) / prevVal) * 100
                       )
                     : null;
                 return (
                   <Section
-                    title={`Last ${weekDays} days · daily tokens by model`}
+                    title={`Last ${weekDays} days · daily ${dailyMetric} by model`}
                     right={
                       <div className="flex items-center gap-3">
                         {delta !== null && (
@@ -322,6 +393,35 @@ export default function App() {
                             {delta >= 0 ? '▲' : '▼'} {Math.abs(delta)}% vs prev period
                           </span>
                         )}
+                        <ExportButton
+                          label="Export"
+                          getData={() => {
+                            if (!weekly.data) return null;
+                            const csv = weekly.data.buckets.map((b) => ({
+                              date: dayLabel(b.start),
+                              effectiveTokens: b.effectiveTokens,
+                              cost: b.cost.toFixed(4),
+                              ...b.byModel,
+                            }));
+                            return { csv, json: weekly.data.buckets, filename: `trends-${weekDays}d` };
+                          }}
+                        />
+                        {/* Metric Selector */}
+                        <div className="flex overflow-hidden rounded-lg ring-1 ring-white/10 text-xs">
+                          {(['tokens', 'cost'] as const).map((m) => (
+                            <button
+                              key={m}
+                              onClick={() => setDailyMetric(m)}
+                              className={`px-2.5 py-1 uppercase font-semibold transition-colors ${
+                                dailyMetric === m
+                                  ? 'bg-clay-500/20 text-clay-400'
+                                  : 'text-zinc-500 hover:text-zinc-300'
+                              }`}
+                            >
+                              {m}
+                            </button>
+                          ))}
+                        </div>
                         <div className="flex overflow-hidden rounded-lg ring-1 ring-white/10">
                           {[7, 14, 21, 28].map((d) => (
                             <button
@@ -341,24 +441,36 @@ export default function App() {
                     }
                   >
                     {weekly.data ? (
-                      <UsageBarChart buckets={weekly.data.buckets} labelFor={dayLabel} />
+                      <UsageBarChart
+                        buckets={weekly.data.buckets}
+                        labelFor={dayLabel}
+                        projectionCostPerDay={costPerDay}
+                        metric={dailyMetric}
+                      />
                     ) : weekly.loading ? (
                       <ChartSkeleton />
                     ) : null}
-                    {!weekly.loading && (
-                      <div className="mt-3 rounded-xl bg-ink-700/50 px-4 py-2.5 text-xs text-zinc-400">
-                        <span className="text-zinc-200">{compact(weeklyEffective)}</span> effective tokens
-                        {prevWeeklyEffective > 0 && (
-                          <span className="ml-2 text-zinc-500">
-                            · {weekDays === 7 ? 'prev week' : `prev ${weekDays / 7} weeks`}{' '}
-                            {compact(prevWeeklyEffective)}
-                          </span>
-                        )}
-                      </div>
-                    )}
                   </Section>
                 );
               })()}
+
+              {/* Cache efficiency chart */}
+              {weekly.data?.cacheEfficiency && weekly.data.cacheEfficiency.length > 0 && (
+                <Section title="Cache efficiency · hit rate over time">
+                  <CacheEfficiencyChart data={weekly.data.cacheEfficiency} />
+                </Section>
+              )}
+
+              {/* Peak hours heatmap */}
+              <Section title="Peak usage · tokens by hour & day of week">
+                {heatmap.data ? (
+                  <PeakHoursHeatmap grid={heatmap.data.grid} />
+                ) : heatmap.loading ? (
+                  <HeatmapSkeleton />
+                ) : (
+                  <div className="h-32 flex items-center justify-center text-zinc-600 text-sm">No data</div>
+                )}
+              </Section>
 
               {/* Activity heatmap */}
               <Section title="Daily activity · last 18 weeks">
@@ -409,7 +521,11 @@ export default function App() {
                 </div>
                 <div className="lg:col-span-2">
                   {sessions.data ? (
-                    <ProjectBreakdown sessions={sessions.data} periodDays={totalPeriodDays} />
+                    <ProjectBreakdown
+                      sessions={sessions.data}
+                      periodDays={totalPeriodDays}
+                      projectCosts={projectCosts.data?.projects}
+                    />
                   ) : sessions.loading ? (
                     <div className="card p-5 flex items-center justify-center min-h-[200px]">
                       <Skeleton className="h-full w-full rounded-2xl" />
@@ -419,7 +535,11 @@ export default function App() {
               </div>
 
               {sessions.data ? (
-                <SessionHistoryTable sessions={sessions.data} periodDays={totalPeriodDays} />
+                <SessionHistoryTable
+                  sessions={sessions.data}
+                  periodDays={totalPeriodDays}
+                  onExport={() => sessions.data ?? []}
+                />
               ) : sessions.loading ? (
                 <div className="card p-5 min-h-[150px] flex items-center justify-center">
                   <Skeleton className="h-full w-full rounded-2xl" />

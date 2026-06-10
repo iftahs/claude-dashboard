@@ -1,8 +1,17 @@
 import { useState, useMemo, Fragment } from 'react';
 import type { SessionMeta } from '../types';
 import { compact } from '../lib/format';
+import { ExportButton } from './ExportButton';
 
-export function SessionHistoryTable({ sessions, periodDays }: { sessions: SessionMeta[]; periodDays: number }) {
+export function SessionHistoryTable({
+  sessions,
+  periodDays,
+  onExport,
+}: {
+  sessions: SessionMeta[];
+  periodDays: number;
+  onExport?: () => SessionMeta[];
+}) {
   const [search, setSearch] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const [expandedSessions, setExpandedSessions] = useState<Record<string, boolean>>({});
@@ -57,16 +66,40 @@ export function SessionHistoryTable({ sessions, periodDays }: { sessions: Sessio
           </h3>
           <p className="text-xs text-zinc-500 mt-0.5">Search and review past execution records</p>
         </div>
-        <input
-          type="text"
-          placeholder="Search projects or prompts..."
-          value={search}
-          onChange={(e) => {
-            setSearch(e.target.value);
-            setCurrentPage(1);
-          }}
-          className="rounded-lg bg-ink-900 border border-white/10 px-3 py-1 text-xs text-zinc-300 focus:border-clay-500 focus:outline-none w-full sm:w-60"
-        />
+        <div className="flex items-center gap-2">
+          <input
+            type="text"
+            placeholder="Search projects or prompts..."
+            value={search}
+            onChange={(e) => {
+              setSearch(e.target.value);
+              setCurrentPage(1);
+            }}
+            className="rounded-lg bg-ink-900 border border-white/10 px-3 py-1 text-xs text-zinc-300 focus:border-clay-500 focus:outline-none w-full sm:w-52"
+          />
+          {onExport && (
+            <ExportButton
+              label="Export"
+              getData={() => {
+                const data = onExport();
+                const csv = data.map((s) => ({
+                  session_id: s.session_id,
+                  start_time: s.start_time,
+                  project: s.project_path,
+                  duration_minutes: s.duration_minutes,
+                  effective_tokens: s.effective_tokens ?? (s.input_tokens + s.output_tokens),
+                  cache_read_tokens: s.cache_read_tokens ?? 0,
+                  files_modified: s.files_modified ?? 0,
+                  lines_added: s.lines_added ?? 0,
+                  lines_removed: s.lines_removed ?? 0,
+                  git_commits: s.git_commits,
+                  first_prompt: s.first_prompt,
+                }));
+                return { csv, json: data, filename: 'sessions' };
+              }}
+            />
+          )}
+        </div>
       </div>
 
       <div className="flex-1 overflow-x-auto">

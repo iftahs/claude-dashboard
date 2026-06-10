@@ -1,26 +1,48 @@
 # Claude Dashboard
 
-A beautiful, **local** dashboard for your [Claude Code](https://claude.com/claude-code) usage. It reads the JSON logs Claude Code already writes to `~/.claude` and visualizes them — no API key, no account login, no network calls. Everything runs on your machine and works offline.
+A beautiful, **local, offline** dashboard for your [Claude Code](https://claude.com/claude-code) usage. It reads the JSON logs Claude Code already writes to `~/.claude` and visualizes them — no API key, no account login, and works completely offline. 
 
-![Claude Dashboard](.github/hero.png)
+![Claude Dashboard Loaded](.github/dashboard_loaded.png)
 
-<details>
-<summary>See the full dashboard</summary>
+## Interactive Features & Tour
 
-![Full dashboard](.github/dashboard.png)
+The dashboard is structured into four functional tabs, each offering specialized insights into your development workflows and model usage.
 
-</details>
+### 1. ⚡ Live Tab
+* **Burn Rate Indicator**: Shows your current tokens/hour pace and time-to-limit countdown projection.
+* **Plan Usage**: Tracks both your **5-hour active session limit** and your **weekly limit** utilisation percentage, displaying when the next reset will occur.
+* **Active Session Stats**: Breakdown of effective tokens, previous session block sizes, cache reads, and live OAuth connection state from Claude.ai.
+* **Offline Banner Guide**: Detects connection offline status and expired OAuth tokens, providing direct macOS, Linux, and Windows terminal command instructions to refresh them.
+* **Daily/Weekly/Monthly Spending Limits**: Configure client-side spend caps in USD to see consumption progress bars estimated from local logs.
 
-## Features
+### 2. 📈 Trends Tab
+* **Tokens vs. Cost Chart Toggle**: Click to switch the daily stacked bar chart between **Tokens** and **Cost (USD)**.
+* **Estimated Projection Area**: Shows a projected monthly cost reference bar for the remaining days of the month based on your daily average.
+* **Cache Efficiency Over Time**: Line chart tracking your daily cache hit rate percentage (cache reads / total tokens).
+* **Peak Hours Heatmap**: A 24-column × 7-row intensity grid showing token usage by hour of the day and day of the week.
+* **Activity Grid**: A GitHub-style daily activity heatmap covering the last 18 weeks.
 
-- **Current 5-hour block** — effective tokens used in your active session window, with a usage ring.
-- **Weekly trends** — daily tokens stacked by model, with a selectable range (**1–4 weeks**) and week-over-week delta.
-- **Model breakdown** — token share across Opus / Sonnet / Haiku over the last 7 days.
-- **Tool usage** — which tools (Bash, Read, Edit, MCP servers…) you call most, last 7 days.
-- **Activity heatmap** — a GitHub-style grid of daily effective-token usage over ~18 weeks.
-- **Live auto-refresh** — polls every few seconds; no manual reload.
+The daily bar chart can toggle dynamically between:
+* **Tokens View**:
+  ![Daily Tokens Chart View](.github/trends_tab_tokens.png)
+* **Cost (USD) View**:
+  ![Daily Cost Chart View](.github/trends_tab_cost.png)
 
-> **Token accounting:** "effective tokens" = input + output + cache-creation. Cheap cache reads are excluded because they don't count toward rate limits.
+
+### 3. 🧠 Models Tab
+* **Model Breakdown**: Donut chart showing token share across Opus, Sonnet, and Haiku.
+* **Model Cost-Efficiency**: Horizontal bar chart comparing USD cost per 1M effective tokens for each model.
+* **Interactive Sandbox Calculator**: Sandbox to calculate costs dynamically based on model pricing rules (input, output, cache write, and cache read).
+* **Tool Usage**: Visual breakdown of your most frequently called tools (e.g. Bash, Write, Grep, MCP tools).
+
+### 4. 📋 Sessions Tab
+* **Workspace Analytics**: Summarizes and ranks estimated costs, tokens, sessions, and files modified across all your project directories. Supported on macOS, Linux, and Windows (with automatic drive letter and folder normalization).
+* **Detailed Session Expansion**: Click any session log row to expand a detailed drill-down showing message counts, git operations, lines added/removed, files modified, tool errors, and a full tool invocation breakdown.
+* **CSV/JSON Export**: Export session logs and trends datasets with a single click.
+
+![Sessions Tab & Project Cost Breakdown](.github/sessions_tab_scrolled.png)
+
+---
 
 ## Quick start
 
