@@ -5,3 +5,5 @@ dist
 .env
 .claude
 *.tsbuildinfo
+.agents/
+

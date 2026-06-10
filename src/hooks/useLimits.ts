@@ -1,17 +1,24 @@
 import { useState } from 'react';
 
 export interface Limits {
-  blockLimit: number | null;   // effectiveTokens cap per 5h block (null = not configured)
-  weeklyLimit: number | null;  // effectiveTokens cap per week (null = not configured)
+  dailyLimit: number | null;   // USD cost cap per day (null = not configured)
+  weeklyLimit: number | null;  // USD cost cap per week (null = not configured)
+  monthlyLimit: number | null; // USD cost cap per month (null = not configured)
 }
 
-const KEY = 'claude-dashboard-limits';
+const KEY = 'claude-dashboard-limits-v2';
 
 function load(): Limits {
   try {
-    return JSON.parse(localStorage.getItem(KEY) ?? 'null') ?? { blockLimit: null, weeklyLimit: null };
+    return (
+      JSON.parse(localStorage.getItem(KEY) ?? 'null') ?? {
+        dailyLimit: null,
+        weeklyLimit: null,
+        monthlyLimit: null,
+      }
+    );
   } catch {
-    return { blockLimit: null, weeklyLimit: null };
+    return { dailyLimit: null, weeklyLimit: null, monthlyLimit: null };
   }
 }
 

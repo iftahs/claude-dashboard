@@ -1,18 +1,15 @@
 import { useState } from 'react';
 import type { Limits } from '../hooks/useLimits';
-import { compact } from '../lib/format';
 
-function parseM(s: string): number | null {
-  const v = parseFloat(s.replace(/,/g, ''));
+function parseDollar(s: string): number | null {
+  const v = parseFloat(s.replace(/[$,\s]/g, ''));
   if (Number.isNaN(v) || v <= 0) return null;
-  if (/m/i.test(s)) return Math.round(v * 1_000_000);
-  if (/k/i.test(s)) return Math.round(v * 1_000);
-  return Math.round(v);
+  return v;
 }
 
 function fmt(n: number | null): string {
-  if (!n) return '';
-  return compact(n);
+  if (n == null) return '';
+  return String(n);
 }
 
 export function LimitsPanel({
@@ -24,48 +21,67 @@ export function LimitsPanel({
   onChange: (l: Limits) => void;
   onClose: () => void;
 }) {
-  const [blockVal, setBlockVal] = useState(fmt(limits.blockLimit));
+  const [dailyVal, setDailyVal] = useState(fmt(limits.dailyLimit));
   const [weeklyVal, setWeeklyVal] = useState(fmt(limits.weeklyLimit));
+  const [monthlyVal, setMonthlyVal] = useState(fmt(limits.monthlyLimit));
 
   function save() {
-    onChange({ blockLimit: parseM(blockVal), weeklyLimit: parseM(weeklyVal) });
+    onChange({
+      dailyLimit: parseDollar(dailyVal),
+      weeklyLimit: parseDollar(weeklyVal),
+      monthlyLimit: parseDollar(monthlyVal),
+    });
     onClose();
   }
+
+  function clear() {
+    onChange({ dailyLimit: null, weeklyLimit: null, monthlyLimit: null });
+    setDailyVal('');
+    setWeeklyVal('');
+    setMonthlyVal('');
+    onClose();
+  }
+
+  const inputCls =
+    'w-full bg-transparent px-2 py-2 text-sm text-zinc-200 outline-none';
+  const wrapCls =
+    'flex items-center rounded-lg bg-ink-700 ring-1 ring-white/10 focus-within:ring-clay-500';
 
   return (
     <div className="card mt-4 p-5">
       <div className="mb-3 flex items-center justify-between">
-        <h3 className="text-sm font-semibold text-zinc-300">Configure limits</h3>
-        <button onClick={onClose} className="text-xs text-zinc-500 hover:text-zinc-300">✕ close</button>
+        <h3 className="text-sm font-semibold text-zinc-300">Spending limits</h3>
+        <button onClick={onClose} className="text-xs text-zinc-500 hover:text-zinc-300">
+          ✕ close
+        </button>
       </div>
       <p className="mb-4 text-xs text-zinc-500">
-        Anthropic doesn't expose your exact token limits via API. Enter your plan's effective-token cap
-        (input + output + cache-creation, not cache reads) so the dashboard can show %.
-        Accepts numbers like <code className="text-clay-400">600K</code> or <code className="text-clay-400">2M</code>.
+        For API users who pay per token — enter your spending cap in USD. Gauges will appear on
+        the Live tab when limits are set. Leave blank if you use a subscription plan.
       </p>
-      <div className="grid grid-cols-2 gap-4">
-        <label className="flex flex-col gap-1">
-          <span className="text-xs text-zinc-400">5h block limit</span>
-          <input
-            className="rounded-lg bg-ink-700 px-3 py-2 text-sm text-zinc-200 outline-none ring-1 ring-white/10 focus:ring-clay-500"
-            placeholder="e.g. 600K"
-            value={blockVal}
-            onChange={(e) => setBlockVal(e.target.value)}
-          />
-        </label>
-        <label className="flex flex-col gap-1">
-          <span className="text-xs text-zinc-400">Weekly limit</span>
-          <input
-            className="rounded-lg bg-ink-700 px-3 py-2 text-sm text-zinc-200 outline-none ring-1 ring-white/10 focus:ring-clay-500"
-            placeholder="e.g. 4M"
-            value={weeklyVal}
-            onChange={(e) => setWeeklyVal(e.target.value)}
-          />
-        </label>
+      <div className="grid grid-cols-3 gap-4">
+        {([
+          { label: 'Daily limit', val: dailyVal, set: setDailyVal, ph: 'e.g. 10' },
+          { label: 'Weekly limit', val: weeklyVal, set: setWeeklyVal, ph: 'e.g. 50' },
+          { label: 'Monthly limit', val: monthlyVal, set: setMonthlyVal, ph: 'e.g. 200' },
+        ] as const).map(({ label, val, set, ph }) => (
+          <label key={label} className="flex flex-col gap-1">
+            <span className="text-xs text-zinc-400">{label}</span>
+            <div className={wrapCls}>
+              <span className="pl-3 text-sm text-zinc-500">$</span>
+              <input
+                className={inputCls}
+                placeholder={ph}
+                value={val}
+                onChange={(e) => (set as (v: string) => void)(e.target.value)}
+              />
+            </div>
+          </label>
+        ))}
       </div>
       <div className="mt-4 flex justify-end gap-3">
         <button
-          onClick={() => { onChange({ blockLimit: null, weeklyLimit: null }); setBlockVal(''); setWeeklyVal(''); onClose(); }}
+          onClick={clear}
           className="rounded-lg px-3 py-1.5 text-xs text-zinc-400 hover:text-zinc-200"
         >
           clear
