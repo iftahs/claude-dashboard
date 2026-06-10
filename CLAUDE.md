@@ -60,7 +60,8 @@ These are deliberate and easy to break:
 - **`App.tsx`** is the whole layout: a 4-tab dashboard (Live / Trends / Models / Sessions). Each data source is an independent `usePolling(url, intervalMs)` call — there is no global store. Polling intervals differ per endpoint (5s for live usage charts, 15s for the live API, 30–60s for slow-moving data).
 - **`hooks/usePolling.ts`** — generic fetch-on-interval hook returning `{ data, computedAt, claudeDir, error, loading }` unwrapped from the `Envelope`.
 - **`hooks/useLimits.ts`** — user-set USD spend caps persisted in `localStorage` (key `claude-dashboard-limits-v2`); purely client-side, never sent to the backend.
-- `components/` are presentational; `lib/format.ts` (compact numbers, USD, labels) and `lib/palette.ts` (per-model colors) are shared helpers. Charts use `recharts`. Styling is Tailwind with a custom `ink`/`clay` palette and `darkMode: 'class'`.
+- Components live in `components/design-system/{atoms,molecules,organisms}/` (atomic design). One folder per component: `Name.tsx` (component only), `types.ts` (all prop interfaces), `utils.ts` (module-level helpers), and — atoms only — `Name.variants.ts` with `class-variance-authority` variants. Shared primitives: `ProgressBar`, `ToggleGroup`, `Badge`, `LegendDot` (atoms); `Section`, `ChartTooltip`, `HoverTooltip`, `ExportButton` (molecules) — reuse these instead of re-inlining track/fill divs, button groups, pills, or tooltip cards. Imports across folders use the `@/` alias (→ `src/`); same-folder imports stay relative.
+- `lib/format.ts` (compact numbers, USD, labels) and `lib/palette.ts` (per-model colors) are shared helpers. Charts use `recharts`. Styling is Tailwind with a custom `ink`/`clay` palette and `darkMode: 'class'`.
 - `types.ts` mirrors the backend's aggregate shapes — when you change an `aggregate.ts` return type, update `types.ts` to match.
 
 ## Conventions
