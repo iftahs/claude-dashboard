@@ -52,7 +52,15 @@ function eventTokens(e: UsageEvent): number {
 
 function bucketize(events: UsageEvent[], from: number, to: number, width: number): Bucket[] {
   const buckets: Bucket[] = [];
-  const start0 = Math.floor(from / width) * width;
+  // Day-wide buckets align to local midnight (TZ-aware); narrower ones to epoch multiples.
+  let start0: number;
+  if (width === 24 * HOUR) {
+    const d = new Date(from);
+    d.setHours(0, 0, 0, 0);
+    start0 = d.getTime();
+  } else {
+    start0 = Math.floor(from / width) * width;
+  }
   for (let s = start0; s < to; s += width) {
     buckets.push({ start: s, byModel: {}, byModelCost: {}, ...emptyTotals() });
   }
@@ -191,7 +199,7 @@ export function buildWeekly(events: UsageEvent[], now: number, days = 7) {
   const cacheEfficiency = dayBuckets
     .filter((b) => b.totalTokens > 0)
     .map((b) => ({
-      date: new Date(b.start).toISOString().slice(0, 10),
+      date: localDateKey(b.start),
       hitRate: b.totalTokens > 0 ? (b.cacheReadTokens / b.totalTokens) * 100 : 0,
       cacheReadTokens: b.cacheReadTokens,
       totalTokens: b.totalTokens,
