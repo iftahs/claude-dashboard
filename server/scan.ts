@@ -14,6 +14,7 @@ export interface UsageEvent {
   cacheReadTokens: number;
   tools: string[]; // tool_use names invoked in this assistant message
   projectPath: string; // decoded path of the project directory
+  gitBranch: string; // git branch at the time of the message ('' if unknown)
 }
 
 export function claudeDir(): string {
@@ -124,6 +125,7 @@ async function parseFile(
 
     const sessionId = obj.sessionId ?? obj.session_id ?? '';
     const resolvedProjectPath = (sessionPathMap && sessionId) ? (sessionPathMap.get(sessionId) ?? projectPath) : projectPath;
+    const gitBranch: string = typeof obj.gitBranch === 'string' ? obj.gitBranch : '';
 
     const event: UsageEvent = {
       ts,
@@ -135,6 +137,7 @@ async function parseFile(
       cacheReadTokens: num(usage.cache_read_input_tokens),
       tools,
       projectPath: resolvedProjectPath,
+      gitBranch,
     };
 
     // Dedup: same logical response can appear multiple times (retries/streaming).

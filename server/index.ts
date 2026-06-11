@@ -1,9 +1,17 @@
 import { existsSync } from 'node:fs';
+import { createReadStream } from 'node:fs';
 import { join } from 'node:path';
+import { createInterface } from 'node:readline';
 import express from 'express';
 import { getEvents } from './cache.ts';
 import { buildRecent, buildWeekly, buildModels, buildActivity, buildTools, buildHourlyHeatmap, buildProjectStats } from './aggregate.ts';
 import { claudeDir, readConfig, readCredentials, readStatsSummary, readSessionMetas, fetchLiveUsage } from './scan.ts';
+import { getInsights } from './insights-scan.ts';
+import {
+  buildErrors, buildRetries, buildLanguages, buildBranches, buildMcp,
+  buildComplexity, buildYield, buildRejections, buildSubagentStats,
+} from './insights.ts';
+import { getLiveSubagents } from './subagents-live.ts';
 
 const app = express();
 const PORT = Number(process.env.SERVER_PORT ?? 8787);
@@ -183,6 +191,287 @@ app.get('/api/projects', async (req, res) => {
     const days = Math.max(7, Math.min(365, Number(req.query.days ?? 30)));
     const { events, computedAt } = await getEvents();
     res.json(wrap(buildProjectStats(events, Date.now(), days), computedAt));
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Insights routes
+// ---------------------------------------------------------------------------
+
+function clampDays(raw: unknown, def = 7): number {
+  return Math.max(1, Math.min(90, Number(raw ?? def)));
+}
+
+app.get('/api/insights/errors', async (req, res) => {
+  try {
+    const days = clampDays(req.query.days);
+    const { insights, computedAt } = await getInsights();
+    res.json(wrap(buildErrors(insights, days), computedAt));
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+app.get('/api/insights/retries', async (req, res) => {
+  try {
+    const days = clampDays(req.query.days);
+    const { insights, computedAt } = await getInsights();
+    res.json(wrap(buildRetries(insights, days), computedAt));
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+app.get('/api/insights/languages', async (req, res) => {
+  try {
+    const days = clampDays(req.query.days);
+    const { insights, computedAt } = await getInsights();
+    res.json(wrap(buildLanguages(insights, days), computedAt));
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+app.get('/api/insights/branches', async (req, res) => {
+  try {
+    const days = clampDays(req.query.days);
+    const { insights, computedAt } = await getInsights();
+    res.json(wrap(buildBranches(insights, days), computedAt));
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+app.get('/api/insights/mcp', async (req, res) => {
+  try {
+    const days = clampDays(req.query.days);
+    const { insights, computedAt } = await getInsights();
+    res.json(wrap(buildMcp(insights, days), computedAt));
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+app.get('/api/insights/complexity', async (req, res) => {
+  try {
+    const days = clampDays(req.query.days);
+    const { insights, computedAt } = await getInsights();
+    res.json(wrap(buildComplexity(insights, days), computedAt));
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+app.get('/api/insights/yield', async (req, res) => {
+  try {
+    const days = clampDays(req.query.days);
+    const { insights, computedAt } = await getInsights();
+    res.json(wrap(buildYield(insights, days), computedAt));
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+app.get('/api/insights/rejections', async (req, res) => {
+  try {
+    const days = clampDays(req.query.days);
+    const { insights, computedAt } = await getInsights();
+    res.json(wrap(buildRejections(insights, days), computedAt));
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+app.get('/api/insights/subagents', async (req, res) => {
+  try {
+    const days = clampDays(req.query.days);
+    const { insights, computedAt } = await getInsights();
+    res.json(wrap(buildSubagentStats(insights, days), computedAt));
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+app.get('/api/subagents/live', async (_req, res) => {
+  try {
+    const data = await getLiveSubagents();
+    res.json(wrap(data, Date.now()));
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Session transcript route
+// ---------------------------------------------------------------------------
+
+app.get('/api/sessions/:id/transcript', async (req, res) => {
+  try {
+    const sessionId = req.params.id;
+    const { insights } = await getInsights();
+    const sm = insights.sessionsMeta.get(sessionId);
+    if (!sm) {
+      res.status(404).json({ error: 'Session not found' });
+      return;
+    }
+
+    // Parse the JSONL file on demand
+    const file = sm.file;
+    interface Turn {
+      role: 'user' | 'assistant';
+      ts: number;
+      text: string;
+      tools: { name: string; brief: string }[];
+      model?: string;
+      effectiveTokens?: number;
+    }
+    const turns: Turn[] = [];
+    let compactions = 0;
+
+    const rl = createInterface({
+      input: createReadStream(file, { encoding: 'utf8' }),
+      crlfDelay: Infinity,
+    });
+
+    for await (const line of rl) {
+      if (!line || line.length < 2) continue;
+      let obj: any;
+      try { obj = JSON.parse(line); } catch { continue; }
+      if (obj.sessionId !== sessionId && obj.session_id !== sessionId) continue;
+
+      const ts = Date.parse(obj.timestamp ?? '');
+      if (Number.isNaN(ts)) continue;
+
+      if (obj.type === 'summary') {
+        compactions++;
+        continue;
+      }
+
+      if (obj.type === 'user' && obj.message?.role === 'user') {
+        const content = obj.message.content;
+        let text = '';
+        let hasToolResultOnly = true;
+
+        if (typeof content === 'string') {
+          text = content.slice(0, 600);
+          hasToolResultOnly = false;
+          if (/continued from a previous conversation/i.test(content)) compactions++;
+        } else if (Array.isArray(content)) {
+          for (const block of content) {
+            if (block?.type === 'text' && typeof block.text === 'string') {
+              text += block.text.slice(0, 600 - text.length);
+              hasToolResultOnly = false;
+              if (/continued from a previous conversation/i.test(block.text)) compactions++;
+            }
+          }
+          const hasNonResult = content.some((b: any) => b?.type !== 'tool_result');
+          hasToolResultOnly = !hasNonResult;
+        }
+
+        // Skip user entries that are tool_result-only
+        if (hasToolResultOnly) continue;
+
+        turns.push({ role: 'user', ts, text: text.slice(0, 600), tools: [] });
+      }
+
+      if (obj.type === 'assistant' && obj.message?.role === 'assistant') {
+        const usage = obj.message?.usage;
+        const model: string | undefined = obj.message?.model;
+        const inTok = usage ? (usage.input_tokens ?? 0) : 0;
+        const outTok = usage ? (usage.output_tokens ?? 0) : 0;
+        const cacheCreate = usage ? (usage.cache_creation_input_tokens ?? 0) : 0;
+        const effectiveTokens = inTok + outTok + cacheCreate;
+
+        let text = '';
+        const tools: { name: string; brief: string }[] = [];
+        const msgContent = obj.message?.content;
+
+        if (Array.isArray(msgContent)) {
+          for (const block of msgContent) {
+            if (block?.type === 'text' && typeof block.text === 'string') {
+              text += block.text.slice(0, 600 - text.length);
+            }
+            if (block?.type === 'tool_use') {
+              const brief = block.input?.description ?? block.input?.command ?? block.input?.file_path ?? '';
+              tools.push({ name: block.name ?? '', brief: String(brief).slice(0, 80) });
+            }
+          }
+        } else if (typeof msgContent === 'string') {
+          text = msgContent.slice(0, 600);
+        }
+
+        turns.push({ role: 'assistant', ts, text: text.slice(0, 600), tools, model, effectiveTokens });
+      }
+    }
+
+    const totalTurns = turns.length;
+    let finalTurns = turns;
+    let truncated = false;
+
+    if (totalTurns > 300) {
+      finalTurns = [...turns.slice(0, 50), ...turns.slice(totalTurns - 250)];
+      truncated = true;
+    }
+
+    res.json(wrap({ sessionId, turns: finalTurns, compactions, totalTurns, truncated: truncated || undefined }, Date.now()));
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Search route
+// ---------------------------------------------------------------------------
+
+app.get('/api/search', async (req, res) => {
+  try {
+    const q = String(req.query.q ?? '').trim();
+    if (q.length < 2) {
+      res.status(400).json({ error: 'q must be at least 2 characters' });
+      return;
+    }
+    const days = clampDays(req.query.days, 30);
+    const from = Date.now() - days * 24 * 3600_000;
+
+    const { insights } = await getInsights();
+    const results: Array<{ sessionId: string; project: string; date: string; snippet: string; matches: number }> = [];
+
+    const qLower = q.toLowerCase();
+
+    for (const [sessionId, corpus] of insights.searchCorpus) {
+      const sm = insights.sessionsMeta.get(sessionId);
+      if (!sm) continue;
+      if (sm.lastTs < from) continue;
+
+      const corpusLower = corpus.toLowerCase();
+      let count = 0;
+      let idx = 0;
+      let firstIdx = -1;
+      while ((idx = corpusLower.indexOf(qLower, idx)) !== -1) {
+        count++;
+        if (firstIdx === -1) firstIdx = idx;
+        idx += qLower.length;
+      }
+      if (count === 0) continue;
+
+      // Build snippet: match ±60 chars
+      const start = Math.max(0, firstIdx - 60);
+      const end = Math.min(corpus.length, firstIdx + q.length + 60);
+      const snippet = (start > 0 ? '…' : '') + corpus.slice(start, end) + (end < corpus.length ? '…' : '');
+
+      const projectName = sm.projectPath
+        ? sm.projectPath.split(/[\\\/]/).filter(Boolean).pop() ?? sm.projectPath
+        : 'unknown';
+      const d = new Date(sm.firstTs);
+      const date = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
+      results.push({ sessionId, project: projectName, date, snippet, matches: count });
+    }
+
+    results.sort((a, b) => b.matches - a.matches);
+    res.json(wrap(results.slice(0, 30), Date.now()));
   } catch (e) {
     res.status(500).json({ error: String(e) });
   }
