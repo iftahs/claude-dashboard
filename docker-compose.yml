@@ -12,6 +12,7 @@ services:
     environment:
       - CLAUDE_DIR=/data/.claude
       - SERVER_PORT=8787
+      - APP_RUNTIME=docker
       # Day buckets follow the container clock — pin it to your local timezone
       # (override TZ in .env if you are not in Asia/Jerusalem).
       - TZ=${TZ:-Asia/Jerusalem}

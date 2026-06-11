@@ -2,6 +2,8 @@ import { existsSync } from 'node:fs';
 import { createReadStream } from 'node:fs';
 import { join } from 'node:path';
 import { createInterface } from 'node:readline';
+import { exec } from 'node:child_process';
+import { promisify } from 'node:util';
 import express from 'express';
 import { getEvents } from './cache.ts';
 import { buildRecent, buildWeekly, buildModels, buildActivity, buildTools, buildHourlyHeatmap, buildProjectStats } from './aggregate.ts';
@@ -12,6 +14,9 @@ import {
   buildComplexity, buildYield, buildRejections, buildSubagentStats,
 } from './insights.ts';
 import { getLiveSubagents } from './subagents-live.ts';
+import { getVersionInfo, isDocker } from './version.ts';
+
+const execAsync = promisify(exec);
 
 const app = express();
 const PORT = Number(process.env.SERVER_PORT ?? 8787);
@@ -22,6 +27,32 @@ function wrap(data: unknown, computedAt: number) {
 
 app.get('/api/health', (_req, res) => {
   res.json({ ok: true, claudeDir: claudeDir() });
+});
+
+app.get('/api/version', async (_req, res) => {
+  try {
+    res.json(wrap(await getVersionInfo(), Date.now()));
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+// Dev-only self-update: pull latest code (tsx watch + Vite HMR then reload).
+// Docker users can't do this from inside the container — they get instructions.
+app.post('/api/update/pull', async (_req, res) => {
+  if (isDocker()) {
+    res.status(400).json({ ok: false, error: 'Running in Docker — run `git pull && npm run docker:up` on the host.' });
+    return;
+  }
+  try {
+    const { stdout, stderr } = await execAsync('git pull && npm install', {
+      cwd: process.cwd(),
+      timeout: 120_000,
+    });
+    res.json({ ok: true, output: (stdout + stderr).trim() });
+  } catch (e: any) {
+    res.json({ ok: false, error: e?.stderr?.trim() || e?.message || String(e) });
+  }
 });
 
 app.get('/api/config', async (_req, res) => {

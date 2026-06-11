@@ -177,15 +177,17 @@ export function SessionHistoryTable({
   const [search, setSearch] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const [modalSession, setModalSession] = useState<SessionMeta | null>(null);
+  const [transcriptOpen, setTranscriptOpen] = useState(false);
 
   // Transcript hook — shared instance across table
   const { getTranscript, states: transcriptStates } = useTranscript();
 
   const itemsPerPage = 5;
 
+  // Transcript stays collapsed until the user asks for it (fetch is lazy too).
   const openSession = (s: SessionMeta) => {
     setModalSession(s);
-    getTranscript(s.session_id);
+    setTranscriptOpen(false);
   };
 
   const filteredSessions = useMemo(() => {
@@ -425,21 +427,27 @@ export function SessionHistoryTable({
               </div>
             </div>
 
-            {/* Transcript */}
+            {/* Transcript — collapsed by default, fetched on first expand */}
             <div className="mt-5 border-t border-white/5 pt-4">
-              <span className="text-xs font-bold uppercase tracking-wider text-zinc-500 block mb-1">
+              <button
+                onClick={() => setTranscriptOpen((v) => !v)}
+                className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-zinc-500 hover:text-zinc-300 transition-colors"
+              >
+                <span className={`inline-block transition-transform ${transcriptOpen ? 'rotate-90' : ''}`}>▸</span>
                 Transcript
                 {transcriptStates.get(modalSession.session_id)?.data && (
-                  <span className="ml-2 normal-case font-normal text-zinc-600">
+                  <span className="normal-case font-normal text-zinc-600">
                     {transcriptStates.get(modalSession.session_id)!.data!.turns.length} turns
                   </span>
                 )}
-              </span>
-              <TranscriptPane
-                sessionId={modalSession.session_id}
-                onFetch={getTranscript}
-                state={transcriptStates.get(modalSession.session_id)}
-              />
+              </button>
+              {transcriptOpen && (
+                <TranscriptPane
+                  sessionId={modalSession.session_id}
+                  onFetch={getTranscript}
+                  state={transcriptStates.get(modalSession.session_id)}
+                />
+              )}
             </div>
           </div>
         )}
