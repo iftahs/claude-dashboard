@@ -141,33 +141,122 @@ function CompletedRow({
   );
 }
 
+// ── Main session card ───────────────────────────────────────────────────────
+
+function ActiveAgoTicker({ lastActivity }: { lastActivity: number }) {
+  const [sec, setSec] = useState(() => elapsedSec(lastActivity));
+  useEffect(() => {
+    const id = setInterval(() => setSec(elapsedSec(lastActivity)), 1000);
+    return () => clearInterval(id);
+  }, [lastActivity]);
+  return (
+    <span className="font-mono tabular-nums text-zinc-500 text-xs">active {formatElapsed(sec)} ago</span>
+  );
+}
+
+function MainAgentCard({
+  title,
+  project,
+  gitBranch,
+  model,
+  lastActivity,
+  effectiveTokens,
+}: {
+  title: string;
+  project: string;
+  gitBranch: string;
+  model: string;
+  lastActivity: number;
+  effectiveTokens: number;
+}) {
+  return (
+    <div
+      className="card flex flex-col gap-2 p-4 border border-clay-500/15"
+      style={{ animation: 'agent-enter 0.3s ease-out both' }}
+    >
+      <div className="flex items-center gap-2 min-w-0">
+        <span className="pulse-dot flex-none" />
+        <span className="text-sm flex-none select-none">🖥</span>
+        <span className="font-semibold text-zinc-100 text-sm truncate flex-1" title={title}>
+          {title}
+        </span>
+        <ActiveAgoTicker lastActivity={lastActivity} />
+      </div>
+
+      <p className="text-xs text-zinc-500 truncate">
+        {project}
+        {gitBranch && <span className="text-zinc-600 font-mono"> · {gitBranch}</span>}
+      </p>
+
+      <WorkingBar />
+
+      <div className="flex items-center justify-between gap-2 flex-wrap">
+        <ModelChip model={model} />
+        {effectiveTokens > 0 && (
+          <span className="text-xs text-zinc-500 tabular-nums">{compact(effectiveTokens)} tok</span>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ── Main organism ──────────────────────────────────────────────────────────
+
+function GroupLabel({ children }: { children: string }) {
+  return (
+    <p className="text-[10px] font-bold uppercase tracking-wider text-zinc-600 select-none">{children}</p>
+  );
+}
 
 export function AgentActivity({ data, loading }: AgentActivityProps) {
   const running = data?.running ?? [];
   const completed = data?.recentlyCompleted ?? [];
-  const hasActivity = running.length > 0 || completed.length > 0;
+  const mains = data?.mainAgents ?? [];
+  const hasActivity = running.length > 0 || completed.length > 0 || mains.length > 0;
 
   return (
-    <Section title="Subagents · live activity">
+    <Section title="Agents · live activity">
       {loading && !data ? (
         <div className="h-10 flex items-center text-xs text-zinc-600">Loading…</div>
       ) : hasActivity ? (
         <div className="flex flex-col gap-3">
-          {/* Running cards grid */}
+          {/* Main Claude Code sessions */}
+          {mains.length > 0 && (
+            <>
+              <GroupLabel>Main sessions</GroupLabel>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                {mains.map((m) => (
+                  <MainAgentCard
+                    key={m.key}
+                    title={m.title}
+                    project={m.project}
+                    gitBranch={m.gitBranch}
+                    model={m.model}
+                    lastActivity={m.lastActivity}
+                    effectiveTokens={m.effectiveTokens}
+                  />
+                ))}
+              </div>
+            </>
+          )}
+
+          {/* Running subagent cards */}
           {running.length > 0 && (
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
-              {running.map((agent) => (
-                <RunningCard
-                  key={agent.key}
-                  name={agent.name}
-                  description={agent.description}
-                  model={agent.model}
-                  startedAt={agent.startedAt}
-                  effectiveTokens={agent.effectiveTokens}
-                />
-              ))}
-            </div>
+            <>
+              {mains.length > 0 && <GroupLabel>Subagents</GroupLabel>}
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                {running.map((agent) => (
+                  <RunningCard
+                    key={agent.key}
+                    name={agent.name}
+                    description={agent.description}
+                    model={agent.model}
+                    startedAt={agent.startedAt}
+                    effectiveTokens={agent.effectiveTokens}
+                  />
+                ))}
+              </div>
+            </>
           )}
 
           {/* Recently completed rows */}
@@ -188,7 +277,7 @@ export function AgentActivity({ data, loading }: AgentActivityProps) {
       ) : (
         <div className="flex items-center gap-2 py-1 text-xs text-zinc-600">
           <span className="inline-block h-1.5 w-1.5 rounded-full bg-zinc-700 flex-none" />
-          No subagents running right now
+          No agents running right now
         </div>
       )}
     </Section>

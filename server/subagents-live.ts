@@ -32,9 +32,22 @@ export interface RecentlyCompletedSubagent {
   completedAt: number;
 }
 
+export interface MainAgent {
+  key: string;
+  title: string;
+  project: string;
+  gitBranch: string;
+  model: string;
+  startedAt: number;
+  lastActivity: number;
+  effectiveTokens: number;
+  status: 'running';
+}
+
 export interface LiveSubagentsData {
   running: LiveSubagent[];
   recentlyCompleted: RecentlyCompletedSubagent[];
+  mainAgents: MainAgent[];
 }
 
 // ---------------------------------------------------------------------------
@@ -116,15 +129,37 @@ interface ResultRec {
   isAsyncLaunch: boolean;
 }
 
+interface MainInfo {
+  title: string;
+  gitBranch: string;
+  model: string;
+  effectiveTokens: number;
+  firstTs: number;
+  lastTs: number;
+  hasAssistant: boolean;
+}
+
 async function parseFileForAgentSpawns(file: string): Promise<{
   spawns: SpawnRec[];
   results: Map<string, ResultRec>;
   /** Background-agent completions arrive later as <task-notification> user entries. */
   notifications: Array<{ agentId: string; ts: number }>;
+  main: MainInfo;
 }> {
   const spawns: SpawnRec[] = [];
   const results = new Map<string, ResultRec>();
   const notifications: Array<{ agentId: string; ts: number }> = [];
+  const main: MainInfo = {
+    title: '',
+    gitBranch: '',
+    model: 'unknown',
+    effectiveTokens: 0,
+    firstTs: Infinity,
+    lastTs: 0,
+    hasAssistant: false,
+  };
+  // Same keep-max dedup rule as scan.ts — streaming writes duplicate usage rows.
+  const usageByKey = new Map<string, number>();
 
   const rl = createInterface({
     input: createReadStream(file, { encoding: 'utf8' }),
@@ -136,8 +171,17 @@ async function parseFileForAgentSpawns(file: string): Promise<{
     let obj: any;
     try { obj = JSON.parse(line); } catch { continue; }
 
+    if (obj.type === 'ai-title' && typeof obj.aiTitle === 'string' && obj.aiTitle) {
+      main.title = obj.aiTitle;
+      continue;
+    }
+
     const ts = Date.parse(obj.timestamp ?? '');
     if (Number.isNaN(ts)) continue;
+    if (ts < main.firstTs) main.firstTs = ts;
+    if (ts > main.lastTs) main.lastTs = ts;
+    if (typeof obj.gitBranch === 'string' && obj.gitBranch) main.gitBranch = obj.gitBranch;
+    if (!main.title && typeof obj.slug === 'string' && obj.slug) main.title = obj.slug;
 
     // Background completions are enqueued instantly as queue-operation entries,
     // before the same text lands as a user message on the next turn.
@@ -145,6 +189,20 @@ async function parseFileForAgentSpawns(file: string): Promise<{
       const m = obj.content.match(/<task-id>([a-z0-9]+)<\/task-id>[\s\S]*?<status>completed<\/status>/);
       if (m) notifications.push({ agentId: m[1], ts });
       continue;
+    }
+
+    if (obj.type === 'assistant' && obj.message?.usage) {
+      main.hasAssistant = true;
+      const u = obj.message.usage;
+      const eff = num(u.input_tokens) + num(u.output_tokens) + num(u.cache_creation_input_tokens);
+      const key = `${obj.requestId ?? ''}:${obj.message?.id ?? ''}`;
+      if (key !== ':') {
+        const prev = usageByKey.get(key) ?? 0;
+        if (eff > prev) usageByKey.set(key, eff);
+      } else {
+        main.effectiveTokens += eff;
+      }
+      if (obj.message?.model && obj.message.model !== '<synthetic>') main.model = obj.message.model;
     }
 
     if (obj.type === 'assistant' && Array.isArray(obj.message?.content)) {
@@ -196,7 +254,9 @@ async function parseFileForAgentSpawns(file: string): Promise<{
     }
   }
 
-  return { spawns, results, notifications };
+  for (const eff of usageByKey.values()) main.effectiveTokens += eff;
+  if (main.firstTs === Infinity) main.firstTs = 0;
+  return { spawns, results, notifications, main };
 }
 
 interface SidechainInfo {
@@ -274,15 +334,18 @@ async function computeLiveSubagents(): Promise<LiveSubagentsData> {
   const allFiles = await listJsonl(projectsDir());
   const isSidechainPath = (p: string) => p.includes('/subagents/') || p.includes('\\subagents\\');
 
+  // Long-running sessions easily pass 5MB; readline keeps parsing cheap, so cap generously.
+  const MAX_FILE = 50 * 1024 * 1024;
+
   // Parent conversations modified in the last 30 min — source of spawns/results/notifications.
   const recentParentFiles = allFiles.filter(
-    (f) => now - f.mtime < THIRTY_MIN && f.size <= 5 * 1024 * 1024 && !isSidechainPath(f.path)
+    (f) => now - f.mtime < THIRTY_MIN && f.size <= MAX_FILE && !isSidechainPath(f.path)
   );
 
   // Sidechain transcripts modified in the last 30 min — model/token enrichment + activity signal.
   const sidechains = new Map<string, SidechainInfo>();
   for (const f of allFiles) {
-    if (now - f.mtime >= THIRTY_MIN || f.size > 5 * 1024 * 1024 || !isSidechainPath(f.path)) continue;
+    if (now - f.mtime >= THIRTY_MIN || f.size > MAX_FILE || !isSidechainPath(f.path)) continue;
     const agentId = agentIdFromFileName(f.path);
     if (!agentId) continue;
     sidechains.set(agentId, await parseSidechainFile(f.path, agentId, f.mtime));
@@ -290,12 +353,28 @@ async function computeLiveSubagents(): Promise<LiveSubagentsData> {
 
   const running: LiveSubagent[] = [];
   const recentlyCompleted: RecentlyCompletedSubagent[] = [];
+  const mainAgents: MainAgent[] = [];
   const claimedAgentIds = new Set<string>();
 
   for (const pf of recentParentFiles) {
     const parsed = await parseFileForAgentSpawns(pf.path);
     const project = projectNameFromPath(projectPathFromFile(pf.path));
     const notifiedAt = new Map(parsed.notifications.map((n) => [n.agentId, n.ts]));
+
+    // Main session counts as a live agent while its transcript is recently active.
+    if (parsed.main.hasAssistant && now - pf.mtime < ACTIVE_WINDOW) {
+      mainAgents.push({
+        key: pf.path,
+        title: parsed.main.title || project,
+        project,
+        gitBranch: parsed.main.gitBranch,
+        model: parsed.main.model,
+        startedAt: parsed.main.firstTs || pf.mtime,
+        lastActivity: Math.max(parsed.main.lastTs, pf.mtime),
+        effectiveTokens: parsed.main.effectiveTokens,
+        status: 'running',
+      });
+    }
 
     for (const spawn of parsed.spawns) {
       if (now - spawn.ts >= THIRTY_MIN) continue;
@@ -369,7 +448,8 @@ async function computeLiveSubagents(): Promise<LiveSubagentsData> {
 
   running.sort((a, b) => a.startedAt - b.startedAt);
   recentlyCompleted.sort((a, b) => b.completedAt - a.completedAt);
-  return { running, recentlyCompleted };
+  mainAgents.sort((a, b) => b.lastActivity - a.lastActivity);
+  return { running, recentlyCompleted, mainAgents };
 }
 
 // ---------------------------------------------------------------------------

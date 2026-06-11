@@ -1,10 +1,11 @@
-import { useState, useMemo, Fragment, useEffect, useRef } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { compact } from '@/lib/format';
 import { ExportButton } from '@/components/design-system/molecules/ExportButton/ExportButton';
+import { Modal } from '@/components/design-system/molecules/Modal/Modal';
 import { useTranscript } from '@/hooks/useTranscript';
 import { useSearch } from '@/hooks/useSearch';
 import type { SessionHistoryTableProps } from './types';
-import type { SessionTranscriptTurn } from '@/types';
+import type { SessionMeta, SessionTranscriptTurn } from '@/types';
 import { formatDate, getProjectName } from './utils';
 
 // ── Transcript viewer ──────────────────────────────────────────────────────
@@ -13,15 +14,15 @@ function TurnBlock({ turn }: { turn: SessionTranscriptTurn }) {
   const isUser = turn.role === 'user';
   const ts = turn.ts ? new Date(turn.ts).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '';
   return (
-    <div className={`flex gap-2 text-xs ${isUser ? '' : 'flex-row-reverse'}`}>
+    <div className="flex gap-2 text-xs" dir="ltr">
       {/* Role icon */}
       <span className="flex-none select-none text-base leading-none mt-0.5">
         {isUser ? '🧑' : '🤖'}
       </span>
 
-      <div className={`flex flex-col gap-1 min-w-0 flex-1 ${isUser ? '' : 'items-end'}`}>
+      <div className="flex flex-col gap-1 min-w-0 flex-1 items-start">
         {/* Header: timestamp + model */}
-        <div className={`flex items-center gap-2 flex-wrap ${isUser ? '' : 'flex-row-reverse'}`}>
+        <div className="flex items-center gap-2 flex-wrap">
           {ts && <span className="text-zinc-600 font-mono">{ts}</span>}
           {!isUser && turn.model && (
             <span className="text-zinc-600 italic">{turn.model.replace(/^claude-/, '').replace(/-\d{8}$/, '')}</span>
@@ -44,7 +45,7 @@ function TurnBlock({ turn }: { turn: SessionTranscriptTurn }) {
 
         {/* Tool chips */}
         {!isUser && turn.tools && turn.tools.length > 0 && (
-          <div className="flex flex-wrap gap-1 justify-end">
+          <div className="flex flex-wrap gap-1">
             {turn.tools.map((t, i) => (
               <span
                 key={i}
@@ -175,23 +176,16 @@ export function SessionHistoryTable({
 }: SessionHistoryTableProps) {
   const [search, setSearch] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
-  const [expandedSessions, setExpandedSessions] = useState<Record<string, boolean>>({});
+  const [modalSession, setModalSession] = useState<SessionMeta | null>(null);
 
   // Transcript hook — shared instance across table
   const { getTranscript, states: transcriptStates } = useTranscript();
 
-  // Ref map to scroll-to rows
-  const rowRefs = useRef<Map<string, HTMLTableRowElement>>(new Map());
-
   const itemsPerPage = 5;
 
-  const toggleExpand = (id: string) => {
-    setExpandedSessions((prev) => {
-      const next = { ...prev, [id]: !prev[id] };
-      // If expanding, trigger transcript fetch
-      if (next[id]) getTranscript(id);
-      return next;
-    });
+  const openSession = (s: SessionMeta) => {
+    setModalSession(s);
+    getTranscript(s.session_id);
   };
 
   const filteredSessions = useMemo(() => {
@@ -209,20 +203,10 @@ export function SessionHistoryTable({
     return filteredSessions.slice(start, start + itemsPerPage);
   }, [filteredSessions, currentPage]);
 
-  // Jump to a session from search strip: expand it (navigate to its page if needed)
+  // Jump to a session from the search strip: open its modal directly.
   const jumpToSession = (sessionId: string) => {
-    const idx = filteredSessions.findIndex((s) => s.session_id === sessionId);
-    if (idx >= 0) {
-      const page = Math.floor(idx / itemsPerPage) + 1;
-      setCurrentPage(page);
-      setExpandedSessions((prev) => ({ ...prev, [sessionId]: true }));
-      getTranscript(sessionId);
-      // Scroll after a tick to let DOM update
-      setTimeout(() => {
-        const el = rowRefs.current.get(sessionId);
-        el?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-      }, 80);
-    }
+    const s = sessions.find((x) => x.session_id === sessionId);
+    if (s) openSession(s);
   };
 
   return (
@@ -287,136 +271,29 @@ export function SessionHistoryTable({
           <tbody className="divide-y divide-white/5 text-zinc-300">
             {paginatedSessions.length > 0 ? (
               paginatedSessions.map((s) => {
-                const isExpanded = !!expandedSessions[s.session_id];
                 const projectName = getProjectName(s.project_path);
                 const totalToks = s.effective_tokens ?? (s.input_tokens ?? 0) + (s.output_tokens ?? 0);
-                const transcriptState = transcriptStates.get(s.session_id);
 
                 return (
-                  <Fragment key={s.session_id}>
-                    <tr
-                      ref={(el) => {
-                        if (el) rowRefs.current.set(s.session_id, el);
-                        else rowRefs.current.delete(s.session_id);
-                      }}
-                      onClick={() => toggleExpand(s.session_id)}
-                      className="hover:bg-white/5 transition-colors cursor-pointer"
-                    >
-                      <td className="py-3 font-mono text-zinc-400 text-xs">
-                        {formatDate(s.start_time)}
-                      </td>
-                      <td className="py-3 font-semibold text-zinc-300">{projectName}</td>
-                      <td className="py-3 text-zinc-400 truncate max-w-xs md:max-w-md" title={s.first_prompt}>
-                        {s.first_prompt ? `"${s.first_prompt}"` : <span className="italic text-zinc-600">no prompt</span>}
-                      </td>
-                      <td className="py-3 text-right font-mono text-zinc-400">
-                        {s.duration_minutes ? `${s.duration_minutes}m` : '<1m'}
-                      </td>
-                      <td className="py-3 text-right font-mono text-xs">
-                        {compact(totalToks)}
-                      </td>
-                    </tr>
-                    {isExpanded && (
-                      <tr className="bg-ink-900/30">
-                        <td colSpan={5} className="p-4 text-xs border-t border-white/5">
-                          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                            {/* Left Col: Core stats */}
-                            <div className="space-y-2.5">
-                              <span className="text-xs font-bold uppercase tracking-wider text-zinc-500 block">
-                                Session Summary
-                              </span>
-                              <div className="space-y-1.5 text-zinc-400">
-                                <div>
-                                  Messages:{' '}
-                                  <span className="text-zinc-200">
-                                    {s.user_message_count} user / {s.assistant_message_count} agent
-                                  </span>
-                                </div>
-                                <div>
-                                  Modifications:{' '}
-                                  <span className="text-zinc-200">
-                                    {s.files_modified ?? 0} files ({s.lines_added ?? 0} additions, {s.lines_removed ?? 0} deletions)
-                                  </span>
-                                </div>
-                                <div>
-                                  Tokens:{' '}
-                                  <span className="text-zinc-200">
-                                    {compact(s.effective_tokens ?? (s.input_tokens + s.output_tokens))} effective
-                                    {s.cache_read_tokens ? ` (+${compact(s.cache_read_tokens)} cache reads)` : ''}
-                                  </span>
-                                </div>
-                                {(s.git_commits > 0 || s.git_pushes > 0) && (
-                                  <div>
-                                    Git Operations:{' '}
-                                    <span className="text-zinc-200">
-                                      {s.git_commits} commit{s.git_commits !== 1 && 's'}
-                                      {s.git_pushes > 0 && `, ${s.git_pushes} push${s.git_pushes !== 1 && 'es'}`}
-                                    </span>
-                                  </div>
-                                )}
-                                {s.tool_errors !== undefined && s.tool_errors > 0 && (
-                                  <div>
-                                    Tool Errors:{' '}
-                                    <span className="text-red-400 font-semibold">{s.tool_errors} errors</span>
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-
-                            {/* Middle Col: Tool usage breakdown */}
-                            <div>
-                              <span className="text-xs font-bold uppercase tracking-wider text-zinc-500 block mb-2">
-                                Tool Invocation Breakdown
-                              </span>
-                              {s.tool_counts && Object.keys(s.tool_counts).length > 0 ? (
-                                <div className="flex flex-wrap gap-2">
-                                  {Object.entries(s.tool_counts).map(([tool, count]) => (
-                                    <div
-                                      key={tool}
-                                      className="rounded-lg bg-ink-800 border border-white/5 px-2.5 py-1 flex items-center gap-1.5"
-                                    >
-                                      <span className="font-semibold text-clay-400 font-mono">
-                                        {count}
-                                      </span>
-                                      <span className="text-zinc-300 font-sans">{tool}</span>
-                                    </div>
-                                  ))}
-                                </div>
-                              ) : (
-                                <div className="text-zinc-600 italic">No tools were invoked in this session</div>
-                              )}
-                            </div>
-
-                            {/* Right col: transcript toggle / loading state */}
-                            <div className="md:col-span-1 flex flex-col">
-                              <span className="text-xs font-bold uppercase tracking-wider text-zinc-500 block mb-2">
-                                Transcript
-                                {transcriptState?.data && (
-                                  <span className="ml-2 normal-case font-normal text-zinc-600">
-                                    {transcriptState.data.turns.length} turns
-                                  </span>
-                                )}
-                              </span>
-                              {transcriptState?.error && (
-                                <div className="text-xs text-red-400">
-                                  {transcriptState.error}
-                                </div>
-                              )}
-                            </div>
-                          </div>
-
-                          {/* Full-width transcript */}
-                          <div className="mt-4 border-t border-white/5 pt-4">
-                            <TranscriptPane
-                              sessionId={s.session_id}
-                              onFetch={getTranscript}
-                              state={transcriptStates.get(s.session_id)}
-                            />
-                          </div>
-                        </td>
-                      </tr>
-                    )}
-                  </Fragment>
+                  <tr
+                    key={s.session_id}
+                    onClick={() => openSession(s)}
+                    className="hover:bg-white/5 transition-colors cursor-pointer"
+                  >
+                    <td className="py-3 font-mono text-zinc-400 text-xs">
+                      {formatDate(s.start_time)}
+                    </td>
+                    <td className="py-3 font-semibold text-zinc-300">{projectName}</td>
+                    <td className="py-3 text-zinc-400 truncate max-w-xs md:max-w-md" title={s.first_prompt}>
+                      {s.first_prompt ? `"${s.first_prompt}"` : <span className="italic text-zinc-600">no prompt</span>}
+                    </td>
+                    <td className="py-3 text-right font-mono text-zinc-400">
+                      {s.duration_minutes ? `${s.duration_minutes}m` : '<1m'}
+                    </td>
+                    <td className="py-3 text-right font-mono text-xs">
+                      {compact(totalToks)}
+                    </td>
+                  </tr>
                 );
               })
             ) : (
@@ -458,6 +335,115 @@ export function SessionHistoryTable({
           </button>
         </div>
       </div>
+
+      {/* Session detail modal */}
+      <Modal
+        open={!!modalSession}
+        onClose={() => setModalSession(null)}
+        title={
+          modalSession && (
+            <div className="flex items-center gap-3 min-w-0 text-sm">
+              <span className="font-bold text-zinc-100 truncate">
+                {getProjectName(modalSession.project_path)}
+              </span>
+              <span className="text-zinc-500 font-mono text-xs flex-none">
+                {formatDate(modalSession.start_time)}
+              </span>
+              <span className="text-zinc-500 font-mono text-xs flex-none">
+                {compact(modalSession.effective_tokens ?? (modalSession.input_tokens + modalSession.output_tokens))} tok
+              </span>
+            </div>
+          )
+        }
+      >
+        {modalSession && (
+          <div className="text-xs">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {/* Core stats */}
+              <div className="space-y-2.5">
+                <span className="text-xs font-bold uppercase tracking-wider text-zinc-500 block">
+                  Session Summary
+                </span>
+                <div className="space-y-1.5 text-zinc-400">
+                  <div>
+                    Messages:{' '}
+                    <span className="text-zinc-200">
+                      {modalSession.user_message_count} user / {modalSession.assistant_message_count} agent
+                    </span>
+                  </div>
+                  <div>
+                    Modifications:{' '}
+                    <span className="text-zinc-200">
+                      {modalSession.files_modified ?? 0} files ({modalSession.lines_added ?? 0} additions, {modalSession.lines_removed ?? 0} deletions)
+                    </span>
+                  </div>
+                  <div>
+                    Tokens:{' '}
+                    <span className="text-zinc-200">
+                      {compact(modalSession.effective_tokens ?? (modalSession.input_tokens + modalSession.output_tokens))} effective
+                      {modalSession.cache_read_tokens ? ` (+${compact(modalSession.cache_read_tokens)} cache reads)` : ''}
+                    </span>
+                  </div>
+                  {(modalSession.git_commits > 0 || modalSession.git_pushes > 0) && (
+                    <div>
+                      Git Operations:{' '}
+                      <span className="text-zinc-200">
+                        {modalSession.git_commits} commit{modalSession.git_commits !== 1 && 's'}
+                        {modalSession.git_pushes > 0 && `, ${modalSession.git_pushes} push${modalSession.git_pushes !== 1 && 'es'}`}
+                      </span>
+                    </div>
+                  )}
+                  {modalSession.tool_errors !== undefined && modalSession.tool_errors > 0 && (
+                    <div>
+                      Tool Errors:{' '}
+                      <span className="text-red-400 font-semibold">{modalSession.tool_errors} errors</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Tool usage breakdown */}
+              <div>
+                <span className="text-xs font-bold uppercase tracking-wider text-zinc-500 block mb-2">
+                  Tool Invocation Breakdown
+                </span>
+                {modalSession.tool_counts && Object.keys(modalSession.tool_counts).length > 0 ? (
+                  <div className="flex flex-wrap gap-2">
+                    {Object.entries(modalSession.tool_counts).map(([tool, count]) => (
+                      <div
+                        key={tool}
+                        className="rounded-lg bg-ink-800 border border-white/5 px-2.5 py-1 flex items-center gap-1.5"
+                      >
+                        <span className="font-semibold text-clay-400 font-mono">{count}</span>
+                        <span className="text-zinc-300 font-sans">{tool}</span>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-zinc-600 italic">No tools were invoked in this session</div>
+                )}
+              </div>
+            </div>
+
+            {/* Transcript */}
+            <div className="mt-5 border-t border-white/5 pt-4">
+              <span className="text-xs font-bold uppercase tracking-wider text-zinc-500 block mb-1">
+                Transcript
+                {transcriptStates.get(modalSession.session_id)?.data && (
+                  <span className="ml-2 normal-case font-normal text-zinc-600">
+                    {transcriptStates.get(modalSession.session_id)!.data!.turns.length} turns
+                  </span>
+                )}
+              </span>
+              <TranscriptPane
+                sessionId={modalSession.session_id}
+                onFetch={getTranscript}
+                state={transcriptStates.get(modalSession.session_id)}
+              />
+            </div>
+          </div>
+        )}
+      </Modal>
     </div>
   );
 }

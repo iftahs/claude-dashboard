@@ -244,6 +244,18 @@ export interface LiveSubagent {
   status: 'running';
 }
 
+export interface MainAgent {
+  key: string;
+  title: string;
+  project: string;
+  gitBranch: string;
+  model: string;
+  startedAt: number;
+  lastActivity: number;
+  effectiveTokens: number;
+  status: 'running';
+}
+
 export interface LiveSubagents {
   running: LiveSubagent[];
   recentlyCompleted: {
@@ -252,6 +264,7 @@ export interface LiveSubagents {
     model: string;
     completedAt: number;
   }[];
+  mainAgents: MainAgent[];
 }
 
 export interface SessionTranscriptTurn {
