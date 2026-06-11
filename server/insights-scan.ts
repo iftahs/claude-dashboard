@@ -61,6 +61,9 @@ export interface SessionMetaRecord {
   subagentSpawns: number;
   compactions: number;
   committed: boolean;
+  gitCommits: number;
+  gitPushes: number;
+  firstPrompt: string;
   gitBranch: string;
   projectPath: string;
   models: Record<string, number>;
@@ -197,6 +200,12 @@ function isGitCommitCommand(toolName: string, input: any): boolean {
   return /git\s+commit/.test(cmd);
 }
 
+function isGitPushCommand(toolName: string, input: any): boolean {
+  if (toolName !== 'Bash' && toolName !== 'PowerShell') return false;
+  const cmd = typeof input?.command === 'string' ? input.command : '';
+  return /git\s+push/.test(cmd);
+}
+
 // ---------------------------------------------------------------------------
 // Main scan function
 // ---------------------------------------------------------------------------
@@ -213,8 +222,9 @@ export async function scanInsights(): Promise<InsightsData> {
 
   // Dedup assistant messages by requestId:msgId (keep max-effective same as scan.ts)
   const seenAssistant = new Map<string, { effectiveTokens: number; model: string; input: number; output: number; cacheCreate: number }>();
-  // Pending git-commit tool_use_ids (tool_use_id → sessionId), resolved when we see tool_result
+  // Pending git tool_use_ids (tool_use_id → sessionId), resolved when we see a non-error tool_result
   const pendingGitCommits = new Map<string, string>();
+  const pendingGitPushes = new Map<string, string>();
 
   for (const file of files) {
     // Skip files > 5MB
@@ -262,6 +272,9 @@ export async function scanInsights(): Promise<InsightsData> {
           subagentSpawns: 0,
           compactions: 0,
           committed: false,
+          gitCommits: 0,
+          gitPushes: 0,
+          firstPrompt: '',
           gitBranch,
           projectPath,
           models: {},
@@ -299,6 +312,11 @@ export async function scanInsights(): Promise<InsightsData> {
           if (/continued from a previous conversation/i.test(content)) {
             sm.compactions++;
           }
+          // First real user prompt (skip system-reminder / command wrappers)
+          if (!sm.firstPrompt) {
+            const t = content.trim();
+            if (t && !t.startsWith('<')) sm.firstPrompt = t.slice(0, 200);
+          }
           // Search corpus: first 200 chars of each user text turn, max 20KB/session
           const existing = searchCorpus.get(sessionId) ?? '';
           if (existing.length < 20 * 1024) {
@@ -313,6 +331,10 @@ export async function scanInsights(): Promise<InsightsData> {
             if (block.type === 'text' && typeof block.text === 'string') {
               if (/continued from a previous conversation/i.test(block.text)) {
                 sm.compactions++;
+              }
+              if (!sm.firstPrompt) {
+                const t = block.text.trim();
+                if (t && !t.startsWith('<')) sm.firstPrompt = t.slice(0, 200);
               }
               const existing = searchCorpus.get(sessionId) ?? '';
               if (existing.length < 20 * 1024) {
@@ -346,7 +368,13 @@ export async function scanInsights(): Promise<InsightsData> {
               // Check for git commit resolution
               if (!isError && pendingGitCommits.has(toolUseId)) {
                 sm.committed = true;
+                sm.gitCommits++;
                 pendingGitCommits.delete(toolUseId);
+              }
+              // Check for git push resolution
+              if (!isError && pendingGitPushes.has(toolUseId)) {
+                sm.gitPushes++;
+                pendingGitPushes.delete(toolUseId);
               }
 
               // Check for agentId in tool_result text (from Task/Agent spawns)
@@ -460,9 +488,12 @@ export async function scanInsights(): Promise<InsightsData> {
               sm.subagentSpawns++;
             }
 
-            // Git commit tracking
+            // Git commit / push tracking (resolved on non-error tool_result)
             if (isGitCommitCommand(toolName, toolInput)) {
               pendingGitCommits.set(toolId, sessionId);
+            }
+            if (isGitPushCommand(toolName, toolInput)) {
+              pendingGitPushes.set(toolId, sessionId);
             }
           }
         }

@@ -23,6 +23,8 @@ npm run docker:down
 npm run docker:logs
 ```
 
+> **This app usually runs in Docker — there is no live/HMR refresh.** When running in Docker, after **every** code change you must run `npm run docker:up` to rebuild + restart, or the change won't be visible.
+
 There is **no test suite and no linter** configured. Correctness is enforced by TypeScript `strict` mode plus `noUnusedLocals`/`noUnusedParameters` — a clean `tsc -b` is the bar.
 
 ### Pointing at a different data folder

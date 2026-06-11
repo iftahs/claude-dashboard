@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { usePolling } from './hooks/usePolling';
 import { useLimits } from './hooks/useLimits';
 import type { ActivityData, ModelsData, RecentData, WeeklyData, ToolsData, ClaudeConfig, SessionMeta, LiveUsageData, HeatmapData, ProjectData, InsightsErrors, InsightsRetries, InsightsLanguages, InsightsBranches, InsightsMcp, ComplexityPoint, InsightsYield, InsightsRejections, SubagentStats, LiveSubagents, VersionInfo } from './types';
@@ -65,7 +66,10 @@ const INSIGHT_DAY_OPTIONS: { value: InsightDays; label: string }[] = [
 ];
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState<Tab>('live');
+  const location = useLocation();
+  const navigate = useNavigate();
+  const seg = location.pathname.replace(/^\//, '');
+  const activeTab: Tab = TABS.some((t) => t.id === seg) ? (seg as Tab) : 'live';
   const [weekDays, setWeekDays] = useState(7);
   const [recentHours, setRecentHours] = useState(12);
   const [dailyMetric, setDailyMetric] = useState<'tokens' | 'cost'>('tokens');
@@ -168,7 +172,7 @@ export default function App() {
         {TABS.map(({ id, label }) => (
           <button
             key={id}
-            onClick={() => setActiveTab(id)}
+            onClick={() => navigate(`/${id}`)}
             className={`flex-1 rounded-lg px-4 py-2.5 text-sm font-medium transition-all duration-200 ${
               activeTab === id
                 ? 'bg-ink-700 text-zinc-100 shadow-sm ring-1 ring-white/10'
@@ -589,6 +593,37 @@ export default function App() {
           )}
         </div>
       )}
+
+      {/* Footer credits */}
+      <footer className="mt-10 border-t border-white/5 pt-6 pb-2 text-center text-xs text-zinc-600">
+        <p>
+          Built by{' '}
+          <a
+            href="https://iftah.dev"
+            target="_blank"
+            rel="noreferrer"
+            className="font-medium text-zinc-400 transition-colors hover:text-clay-400"
+          >
+            Iftah Saar
+          </a>
+          {version.data?.current && (
+            <span className="text-zinc-700"> · v{version.data.current}</span>
+          )}
+          {version.data?.repoUrl && (
+            <>
+              {' · '}
+              <a
+                href={version.data.repoUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="transition-colors hover:text-zinc-400"
+              >
+                GitHub
+              </a>
+            </>
+          )}
+        </p>
+      </footer>
     </div>
   );
 }

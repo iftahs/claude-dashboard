@@ -79,11 +79,21 @@ app.get('/api/stats/summary', async (_req, res) => {
   }
 });
 
+// Session history is derived live from the JSONL transcripts (insights scan)
+// joined with token stats from the main event scan. The legacy
+// `usage-data/session-meta/*.json` sidecar is used only as optional enrichment
+// for fields the transcript can't reconstruct (lines added/removed, languages),
+// because Claude Code stopped writing those sidecars — relying on them froze
+// this list. See readSessionMetas() / scan.ts.
+const WRITE_TOOLS = new Set(['Edit', 'Write', 'MultiEdit', 'NotebookEdit']);
+
 app.get('/api/sessions', async (_req, res) => {
   try {
-    const sessions = await readSessionMetas();
     const { events } = await getEvents();
+    const { insights } = await getInsights();
+    const sidecar = await readSessionMetas();
 
+    // Token splits per session from the main event scan.
     const eventStats = new Map<string, {
       inputTokens: number;
       outputTokens: number;
@@ -115,32 +125,96 @@ app.get('/api/sessions', async (_req, res) => {
       stats.effectiveTokens += e.inputTokens + e.outputTokens + e.cacheCreateTokens;
     }
 
-    const enrichedSessions = sessions.map((s) => {
-      const stats = eventStats.get(s.session_id);
-      if (stats) {
-        return {
-          ...s,
-          input_tokens: stats.inputTokens,
-          output_tokens: stats.outputTokens,
-          cache_create_tokens: stats.cacheCreateTokens,
-          cache_read_tokens: stats.cacheReadTokens,
-          effective_tokens: stats.effectiveTokens,
-          total_tokens: stats.totalTokens,
-        };
-      } else {
-        const in_tok = s.input_tokens ?? 0;
-        const out_tok = s.output_tokens ?? 0;
-        return {
-          ...s,
-          cache_create_tokens: 0,
-          cache_read_tokens: 0,
-          effective_tokens: in_tok + out_tok,
-          total_tokens: in_tok + out_tok,
-        };
-      }
-    });
+    // Per-session tool counts + distinct modified files from main-thread tool calls.
+    const toolAgg = new Map<string, { counts: Record<string, number>; files: Set<string> }>();
+    for (const tc of insights.toolCalls) {
+      if (tc.isSidechain || !tc.sessionId) continue; // count main thread only
+      let a = toolAgg.get(tc.sessionId);
+      if (!a) { a = { counts: {}, files: new Set() }; toolAgg.set(tc.sessionId, a); }
+      a.counts[tc.name] = (a.counts[tc.name] ?? 0) + 1;
+      if (WRITE_TOOLS.has(tc.name) && tc.filePath) a.files.add(tc.filePath);
+    }
 
-    res.json(wrap(enrichedSessions, Date.now()));
+    const sidecarById = new Map(sidecar.map((s) => [s.session_id, s]));
+
+    const result = [];
+    for (const sm of insights.sessionsMeta.values()) {
+      if (sm.isSidechain || !sm.sessionId) continue; // skip subagent-only sessions
+      if (sm.assistantMsgs === 0) continue;           // skip empty/aborted shells
+
+      const stats = eventStats.get(sm.sessionId);
+      const agg = toolAgg.get(sm.sessionId);
+      const side = sidecarById.get(sm.sessionId);
+
+      const input = stats?.inputTokens ?? 0;
+      const output = stats?.outputTokens ?? 0;
+      const cacheCreate = stats?.cacheCreateTokens ?? 0;
+      const cacheRead = stats?.cacheReadTokens ?? 0;
+      const effective = stats?.effectiveTokens ?? sm.effectiveTokens;
+      const total = stats?.totalTokens ?? sm.effectiveTokens;
+
+      result.push({
+        session_id: sm.sessionId,
+        project_path: sm.projectPath,
+        start_time: new Date(sm.firstTs).toISOString(),
+        duration_minutes: Math.max(0, Math.round((sm.lastTs - sm.firstTs) / 60000)),
+        user_message_count: sm.turns,
+        assistant_message_count: sm.assistantMsgs,
+        tool_counts: agg?.counts ?? {},
+        languages: side?.languages ?? {},
+        git_commits: sm.gitCommits,
+        git_pushes: sm.gitPushes,
+        input_tokens: input,
+        output_tokens: output,
+        cache_create_tokens: cacheCreate,
+        cache_read_tokens: cacheRead,
+        effective_tokens: effective,
+        total_tokens: total,
+        first_prompt: (side?.first_prompt as string) || sm.firstPrompt || '',
+        user_interruption_count: side?.user_interruptions,
+        tool_errors: sm.errorCount,
+        files_modified: agg?.files.size ?? side?.files_modified ?? 0,
+        lines_added: side?.lines_added ?? 0,
+        lines_removed: side?.lines_removed ?? 0,
+      });
+    }
+
+    // Preserve older sessions whose transcripts are gone from disk but whose
+    // sidecar metadata survives — append them so the list never regresses.
+    const liveIds = new Set(result.map((r) => r.session_id));
+    for (const s of sidecar) {
+      if (liveIds.has(s.session_id)) continue;
+      const stats = eventStats.get(s.session_id);
+      const in_tok = s.input_tokens ?? 0;
+      const out_tok = s.output_tokens ?? 0;
+      result.push({
+        session_id: s.session_id,
+        project_path: s.project_path,
+        start_time: s.start_time,
+        duration_minutes: s.duration_minutes ?? 0,
+        user_message_count: s.user_message_count ?? 0,
+        assistant_message_count: s.assistant_message_count ?? 0,
+        tool_counts: s.tool_counts ?? {},
+        languages: s.languages ?? {},
+        git_commits: s.git_commits ?? 0,
+        git_pushes: s.git_pushes ?? 0,
+        input_tokens: stats?.inputTokens ?? in_tok,
+        output_tokens: stats?.outputTokens ?? out_tok,
+        cache_create_tokens: stats?.cacheCreateTokens ?? 0,
+        cache_read_tokens: stats?.cacheReadTokens ?? 0,
+        effective_tokens: stats?.effectiveTokens ?? in_tok + out_tok,
+        total_tokens: stats?.totalTokens ?? in_tok + out_tok,
+        first_prompt: (s.first_prompt as string) ?? '',
+        user_interruption_count: s.user_interruptions,
+        tool_errors: s.tool_errors,
+        files_modified: s.files_modified ?? 0,
+        lines_added: s.lines_added ?? 0,
+        lines_removed: s.lines_removed ?? 0,
+      });
+    }
+
+    result.sort((a, b) => Date.parse(b.start_time) - Date.parse(a.start_time));
+    res.json(wrap(result, Date.now()));
   } catch (e) {
     res.status(500).json({ error: String(e) });
   }

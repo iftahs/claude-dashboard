@@ -1,0 +1,35 @@
+name: Auto version bump
+
+# Bumps the patch version in package.json on every PR merged into main, so the
+# in-app "update available" banner fires when new code ships. The bump commit is
+# tagged [skip ci] to avoid retriggering this workflow.
+
+on:
+  pull_request:
+    types: [closed]
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  bump:
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Bump patch version
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          npm version patch --no-git-tag-version
+          git commit -am "chore: bump version to $(node -p "require('./package.json').version") [skip ci]"
+          git push origin main
