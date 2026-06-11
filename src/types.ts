@@ -98,10 +98,18 @@ export interface ClaudeConfig {
   model?: string;
   voiceEnabled?: boolean;
   remoteControlAtStartup?: boolean;
+  inputNeededNotifEnabled?: boolean;
+  agentPushNotifEnabled?: boolean;
+  autoUpdatesChannel?: string;
   subscriptionType?: string | null;
   rateLimitTier?: string | null;
+  enabledPlugins?: Record<string, boolean>;
+  extraKnownMarketplaces?: Record<string, unknown>;
   permissions?: {
     allow?: string[];
+    deny?: string[];
+    ask?: string[];
+    defaultMode?: string;
     additionalDirectories?: string[];
   };
 }
