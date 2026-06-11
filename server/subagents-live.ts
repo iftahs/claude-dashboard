@@ -338,7 +338,7 @@ async function computeLiveSubagents(): Promise<LiveSubagentsData> {
   const now = Date.now();
   const THIRTY_MIN = 30 * 60_000;
   const ACTIVE_WINDOW = 5 * 60_000; // sidechain writes can pause during long LLM turns
-  const COMPLETED_WINDOW = 10 * 60_000; // keep finished subagents on screen long enough to notice
+  const COMPLETED_WINDOW = 60_000; // finished subagents linger one minute, then drop
 
   const allFiles = await listJsonl(projectsDir());
   const isSidechainPath = (p: string) => p.includes('/subagents/') || p.includes('\\subagents\\');
