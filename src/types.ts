@@ -8,6 +8,15 @@ export interface TokenTotals {
   cost: number;
 }
 
+export interface VersionInfo {
+  current: string;
+  latest: string | null;
+  updateAvailable: boolean;
+  isDocker: boolean;
+  repoUrl: string;
+  compareUrl: string;
+}
+
 export interface Bucket extends TokenTotals {
   start: number;
   byModel: Record<string, number>;
@@ -89,10 +98,18 @@ export interface ClaudeConfig {
   model?: string;
   voiceEnabled?: boolean;
   remoteControlAtStartup?: boolean;
+  inputNeededNotifEnabled?: boolean;
+  agentPushNotifEnabled?: boolean;
+  autoUpdatesChannel?: string;
   subscriptionType?: string | null;
   rateLimitTier?: string | null;
+  enabledPlugins?: Record<string, boolean>;
+  extraKnownMarketplaces?: Record<string, unknown>;
   permissions?: {
     allow?: string[];
+    deny?: string[];
+    ask?: string[];
+    defaultMode?: string;
     additionalDirectories?: string[];
   };
 }
@@ -157,5 +174,145 @@ export interface ProjectData {
   rangeFrom: number;
   rangeTo: number;
   projects: ProjectStat[];
+}
+
+// ---------------------------------------------------------------------------
+// Insights types
+// ---------------------------------------------------------------------------
+
+export interface InsightsErrors {
+  totalCalls: number;
+  errors: number;
+  errorRate: number;
+  categories: Record<string, number>;
+  perTool: { name: string; calls: number; errors: number; errorRate: number }[];
+  trend: { date: string; calls: number; errors: number }[];
+}
+
+export interface InsightsRetries {
+  oneShotRate: number;
+  totalEdits: number;
+  retried: number;
+  wastedTokens: number;
+  wastedCost: number;
+}
+
+export interface InsightsLanguages {
+  language: string;
+  edits: number;
+  reads: number;
+}
+
+export interface InsightsBranches {
+  branch: string;
+  effectiveTokens: number;
+  cost: number;
+  sessions: number;
+}
+
+export interface InsightsMcp {
+  builtinCalls: number;
+  mcpCalls: number;
+  perServer: { server: string; calls: number; errors: number }[];
+}
+
+export interface ComplexityPoint {
+  sessionId: string;
+  project: string;
+  turns: number;
+  toolCalls: number;
+  subagents: number;
+  effectiveTokens: number;
+  durationMin: number;
+  date: string;
+}
+
+export interface InsightsYield {
+  committed: number;
+  tokensCommitted: number;
+  uncommitted: number;
+  tokensUncommitted: number;
+  rate: number;
+  topUncommitted: { project: string; date: string; effectiveTokens: number }[];
+}
+
+export interface InsightsRejections {
+  total: number;
+  perTool: { name: string; calls: number; rejections: number }[];
+}
+
+export interface SubagentStats {
+  spawns: number;
+  byType: Record<string, number>;
+  byModel: Record<string, number>;
+  avgPerSession: number;
+  delegationRate: number;
+}
+
+export interface LiveSubagent {
+  key: string;
+  parentKey: string;
+  name: string;
+  description: string;
+  model: string;
+  startedAt: number;
+  lastActivity: number;
+  effectiveTokens: number;
+  project: string;
+  status: 'running';
+}
+
+export interface RecentlyCompletedSubagent {
+  key: string;
+  parentKey: string;
+  name: string;
+  description: string;
+  model: string;
+  completedAt: number;
+}
+
+export interface MainAgent {
+  key: string;
+  title: string;
+  project: string;
+  gitBranch: string;
+  model: string;
+  startedAt: number;
+  lastActivity: number;
+  effectiveTokens: number;
+  active: boolean;
+  delegating: boolean;
+  status: 'running';
+}
+
+export interface LiveSubagents {
+  running: LiveSubagent[];
+  recentlyCompleted: RecentlyCompletedSubagent[];
+  mainAgents: MainAgent[];
+}
+
+export interface SessionTranscriptTurn {
+  role: 'user' | 'assistant';
+  ts: number;
+  text: string;
+  tools: { name: string; brief: string }[];
+  model?: string;
+  effectiveTokens?: number;
+}
+
+export interface SessionTranscript {
+  sessionId: string;
+  turns: SessionTranscriptTurn[];
+  compactions: number;
+  totalTurns: number;
+  truncated?: boolean;
+}
+
+export interface SearchResult {
+  sessionId: string;
+  project: string;
+  date: string;
+  snippet: string;
+  matches: number;
 }
 

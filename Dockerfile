@@ -12,6 +12,10 @@ WORKDIR /app
 ENV NODE_ENV=production
 ENV SERVER_PORT=8787
 ENV CLAUDE_DIR=/data/.claude
+ENV APP_RUNTIME=docker
+
+# tzdata so the TZ env var (day bucketing) works on alpine.
+RUN apk add --no-cache tzdata
 
 # Install prod deps + tsx (server runs TypeScript directly).
 COPY package*.json ./

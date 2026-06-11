@@ -6,16 +6,25 @@ A beautiful, **local, offline** dashboard for your [Claude Code](https://claude.
 
 ## Interactive Features & Tour
 
-The dashboard is structured into four functional tabs, each offering specialized insights into your development workflows and model usage.
+The dashboard is structured into six functional tabs, each offering specialized insights into your development workflows and model usage. Tabs are deep-linkable (e.g. `/agents`, `/insights`), and an **in-app update banner** appears when a newer version has shipped.
 
-### 1. ⚡ Live Tab
+### 1. ⚡ Live Usage Tab
 * **Burn Rate Indicator**: Shows your current tokens/hour pace and time-to-limit countdown projection.
 * **Plan Usage**: Tracks both your **5-hour active session limit** and your **weekly limit** utilisation percentage, displaying when the next reset will occur.
 * **Active Session Stats**: Breakdown of effective tokens, previous session block sizes, cache reads, and live OAuth connection state from Claude.ai.
 * **Offline Banner Guide**: Detects connection offline status and expired OAuth tokens, providing direct macOS, Linux, and Windows terminal command instructions to refresh them.
 * **Daily/Weekly/Monthly Spending Limits**: Configure client-side spend caps in USD to see consumption progress bars estimated from local logs.
 
-### 2. 📈 Trends Tab
+### 2. 🤖 Agents · Live Activity Tab
+Real-time view of what Claude Code is doing **right now**, reconstructed live from the session transcripts on disk.
+* **Live Main Sessions**: Each active session shows its first prompt, project, git branch, model, and effective tokens, with a sparkline of recent activity.
+* **Live Subagents**: Spawned subagents (Task/Explore/etc.) appear nested under their parent session with their own model and token counts while they run, then settle into a recently-completed state.
+* **Delegating State**: A parent session is marked *delegating* while its subagents are doing the work.
+* **Idle Lifecycle**: Main sessions dim after 30s of inactivity and drop after 60s; completed subagents no longer keep an idle parent card alive.
+
+![Agents Tab with a live subagent](.github/agents_tab.png)
+
+### 3. 📈 Trends Tab
 * **Tokens vs. Cost Chart Toggle**: Click to switch the daily stacked bar chart between **Tokens** and **Cost (USD)**.
 * **Estimated Projection Area**: Shows a projected monthly cost reference bar for the remaining days of the month based on your daily average.
 * **Cache Efficiency Over Time**: Line chart tracking your daily cache hit rate percentage (cache reads / total tokens).
@@ -29,18 +38,31 @@ The daily bar chart can toggle dynamically between:
   ![Daily Cost Chart View](.github/trends_tab_cost.png)
 
 
-### 3. 🧠 Models Tab
+### 4. 🧠 Models Tab
 * **Model Breakdown**: Donut chart showing token share across Opus, Sonnet, and Haiku.
 * **Model Cost-Efficiency**: Horizontal bar chart comparing USD cost per 1M effective tokens for each model.
 * **Interactive Sandbox Calculator**: Sandbox to calculate costs dynamically based on model pricing rules (input, output, cache write, and cache read).
 * **Tool Usage**: Visual breakdown of your most frequently called tools (e.g. Bash, Write, Grep, MCP tools).
 
-### 4. 📋 Sessions Tab
+### 5. 🔍 Insights Tab
+Deep analytics mined from your session transcripts over a selectable window, surfacing patterns you can't see in raw token counts.
+* **Headline Metrics**: Error rate, edit accuracy, delegation rate, and estimated wasted tokens at a glance.
+* **Tool Errors & Failure Analysis**: Which tools fail most and why (by tool, by error type).
+* **Languages by File Type** and **Branches by Git Branch**: Where your tokens actually go.
+* **MCP Server Usage** and **Permission Rejections by Tool**: How external tools and gating affect your runs.
+* **Session Complexity**: Scatter of tool calls vs. subagents per session.
+* **Yield (Committed vs. Uncommitted)**, **Subagent Delegation**, and **Edit-Retry / One-Shot Accuracy**: Outcome quality across sessions.
+
+![Insights Tab analytics](.github/insights_tab.png)
+
+### 6. 📋 Sessions Tab
+* **Combo Profile**: Your Claude Code config at a glance — startup/output style, default model, authorized workspaces, approved command prefixes.
 * **Workspace Analytics**: Summarizes and ranks estimated costs, tokens, sessions, and files modified across all your project directories. Supported on macOS, Linux, and Windows (with automatic drive letter and folder normalization).
-* **Detailed Session Expansion**: Click any session log row to expand a detailed drill-down showing message counts, git operations, lines added/removed, files modified, tool errors, and a full tool invocation breakdown.
+* **Live Session History Log**: Rebuilt live from the JSONL transcripts (not stale sidecar files), so it never goes blank. Each row shows start time, project, first prompt, duration, and tokens, and is searchable by project or prompt.
+* **Detailed Session Expansion**: Click any session log row to expand a drill-down showing message counts, git commits/pushes, lines added/removed, files modified, tool errors, a full tool invocation breakdown, and a collapsible transcript.
 * **CSV/JSON Export**: Export session logs and trends datasets with a single click.
 
-![Sessions Tab & Project Cost Breakdown](.github/sessions_tab_scrolled.png)
+![Sessions Tab & Live Session History](.github/sessions_tab.png)
 
 ---
 

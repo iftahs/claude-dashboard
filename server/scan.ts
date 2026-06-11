@@ -14,6 +14,7 @@ export interface UsageEvent {
   cacheReadTokens: number;
   tools: string[]; // tool_use names invoked in this assistant message
   projectPath: string; // decoded path of the project directory
+  gitBranch: string; // git branch at the time of the message ('' if unknown)
 }
 
 export function claudeDir(): string {
@@ -66,7 +67,7 @@ function num(v: unknown): number {
 
 async function parseFile(
   file: string,
-  seen: Set<string>,
+  seen: Map<string, number>,
   out: UsageEvent[],
   sessionPathMap?: Map<string, string>
 ): Promise<void> {
@@ -109,10 +110,7 @@ async function parseFile(
     const usage = obj?.message?.usage;
     if (!usage) continue;
 
-    // Dedup: same logical response can appear multiple times (retries/streaming).
     const key = `${obj.requestId ?? ''}:${obj.message?.id ?? ''}`;
-    if (key !== ':' && seen.has(key)) continue;
-    if (key !== ':') seen.add(key);
 
     const ts = Date.parse(obj.timestamp);
     if (Number.isNaN(ts)) continue;
@@ -127,8 +125,9 @@ async function parseFile(
 
     const sessionId = obj.sessionId ?? obj.session_id ?? '';
     const resolvedProjectPath = (sessionPathMap && sessionId) ? (sessionPathMap.get(sessionId) ?? projectPath) : projectPath;
+    const gitBranch: string = typeof obj.gitBranch === 'string' ? obj.gitBranch : '';
 
-    out.push({
+    const event: UsageEvent = {
       ts,
       sessionId,
       model: obj.message?.model ?? 'unknown',
@@ -138,7 +137,25 @@ async function parseFile(
       cacheReadTokens: num(usage.cache_read_input_tokens),
       tools,
       projectPath: resolvedProjectPath,
-    });
+      gitBranch,
+    };
+
+    // Dedup: same logical response can appear multiple times (retries/streaming).
+    // Early duplicates carry placeholder usage; keep whichever reports the most
+    // effective tokens (input + output + cacheCreate), not the first seen.
+    if (key !== ':') {
+      const existingIdx = seen.get(key);
+      if (existingIdx !== undefined) {
+        const prev = out[existingIdx];
+        const prevEff = prev.inputTokens + prev.outputTokens + prev.cacheCreateTokens;
+        const nextEff = event.inputTokens + event.outputTokens + event.cacheCreateTokens;
+        if (nextEff > prevEff) out[existingIdx] = event;
+        continue;
+      }
+      seen.set(key, out.length);
+    }
+
+    out.push(event);
   }
 }
 
@@ -153,7 +170,7 @@ export async function scanEvents(): Promise<UsageEvent[]> {
   }
 
   const files = await listJsonl(projectsDir());
-  const seen = new Set<string>();
+  const seen = new Map<string, number>();
   const out: UsageEvent[] = [];
   for (const f of files) {
     await parseFile(f, seen, out, sessionPathMap);

@@ -1,24 +1,39 @@
 import { useState, useMemo } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { usePolling } from './hooks/usePolling';
 import { useLimits } from './hooks/useLimits';
-import type { Limits } from './hooks/useLimits';
-import type { ActivityData, ModelsData, RecentData, WeeklyData, ToolsData, ClaudeConfig, SessionMeta, LiveUsageData, HeatmapData, ProjectData } from './types';
-import { StatCard } from './components/StatCard';
-import { BlockGauge } from './components/BlockGauge';
-import { UsageBarChart } from './components/UsageBarChart';
-import { ModelBreakdown } from './components/ModelBreakdown';
-import { ActivityHeatmap } from './components/ActivityHeatmap';
-import { PeakHoursHeatmap } from './components/PeakHoursHeatmap';
-import { CacheEfficiencyChart } from './components/CacheEfficiencyChart';
-import { ToolUsage } from './components/ToolUsage';
-import { LiveBadge } from './components/LiveBadge';
-import { LimitsPanel } from './components/LimitsPanel';
-import { CostCalculation } from './components/CostCalculation';
-import { ConfigProfile } from './components/ConfigProfile';
-import { PlanUsage } from './components/PlanUsage';
-import { ProjectBreakdown } from './components/ProjectBreakdown';
-import { SessionHistoryTable } from './components/SessionHistoryTable';
-import { ExportButton } from './components/ExportButton';
+import type { ActivityData, ModelsData, RecentData, WeeklyData, ToolsData, ClaudeConfig, SessionMeta, LiveUsageData, HeatmapData, ProjectData, InsightsErrors, InsightsRetries, InsightsLanguages, InsightsBranches, InsightsMcp, ComplexityPoint, InsightsYield, InsightsRejections, SubagentStats, LiveSubagents, VersionInfo } from './types';
+import { StatCard } from './components/design-system/atoms/StatCard/StatCard';
+import { BlockGauge } from './components/design-system/organisms/BlockGauge/BlockGauge';
+import { UsageBarChart } from './components/design-system/organisms/UsageBarChart/UsageBarChart';
+import { ModelBreakdown } from './components/design-system/organisms/ModelBreakdown/ModelBreakdown';
+import { ActivityHeatmap } from './components/design-system/organisms/ActivityHeatmap/ActivityHeatmap';
+import { PeakHoursHeatmap } from './components/design-system/organisms/PeakHoursHeatmap/PeakHoursHeatmap';
+import { CacheEfficiencyChart } from './components/design-system/organisms/CacheEfficiencyChart/CacheEfficiencyChart';
+import { ToolUsage } from './components/design-system/organisms/ToolUsage/ToolUsage';
+import { LiveBadge } from './components/design-system/atoms/LiveBadge/LiveBadge';
+import { LimitsPanel } from './components/design-system/molecules/LimitsPanel/LimitsPanel';
+import { CostCalculation } from './components/design-system/organisms/CostCalculation/CostCalculation';
+import { ConfigProfile } from './components/design-system/organisms/ConfigProfile/ConfigProfile';
+import { PlanUsage } from './components/design-system/molecules/PlanUsage/PlanUsage';
+import { ProjectBreakdown } from './components/design-system/organisms/ProjectBreakdown/ProjectBreakdown';
+import { SessionHistoryTable } from './components/design-system/organisms/SessionHistoryTable/SessionHistoryTable';
+import { ExportButton } from './components/design-system/molecules/ExportButton/ExportButton';
+import { Section } from './components/design-system/molecules/Section/Section';
+import { OfflineBanner } from './components/design-system/molecules/OfflineBanner/OfflineBanner';
+import { UpdateBanner } from './components/design-system/molecules/UpdateBanner/UpdateBanner';
+import { SpendingLimits } from './components/design-system/molecules/SpendingLimits/SpendingLimits';
+import { ToggleGroup } from './components/design-system/atoms/ToggleGroup/ToggleGroup';
+import { ErrorBreakdown } from './components/design-system/organisms/ErrorBreakdown/ErrorBreakdown';
+import { LanguageBreakdown } from './components/design-system/organisms/LanguageBreakdown/LanguageBreakdown';
+import { BranchBreakdown } from './components/design-system/organisms/BranchBreakdown/BranchBreakdown';
+import { McpBreakdown } from './components/design-system/organisms/McpBreakdown/McpBreakdown';
+import { ComplexityScatter } from './components/design-system/organisms/ComplexityScatter/ComplexityScatter';
+import { YieldPanel } from './components/design-system/organisms/YieldPanel/YieldPanel';
+import { RetryPanel } from './components/design-system/organisms/RetryPanel/RetryPanel';
+import { RejectionsPanel } from './components/design-system/organisms/RejectionsPanel/RejectionsPanel';
+import { SubagentStatsPanel } from './components/design-system/organisms/SubagentStatsPanel/SubagentStatsPanel';
+import { AgentActivity } from './components/design-system/organisms/AgentActivity/AgentActivity';
 import {
   StatCardSkeleton,
   ChartSkeleton,
@@ -27,146 +42,34 @@ import {
   BarsSkeleton,
   HeatmapSkeleton,
   Skeleton,
-} from './components/Skeleton';
+} from './components/design-system/atoms/Skeleton/Skeleton';
 import { compact, usd, hourLabel, dayLabel, shortModel } from './lib/format';
 
 const POLL = 5000;
 
-type Tab = 'live' | 'trends' | 'models' | 'sessions';
+type Tab = 'live' | 'agents' | 'trends' | 'models' | 'insights' | 'sessions';
 
 const TABS: { id: Tab; label: string }[] = [
-  { id: 'live', label: '⚡ Live' },
+  { id: 'live', label: '⚡ Live Usage' },
+  { id: 'agents', label: '🤖 Agents · Live Activity' },
   { id: 'trends', label: '📈 Trends' },
   { id: 'models', label: '🧠 Models' },
+  { id: 'insights', label: '🔍 Insights' },
   { id: 'sessions', label: '📋 Sessions' },
 ];
 
-function Section({
-  title,
-  children,
-  right,
-  className = '',
-  grow = false,
-}: {
-  title: string;
-  children: React.ReactNode;
-  right?: React.ReactNode;
-  className?: string;
-  grow?: boolean;
-}) {
-  return (
-    <div className={`card p-5 ${grow ? 'flex flex-col h-full' : ''} ${className}`}>
-      <div className="mb-4 flex items-center justify-between">
-        <h2 className="text-sm font-semibold text-zinc-300">{title}</h2>
-        {right}
-      </div>
-      <div className={grow ? 'flex-1 flex flex-col justify-end' : ''}>{children}</div>
-    </div>
-  );
-}
-
-/** API spending gauges — only rendered when at least one limit is configured */
-function SpendingLimits({ limits, costPerDay }: { limits: Limits; costPerDay: number }) {
-  const rows = [
-    limits.dailyLimit != null
-      ? { label: 'Daily', cost: costPerDay, limit: limits.dailyLimit }
-      : null,
-    limits.weeklyLimit != null
-      ? { label: 'Weekly', cost: costPerDay * 7, limit: limits.weeklyLimit }
-      : null,
-    limits.monthlyLimit != null
-      ? { label: 'Monthly (est.)', cost: costPerDay * 30, limit: limits.monthlyLimit }
-      : null,
-  ].filter(Boolean) as { label: string; cost: number; limit: number }[];
-
-  if (rows.length === 0) return null;
-
-  return (
-    <div className="card p-5">
-      <div className="mb-4 flex items-center justify-between">
-        <h3 className="text-sm font-bold uppercase tracking-wider text-zinc-500">API Spending</h3>
-        <span className="text-xs text-zinc-600">estimated from local logs</span>
-      </div>
-      <div className="space-y-4">
-        {rows.map(({ label, cost, limit }) => {
-          const pct = Math.min(100, (cost / limit) * 100);
-          const color = pct > 90 ? '#ef4444' : pct > 70 ? '#f59e0b' : '#10b981';
-          return (
-            <div key={label}>
-              <div className="mb-1.5 flex items-center justify-between text-xs">
-                <span className="font-medium text-zinc-300">{label}</span>
-                <span className="font-mono" style={{ color }}>
-                  ${cost.toFixed(2)}{' '}
-                  <span className="text-zinc-600">/ ${limit}</span>
-                  <span className="ml-1.5 text-zinc-500">({pct.toFixed(0)}%)</span>
-                </span>
-              </div>
-              <div className="h-1.5 w-full overflow-hidden rounded-full bg-ink-600">
-                <div
-                  className="h-full rounded-full transition-all duration-700"
-                  style={{ width: `${pct}%`, background: color }}
-                />
-              </div>
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-function OfflineBanner({ error }: { error: string }) {
-  const [dismissed, setDismissed] = useState(false);
-  if (dismissed) return null;
-
-  const isExpired = error.toLowerCase().includes('expired');
-  const isNoToken = error.toLowerCase().includes('no access token');
-
-  return (
-    <div className="flex items-start gap-3 rounded-xl border border-amber-500/20 bg-amber-500/8 px-4 py-3 text-sm">
-      <span className="text-xl mt-0.5 shrink-0">{isExpired ? '🔑' : '📡'}</span>
-      <div className="flex-1 min-w-0">
-        <p className="font-semibold text-amber-300">
-          {isExpired || isNoToken
-            ? 'Claude.ai session expired'
-            : 'Claude.ai connection offline'}
-        </p>
-        <p className="text-amber-300/70 text-xs mt-0.5 font-sans leading-relaxed">
-          {isExpired || isNoToken ? (
-            <>
-              Token needs a refresh — just run Claude Code in your terminal and it refreshes automatically.
-              <br />
-              <span className="font-mono text-amber-400 mt-1.5 inline-block">
-                # macOS Terminal / Linux / Windows:
-              </span>
-              <br />
-              <code className="font-mono text-amber-200 bg-amber-500/10 px-1.5 py-0.5 rounded">claude</code>
-              <span className="text-amber-400 mx-2">&nbsp;or&nbsp;</span>
-              <code className="font-mono text-amber-200 bg-amber-500/10 px-1.5 py-0.5 rounded">claude --help</code>
-            </>
-          ) : (
-            <>
-              {error}{' '}
-              <span className="text-amber-400 font-semibold">
-                — try running <code className="font-mono bg-amber-500/10 px-1.5 py-0.5 rounded text-amber-200">claude</code> in a terminal.
-              </span>
-            </>
-          )}
-        </p>
-      </div>
-      <button
-        onClick={() => setDismissed(true)}
-        className="text-amber-500/50 hover:text-amber-300 transition-colors text-lg leading-none shrink-0 mt-0.5"
-        title="Dismiss"
-      >
-        ×
-      </button>
-    </div>
-  );
-}
+type InsightDays = '7' | '14' | '30';
+const INSIGHT_DAY_OPTIONS: { value: InsightDays; label: string }[] = [
+  { value: '7', label: '7d' },
+  { value: '14', label: '14d' },
+  { value: '30', label: '30d' },
+];
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState<Tab>('live');
+  const location = useLocation();
+  const navigate = useNavigate();
+  const seg = location.pathname.replace(/^\//, '');
+  const activeTab: Tab = TABS.some((t) => t.id === seg) ? (seg as Tab) : 'live';
   const [weekDays, setWeekDays] = useState(7);
   const [recentHours, setRecentHours] = useState(12);
   const [dailyMetric, setDailyMetric] = useState<'tokens' | 'cost'>('tokens');
@@ -180,8 +83,23 @@ export default function App() {
   const liveUsage = usePolling<LiveUsageData>('/api/usage/live', 15000);
   const heatmap = usePolling<HeatmapData>('/api/heatmap?days=90', 60000);
   const projectCosts = usePolling<ProjectData>('/api/projects?days=90', 30000);
+  const liveSubagents = usePolling<LiveSubagents>('/api/subagents/live', 4000);
+  const version = usePolling<VersionInfo>('/api/version', 1_800_000);
   const [limits, setLimits] = useLimits();
   const [showLimits, setShowLimits] = useState(false);
+
+  // Insights tab state
+  const [insightDays, setInsightDays] = useState<InsightDays>('7');
+  const insightDaysNum = insightDays;
+  const insightErrors = usePolling<InsightsErrors>(`/api/insights/errors?days=${insightDaysNum}`, 60000);
+  const insightRetries = usePolling<InsightsRetries>(`/api/insights/retries?days=${insightDaysNum}`, 60000);
+  const insightLanguages = usePolling<InsightsLanguages[]>(`/api/insights/languages?days=${insightDaysNum}`, 60000);
+  const insightBranches = usePolling<InsightsBranches[]>(`/api/insights/branches?days=${insightDaysNum}`, 60000);
+  const insightMcp = usePolling<InsightsMcp>(`/api/insights/mcp?days=${insightDaysNum}`, 60000);
+  const insightComplexity = usePolling<ComplexityPoint[]>(`/api/insights/complexity?days=${insightDaysNum}`, 60000);
+  const insightYield = usePolling<InsightsYield>(`/api/insights/yield?days=${insightDaysNum}`, 60000);
+  const insightRejections = usePolling<InsightsRejections>(`/api/insights/rejections?days=${insightDaysNum}`, 60000);
+  const insightSubagents = usePolling<SubagentStats>(`/api/insights/subagents?days=${insightDaysNum}`, 60000);
 
   const error = recent.error || weekly.error;
   const empty =
@@ -246,12 +164,15 @@ export default function App() {
         <LimitsPanel limits={limits} onChange={setLimits} onClose={() => setShowLimits(false)} />
       )}
 
+      {/* New-version notice (all tabs) */}
+      <UpdateBanner data={version.data} />
+
       {/* Tab bar */}
       <div className="mb-6 flex gap-1 rounded-xl bg-ink-800/60 p-1 ring-1 ring-white/5">
         {TABS.map(({ id, label }) => (
           <button
             key={id}
-            onClick={() => setActiveTab(id)}
+            onClick={() => navigate(`/${id}`)}
             className={`flex-1 rounded-lg px-4 py-2.5 text-sm font-medium transition-all duration-200 ${
               activeTab === id
                 ? 'bg-ink-700 text-zinc-100 shadow-sm ring-1 ring-white/10'
@@ -326,6 +247,11 @@ export default function App() {
                 <SpendingLimits limits={limits} costPerDay={costPerDay} />
               )}
             </>
+          )}
+
+          {/* ── AGENTS TAB ── */}
+          {activeTab === 'agents' && (
+            <AgentActivity data={liveSubagents.data} loading={liveSubagents.loading} />
           )}
 
           {/* ── TRENDS TAB ── */}
@@ -506,11 +432,129 @@ export default function App() {
             </>
           )}
 
+          {/* ── INSIGHTS TAB ── */}
+          {activeTab === 'insights' && (
+            <>
+              {/* Header row: day selector */}
+              <div className="flex items-center justify-between">
+                <div className="text-sm text-zinc-500">Behavior analytics for the selected window</div>
+                <ToggleGroup<InsightDays>
+                  options={INSIGHT_DAY_OPTIONS}
+                  value={insightDays}
+                  onChange={setInsightDays}
+                />
+              </div>
+
+              {/* Top stat cards */}
+              <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+                <StatCard
+                  label="Error rate"
+                  value={
+                    insightErrors.data
+                      ? `${(insightErrors.data.errorRate * 100).toFixed(1)}%`
+                      : '—'
+                  }
+                  sub={
+                    insightErrors.data
+                      ? `${insightErrors.data.errors} errors / ${insightErrors.data.totalCalls} calls`
+                      : 'loading…'
+                  }
+                  accent="#f87171"
+                />
+                <StatCard
+                  label="One-shot rate"
+                  value={
+                    insightRetries.data
+                      ? `${(insightRetries.data.oneShotRate * 100).toFixed(1)}%`
+                      : '—'
+                  }
+                  sub={
+                    insightRetries.data
+                      ? `${insightRetries.data.retried} retried edits`
+                      : 'loading…'
+                  }
+                />
+                <StatCard
+                  label="Delegation rate"
+                  value={
+                    insightSubagents.data
+                      ? `${(insightSubagents.data.delegationRate * 100).toFixed(0)}%`
+                      : '—'
+                  }
+                  sub={
+                    insightSubagents.data
+                      ? `${insightSubagents.data.spawns} subagent spawns`
+                      : 'loading…'
+                  }
+                />
+                <StatCard
+                  label="Wasted tokens"
+                  value={
+                    insightRetries.data
+                      ? compact(insightRetries.data.wastedTokens)
+                      : '—'
+                  }
+                  sub={
+                    insightRetries.data
+                      ? `est. ${usd(insightRetries.data.wastedCost)} wasted`
+                      : 'loading…'
+                  }
+                  accent="#f59e0b"
+                />
+              </div>
+
+              {/* Tool errors — full width */}
+              <Section title="Tool errors · failure analysis">
+                <ErrorBreakdown data={insightErrors.data} />
+              </Section>
+
+              {/* Languages | Branches */}
+              <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+                <Section title="Languages · edits by file type">
+                  <LanguageBreakdown data={insightLanguages.data} />
+                </Section>
+                <Section title="Branches · token usage by git branch">
+                  <BranchBreakdown data={insightBranches.data} />
+                </Section>
+              </div>
+
+              {/* MCP | Rejections */}
+              <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+                <Section title="MCP vs built-in · tool call split">
+                  <McpBreakdown data={insightMcp.data} />
+                </Section>
+                <Section title="Permission rejections · by tool">
+                  <RejectionsPanel data={insightRejections.data} />
+                </Section>
+              </div>
+
+              {/* Complexity scatter — full width */}
+              <Section title="Session complexity · tool calls vs tokens (dot size = subagents)">
+                <ComplexityScatter data={insightComplexity.data} />
+              </Section>
+
+              {/* Yield | Subagent stats */}
+              <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+                <Section title="Yield · committed vs uncommitted sessions">
+                  <YieldPanel data={insightYield.data} />
+                </Section>
+                <Section title="Subagent stats · delegation analysis">
+                  <SubagentStatsPanel data={insightSubagents.data} />
+                </Section>
+              </div>
+
+              {/* Retry panel — standalone */}
+              <Section title="Edit retries · one-shot analysis">
+                <RetryPanel data={insightRetries.data} />
+              </Section>
+            </>
+          )}
+
           {/* ── SESSIONS TAB ── */}
           {activeTab === 'sessions' && (
             <>
               <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-                <div className="lg:col-span-1">
+                <div className="lg:col-span-1 self-start">
                   {config.data ? (
                     <ConfigProfile config={config.data} />
                   ) : config.loading ? (
@@ -549,6 +593,37 @@ export default function App() {
           )}
         </div>
       )}
+
+      {/* Footer credits */}
+      <footer className="mt-10 border-t border-white/5 pt-6 pb-2 text-center text-xs text-zinc-600">
+        <p>
+          Built by{' '}
+          <a
+            href="https://iftah.dev"
+            target="_blank"
+            rel="noreferrer"
+            className="font-medium text-zinc-400 transition-colors hover:text-clay-400"
+          >
+            Iftah Saar
+          </a>
+          {version.data?.current && (
+            <span className="text-zinc-700"> · v{version.data.current}</span>
+          )}
+          {version.data?.repoUrl && (
+            <>
+              {' · '}
+              <a
+                href={version.data.repoUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="transition-colors hover:text-zinc-400"
+              >
+                GitHub
+              </a>
+            </>
+          )}
+        </p>
+      </footer>
     </div>
   );
 }

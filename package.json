@@ -1,7 +1,7 @@
 {
   "name": "claude-dashboard",
   "private": false,
-  "version": "0.1.0",
+  "version": "0.1.1",
   "type": "module",
   "description": "Beautiful local dashboard for Claude Code usage — 5-hour blocks, weekly trends, model breakdown, tool usage and an activity heatmap, read straight from your ~/.claude logs.",
   "license": "MIT",
@@ -25,9 +25,11 @@
     "docker:logs": "docker compose logs -f"
   },
   "dependencies": {
+    "class-variance-authority": "^0.7.1",
     "express": "^4.21.2",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
+    "react-router-dom": "^7.17.0",
     "recharts": "^2.13.3"
   },
   "devDependencies": {
