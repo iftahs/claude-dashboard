@@ -46,10 +46,11 @@ import { compact, usd, hourLabel, dayLabel, shortModel } from './lib/format';
 
 const POLL = 5000;
 
-type Tab = 'live' | 'trends' | 'models' | 'insights' | 'sessions';
+type Tab = 'live' | 'agents' | 'trends' | 'models' | 'insights' | 'sessions';
 
 const TABS: { id: Tab; label: string }[] = [
-  { id: 'live', label: '⚡ Live' },
+  { id: 'live', label: '⚡ Live Usage' },
+  { id: 'agents', label: '🤖 Agents · Live Activity' },
   { id: 'trends', label: '📈 Trends' },
   { id: 'models', label: '🧠 Models' },
   { id: 'insights', label: '🔍 Insights' },
@@ -237,14 +238,16 @@ export default function App() {
                 <PlanUsage block={block} weekly={weekly.data} liveUsage={liveUsage.data} />
               )}
 
-              {/* Agent live activity */}
-              <AgentActivity data={liveSubagents.data} loading={liveSubagents.loading} />
-
               {/* API spending gauges (only when limits configured) */}
               {hasSpendingLimits && (
                 <SpendingLimits limits={limits} costPerDay={costPerDay} />
               )}
             </>
+          )}
+
+          {/* ── AGENTS TAB ── */}
+          {activeTab === 'agents' && (
+            <AgentActivity data={liveSubagents.data} loading={liveSubagents.loading} />
           )}
 
           {/* ── TRENDS TAB ── */}
