@@ -437,14 +437,14 @@ async function computeLiveSubagents(): Promise<LiveSubagentsData> {
     }
 
     // A session pulses as "active" while written to in the last 30s, lingers dimmed for
-    // up to a minute of silence, then drops — unless it still hosts live subagents
-    // nested under it (so children have a home). A silent parent with running children
-    // is "delegating" — its own transcript is idle but work happens on its behalf.
+    // up to a minute of silence, then drops — unless it still hosts RUNNING subagents
+    // (so children have a home). Completed children don't keep an idle parent alive.
+    // A silent parent with running children is "delegating".
     const MAIN_ACTIVE = 30_000;
     const MAIN_LINGER = 60_000;
     const sinceWrite = now - pf.mtime;
     const selfActive = sinceWrite < MAIN_ACTIVE;
-    if (parsed.main.hasAssistant && (sinceWrite < MAIN_LINGER || childCount > 0)) {
+    if (parsed.main.hasAssistant && (sinceWrite < MAIN_LINGER || runningChildren > 0)) {
       mainAgents.push({
         key: pf.path,
         title: parsed.main.title || project,
