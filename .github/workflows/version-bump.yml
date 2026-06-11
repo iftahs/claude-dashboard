@@ -1,12 +1,14 @@
 name: Auto version bump
 
-# Bumps the patch version in package.json on every PR merged into main, so the
-# in-app "update available" banner fires when new code ships. The bump commit is
-# tagged [skip ci] to avoid retriggering this workflow.
+# Bumps the patch version in package.json on the PR's OWN branch while the PR is
+# open, so once it merges main carries a fresh version and the in-app "update
+# available" banner fires. Nothing is ever pushed to protected main, and the bot
+# never opens or approves a PR. Runs only for same-repo branches (the token
+# can't push to forks — fork PRs should bump the version manually).
 
 on:
   pull_request:
-    types: [closed]
+    types: [opened, synchronize, reopened]
     branches: [main]
 
 permissions:
@@ -14,22 +16,40 @@ permissions:
 
 jobs:
   bump:
-    if: github.event.pull_request.merged == true
+    # Skip fork PRs: GITHUB_TOKEN has no write access to the fork's branch.
+    if: github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: main
+          ref: ${{ github.event.pull_request.head.ref }}
           token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
 
       - uses: actions/setup-node@v4
         with:
           node-version: 20
 
-      - name: Bump patch version
+      - name: Bump patch version once per PR
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          npm version patch --no-git-tag-version
-          git commit -am "chore: bump version to $(node -p "require('./package.json').version") [skip ci]"
-          git push origin main
+
+          # Compare this branch's version against main. If they already differ,
+          # the bump for this PR has happened — skip. This also breaks the loop:
+          # our own bump push re-triggers `synchronize`, but by then the versions
+          # differ, so the second run is a no-op.
+          git fetch origin main --depth=1
+          git show origin/main:package.json > main-package.json
+          MAIN_VERSION=$(node -p "require('./main-package.json').version")
+          HEAD_VERSION=$(node -p "require('./package.json').version")
+          rm -f main-package.json
+
+          if [ "$HEAD_VERSION" != "$MAIN_VERSION" ]; then
+            echo "Version already bumped for this PR ($MAIN_VERSION -> $HEAD_VERSION); skipping."
+            exit 0
+          fi
+
+          NEW_VERSION=$(npm version patch --no-git-tag-version)
+          git commit -am "chore: bump version to $NEW_VERSION"
+          git push origin "HEAD:${{ github.event.pull_request.head.ref }}"
