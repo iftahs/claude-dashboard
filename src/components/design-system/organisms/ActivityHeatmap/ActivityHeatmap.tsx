@@ -65,7 +65,7 @@ export function ActivityHeatmap({ days }: ActivityHeatmapProps) {
                 <div className="text-[10px] font-bold text-zinc-500 pr-2 flex items-center justify-end h-full min-w-[28px] select-none">
                   {weekdayLabel}
                 </div>
-                {columns.map((col) => {
+                {columns.map((col, ci) => {
                   const cell = col[rowIndex];
                   const isFutureDay = isFuture(cell.date);
                   const d = new Date(cell.date + 'T00:00:00');
@@ -73,6 +73,8 @@ export function ActivityHeatmap({ days }: ActivityHeatmapProps) {
                   const hasActivity = cell.effectiveTokens > 0;
                   const isHovered = hoveredDate === cell.date;
                   const tooltipPosition = rowIndex === 0 ? 'below' : 'above';
+                  // Anchor edge columns so the nowrap tooltip stays inside the scroll container.
+                  const tooltipAlign = ci >= WEEKS - 2 ? 'right' : ci <= 1 ? 'left' : 'center';
                   return (
                     <div
                       key={cell.date}
@@ -98,7 +100,7 @@ export function ActivityHeatmap({ days }: ActivityHeatmapProps) {
                         </div>
                       ) : null}
                       {isHovered && (
-                        <HoverTooltip position={tooltipPosition}>
+                        <HoverTooltip position={tooltipPosition} align={tooltipAlign}>
                           <span className="text-zinc-300">{cell.date}</span>
                           <span className="text-zinc-500 mx-1">·</span>
                           <span className="text-zinc-300">{compact(cell.effectiveTokens)} tokens</span>

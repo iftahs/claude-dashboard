@@ -55,7 +55,10 @@ export function PeakHoursHeatmap({ grid }: PeakHoursHeatmapProps) {
               onMouseLeave={() => setTooltip(null)}
             >
               {tooltip?.day === dayIdx && tooltip?.hour === hourIdx && value > 0 && (
-                <HoverTooltip position="above">
+                <HoverTooltip
+                  position="above"
+                  align={hourIdx >= HOURS.length - 3 ? 'right' : hourIdx <= 2 ? 'left' : 'center'}
+                >
                   <span className="text-zinc-300 font-semibold">{DAYS[dayIdx]}</span>
                   <span className="text-zinc-500 mx-1">·</span>
                   <span className="text-zinc-400">{formatHour(hourIdx)}</span>
