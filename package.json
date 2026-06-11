@@ -1,7 +1,7 @@
 {
   "name": "claude-dashboard",
   "private": false,
-  "version": "0.1.1",
+  "version": "0.1.2",
   "type": "module",
   "description": "Beautiful local dashboard for Claude Code usage — 5-hour blocks, weekly trends, model breakdown, tool usage and an activity heatmap, read straight from your ~/.claude logs.",
   "license": "MIT",

@@ -4,20 +4,27 @@ import type { UpdateBannerProps } from './types';
 const DISMISS_KEY = 'claude-dashboard-update-dismissed';
 type PullStatus = 'idle' | 'running' | 'done' | 'error';
 
-/** One-line copyable command chip with a copy button. */
-function CommandChip({ cmd }: { cmd: string }) {
+/**
+ * Copyable command chip. Takes the steps as separate commands and renders one
+ * per line — never joined with `&&`, which is a parse error in Windows
+ * PowerShell 5.1. Copying yields newline-separated commands, which run
+ * sequentially in cmd, PowerShell, and POSIX shells alike.
+ */
+function CommandChip({ cmds }: { cmds: string[] }) {
   const [copied, setCopied] = useState(false);
   return (
-    <span className="inline-flex items-center gap-2">
-      <code className="font-mono text-amber-200 bg-amber-500/10 px-1.5 py-0.5 rounded">{cmd}</code>
+    <span className="inline-flex items-start gap-2 align-top">
+      <code className="font-mono text-amber-200 bg-amber-500/10 px-1.5 py-0.5 rounded whitespace-pre-line">
+        {cmds.join('\n')}
+      </code>
       <button
         onClick={() => {
-          navigator.clipboard?.writeText(cmd);
+          navigator.clipboard?.writeText(cmds.join('\n'));
           setCopied(true);
           setTimeout(() => setCopied(false), 1500);
         }}
         className="text-amber-400/70 hover:text-amber-300 transition-colors"
-        title="Copy command"
+        title="Copy commands"
       >
         {copied ? '✓ copied' : '⧉ copy'}
       </button>
@@ -80,7 +87,7 @@ export function UpdateBanner({ data }: UpdateBannerProps) {
               You're running in Docker. Pull the latest code and rebuild the image:
               <br />
               <span className="mt-1.5 inline-block">
-                <CommandChip cmd="git pull && npm run docker:up" />
+                <CommandChip cmds={['git pull', 'npm run docker:up']} />
               </span>
             </>
           ) : pull === 'done' ? (
@@ -99,7 +106,7 @@ export function UpdateBanner({ data }: UpdateBannerProps) {
               <span className="text-red-400 font-semibold">Auto-update failed.</span> Run it manually:
               <br />
               <span className="mt-1.5 inline-block">
-                <CommandChip cmd="git pull && npm install" />
+                <CommandChip cmds={['git pull', 'npm install']} />
               </span>
               {pullMsg && <p className="mt-1 font-mono text-amber-400/60 break-all">{pullMsg}</p>}
             </>
