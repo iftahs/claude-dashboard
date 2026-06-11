@@ -161,6 +161,7 @@ function MainAgentCard({
   model,
   lastActivity,
   effectiveTokens,
+  active,
 }: {
   title: string;
   project: string;
@@ -168,18 +169,30 @@ function MainAgentCard({
   model: string;
   lastActivity: number;
   effectiveTokens: number;
+  active: boolean;
 }) {
   return (
     <div
-      className="card flex flex-col gap-2 p-4 border border-clay-500/15"
+      className={`card flex flex-col gap-2 p-4 border transition-all duration-500 ${
+        active ? 'border-clay-500/15' : 'border-white/5 opacity-60 saturate-50'
+      }`}
       style={{ animation: 'agent-enter 0.3s ease-out both' }}
     >
       <div className="flex items-center gap-2 min-w-0">
-        <span className="pulse-dot flex-none" />
+        {active ? (
+          <span className="pulse-dot flex-none" />
+        ) : (
+          <span className="h-1.5 w-1.5 rounded-full bg-zinc-600 flex-none" />
+        )}
         <span className="text-sm flex-none select-none">🖥</span>
         <span className="font-semibold text-zinc-100 text-sm truncate flex-1" title={title}>
           {title}
         </span>
+        {!active && (
+          <span className="flex-none rounded-full bg-zinc-700/40 text-zinc-400 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider">
+            Not Active
+          </span>
+        )}
         <ActiveAgoTicker lastActivity={lastActivity} />
       </div>
 
@@ -188,7 +201,7 @@ function MainAgentCard({
         {gitBranch && <span className="text-zinc-600 font-mono"> · {gitBranch}</span>}
       </p>
 
-      <WorkingBar />
+      {active && <WorkingBar />}
 
       <div className="flex items-center justify-between gap-2 flex-wrap">
         <ModelChip model={model} />
@@ -214,63 +227,101 @@ export function AgentActivity({ data, loading }: AgentActivityProps) {
   const mains = data?.mainAgents ?? [];
   const hasActivity = running.length > 0 || completed.length > 0 || mains.length > 0;
 
+  // Group subagents under their parent session; anything whose parent isn't shown
+  // (rotated/compacted away) falls back to a flat "Other subagents" group.
+  const mainKeys = new Set(mains.map((m) => m.key));
+  const orphanRunning = running.filter((r) => !mainKeys.has(r.parentKey));
+  const orphanCompleted = completed.filter((c) => !mainKeys.has(c.parentKey));
+
   return (
     <Section title="Agents · live activity">
       {loading && !data ? (
         <div className="h-10 flex items-center text-xs text-zinc-600">Loading…</div>
       ) : hasActivity ? (
-        <div className="flex flex-col gap-3">
-          {/* Main Claude Code sessions */}
-          {mains.length > 0 && (
-            <>
-              <GroupLabel>Main sessions</GroupLabel>
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
-                {mains.map((m) => (
-                  <MainAgentCard
-                    key={m.key}
-                    title={m.title}
-                    project={m.project}
-                    gitBranch={m.gitBranch}
-                    model={m.model}
-                    lastActivity={m.lastActivity}
-                    effectiveTokens={m.effectiveTokens}
-                  />
-                ))}
-              </div>
-            </>
-          )}
-
-          {/* Running subagent cards */}
-          {running.length > 0 && (
-            <>
-              {mains.length > 0 && <GroupLabel>Subagents</GroupLabel>}
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
-                {running.map((agent) => (
-                  <RunningCard
-                    key={agent.key}
-                    name={agent.name}
-                    description={agent.description}
-                    model={agent.model}
-                    startedAt={agent.startedAt}
-                    effectiveTokens={agent.effectiveTokens}
-                  />
-                ))}
-              </div>
-            </>
-          )}
-
-          {/* Recently completed rows */}
-          {completed.length > 0 && (
-            <div className="flex flex-col gap-1.5">
-              {completed.map((c, i) => (
-                <CompletedRow
-                  key={`${c.name}-${c.completedAt}-${i}`}
-                  name={c.name}
-                  description={c.description}
-                  model={c.model}
-                  completedAt={c.completedAt}
+        <div className="flex flex-col gap-4">
+          {/* Main Claude Code sessions, each with its subagents nested beneath */}
+          {mains.length > 0 && <GroupLabel>Main sessions</GroupLabel>}
+          {mains.map((m) => {
+            const kids = running.filter((r) => r.parentKey === m.key);
+            const done = completed.filter((c) => c.parentKey === m.key);
+            return (
+              <div key={m.key} className="flex flex-col gap-2">
+                <MainAgentCard
+                  title={m.title}
+                  project={m.project}
+                  gitBranch={m.gitBranch}
+                  model={m.model}
+                  lastActivity={m.lastActivity}
+                  effectiveTokens={m.effectiveTokens}
+                  active={m.active}
                 />
-              ))}
+                {(kids.length > 0 || done.length > 0) && (
+                  <div className="ml-3 flex flex-col gap-2 border-l border-white/10 pl-3 sm:ml-4 sm:pl-4">
+                    <GroupLabel>Subagents</GroupLabel>
+                    {kids.length > 0 && (
+                      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                        {kids.map((agent) => (
+                          <RunningCard
+                            key={agent.key}
+                            name={agent.name}
+                            description={agent.description}
+                            model={agent.model}
+                            startedAt={agent.startedAt}
+                            effectiveTokens={agent.effectiveTokens}
+                          />
+                        ))}
+                      </div>
+                    )}
+                    {done.length > 0 && (
+                      <div className="flex flex-col gap-1.5">
+                        {done.map((c) => (
+                          <CompletedRow
+                            key={c.key}
+                            name={c.name}
+                            description={c.description}
+                            model={c.model}
+                            completedAt={c.completedAt}
+                          />
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+
+          {/* Subagents whose parent session isn't shown */}
+          {(orphanRunning.length > 0 || orphanCompleted.length > 0) && (
+            <div className="flex flex-col gap-2">
+              <GroupLabel>{mains.length > 0 ? 'Other subagents' : 'Subagents'}</GroupLabel>
+              {orphanRunning.length > 0 && (
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                  {orphanRunning.map((agent) => (
+                    <RunningCard
+                      key={agent.key}
+                      name={agent.name}
+                      description={agent.description}
+                      model={agent.model}
+                      startedAt={agent.startedAt}
+                      effectiveTokens={agent.effectiveTokens}
+                    />
+                  ))}
+                </div>
+              )}
+              {orphanCompleted.length > 0 && (
+                <div className="flex flex-col gap-1.5">
+                  {orphanCompleted.map((c) => (
+                    <CompletedRow
+                      key={c.key}
+                      name={c.name}
+                      description={c.description}
+                      model={c.model}
+                      completedAt={c.completedAt}
+                    />
+                  ))}
+                </div>
+              )}
             </div>
           )}
         </div>

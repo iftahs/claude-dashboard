@@ -15,6 +15,8 @@ import { claudeDir } from './scan.ts';
 
 export interface LiveSubagent {
   key: string;
+  /** Parent session file path — links this subagent to its MainAgent.key. '' if orphaned. */
+  parentKey: string;
   name: string;
   description: string;
   model: string;
@@ -26,6 +28,9 @@ export interface LiveSubagent {
 }
 
 export interface RecentlyCompletedSubagent {
+  key: string;
+  /** Parent session file path — links this subagent to its MainAgent.key. '' if orphaned. */
+  parentKey: string;
   name: string;
   description: string;
   model: string;
@@ -41,6 +46,8 @@ export interface MainAgent {
   startedAt: number;
   lastActivity: number;
   effectiveTokens: number;
+  /** True when the session's own transcript is freshly active (not just hosting subagents). */
+  active: boolean;
   status: 'running';
 }
 
@@ -329,7 +336,7 @@ async function computeLiveSubagents(): Promise<LiveSubagentsData> {
   const now = Date.now();
   const THIRTY_MIN = 30 * 60_000;
   const ACTIVE_WINDOW = 5 * 60_000; // sidechain writes can pause during long LLM turns
-  const ONE_MIN = 60_000;
+  const COMPLETED_WINDOW = 10 * 60_000; // keep finished subagents on screen long enough to notice
 
   const allFiles = await listJsonl(projectsDir());
   const isSidechainPath = (p: string) => p.includes('/subagents/') || p.includes('\\subagents\\');
@@ -360,21 +367,7 @@ async function computeLiveSubagents(): Promise<LiveSubagentsData> {
     const parsed = await parseFileForAgentSpawns(pf.path);
     const project = projectNameFromPath(projectPathFromFile(pf.path));
     const notifiedAt = new Map(parsed.notifications.map((n) => [n.agentId, n.ts]));
-
-    // Main session counts as a live agent while its transcript is recently active.
-    if (parsed.main.hasAssistant && now - pf.mtime < ACTIVE_WINDOW) {
-      mainAgents.push({
-        key: pf.path,
-        title: parsed.main.title || project,
-        project,
-        gitBranch: parsed.main.gitBranch,
-        model: parsed.main.model,
-        startedAt: parsed.main.firstTs || pf.mtime,
-        lastActivity: Math.max(parsed.main.lastTs, pf.mtime),
-        effectiveTokens: parsed.main.effectiveTokens,
-        status: 'running',
-      });
-    }
+    let childCount = 0; // running or recently-completed subagents owned by this parent
 
     for (const spawn of parsed.spawns) {
       if (now - spawn.ts >= THIRTY_MIN) continue;
@@ -405,8 +398,16 @@ async function computeLiveSubagents(): Promise<LiveSubagentsData> {
               : undefined;
 
       if (doneAt !== undefined) {
-        if (now - doneAt < ONE_MIN) {
-          recentlyCompleted.push({ name: spawn.subagentType, description: spawn.description, model, completedAt: doneAt });
+        if (now - doneAt < COMPLETED_WINDOW) {
+          recentlyCompleted.push({
+            key: spawn.id || `${pf.path}:${spawn.ts}`,
+            parentKey: pf.path,
+            name: spawn.subagentType,
+            description: spawn.description,
+            model,
+            completedAt: doneAt,
+          });
+          childCount++;
         }
         continue;
       }
@@ -418,6 +419,7 @@ async function computeLiveSubagents(): Promise<LiveSubagentsData> {
 
       running.push({
         key: spawn.id,
+        parentKey: pf.path,
         name: spawn.subagentType,
         description: spawn.description,
         model,
@@ -425,6 +427,29 @@ async function computeLiveSubagents(): Promise<LiveSubagentsData> {
         lastActivity: sc ? Math.max(sc.lastTs, sc.mtime) : spawn.ts,
         effectiveTokens: sc?.effectiveTokens ?? 0,
         project,
+        status: 'running',
+      });
+      childCount++;
+    }
+
+    // A session pulses as "active" while written to in the last 30s, lingers dimmed for
+    // up to a minute of silence, then drops — unless it still hosts live subagents
+    // nested under it (so children have a home).
+    const MAIN_ACTIVE = 30_000;
+    const MAIN_LINGER = 60_000;
+    const sinceWrite = now - pf.mtime;
+    const selfActive = sinceWrite < MAIN_ACTIVE;
+    if (parsed.main.hasAssistant && (sinceWrite < MAIN_LINGER || childCount > 0)) {
+      mainAgents.push({
+        key: pf.path,
+        title: parsed.main.title || project,
+        project,
+        gitBranch: parsed.main.gitBranch,
+        model: parsed.main.model,
+        startedAt: parsed.main.firstTs || pf.mtime,
+        lastActivity: Math.max(parsed.main.lastTs, pf.mtime),
+        effectiveTokens: parsed.main.effectiveTokens,
+        active: selfActive,
         status: 'running',
       });
     }
@@ -435,6 +460,7 @@ async function computeLiveSubagents(): Promise<LiveSubagentsData> {
     if (claimedAgentIds.has(sc.agentId) || now - sc.mtime >= ACTIVE_WINDOW) continue;
     running.push({
       key: sc.agentId,
+      parentKey: '',
       name: 'subagent',
       description: sc.firstUserText.slice(0, 80),
       model: sc.model,
