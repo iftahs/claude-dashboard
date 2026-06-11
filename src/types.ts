@@ -8,6 +8,15 @@ export interface TokenTotals {
   cost: number;
 }
 
+export interface VersionInfo {
+  current: string;
+  latest: string | null;
+  updateAvailable: boolean;
+  isDocker: boolean;
+  repoUrl: string;
+  compareUrl: string;
+}
+
 export interface Bucket extends TokenTotals {
   start: number;
   byModel: Record<string, number>;
@@ -234,6 +243,7 @@ export interface SubagentStats {
 
 export interface LiveSubagent {
   key: string;
+  parentKey: string;
   name: string;
   description: string;
   model: string;
@@ -242,6 +252,15 @@ export interface LiveSubagent {
   effectiveTokens: number;
   project: string;
   status: 'running';
+}
+
+export interface RecentlyCompletedSubagent {
+  key: string;
+  parentKey: string;
+  name: string;
+  description: string;
+  model: string;
+  completedAt: number;
 }
 
 export interface MainAgent {
@@ -253,17 +272,14 @@ export interface MainAgent {
   startedAt: number;
   lastActivity: number;
   effectiveTokens: number;
+  active: boolean;
+  delegating: boolean;
   status: 'running';
 }
 
 export interface LiveSubagents {
   running: LiveSubagent[];
-  recentlyCompleted: {
-    name: string;
-    description: string;
-    model: string;
-    completedAt: number;
-  }[];
+  recentlyCompleted: RecentlyCompletedSubagent[];
   mainAgents: MainAgent[];
 }
 

@@ -162,6 +162,7 @@ function MainAgentCard({
   lastActivity,
   effectiveTokens,
   active,
+  delegating,
 }: {
   title: string;
   project: string;
@@ -170,16 +171,19 @@ function MainAgentCard({
   lastActivity: number;
   effectiveTokens: number;
   active: boolean;
+  delegating: boolean;
 }) {
+  // Three states: working on its own transcript, delegating to running subagents, or idle.
+  const working = active || delegating;
   return (
     <div
       className={`card flex flex-col gap-2 p-4 border transition-all duration-500 ${
-        active ? 'border-clay-500/15' : 'border-white/5 opacity-60 saturate-50'
+        working ? 'border-clay-500/15' : 'border-white/5 opacity-60 saturate-50'
       }`}
       style={{ animation: 'agent-enter 0.3s ease-out both' }}
     >
       <div className="flex items-center gap-2 min-w-0">
-        {active ? (
+        {working ? (
           <span className="pulse-dot flex-none" />
         ) : (
           <span className="h-1.5 w-1.5 rounded-full bg-zinc-600 flex-none" />
@@ -188,7 +192,12 @@ function MainAgentCard({
         <span className="font-semibold text-zinc-100 text-sm truncate flex-1" title={title}>
           {title}
         </span>
-        {!active && (
+        {delegating && (
+          <span className="flex-none rounded-full bg-indigo-500/10 text-indigo-300 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider">
+            Delegating
+          </span>
+        )}
+        {!working && (
           <span className="flex-none rounded-full bg-zinc-700/40 text-zinc-400 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider">
             Not Active
           </span>
@@ -201,7 +210,7 @@ function MainAgentCard({
         {gitBranch && <span className="text-zinc-600 font-mono"> · {gitBranch}</span>}
       </p>
 
-      {active && <WorkingBar />}
+      {working && <WorkingBar />}
 
       <div className="flex items-center justify-between gap-2 flex-wrap">
         <ModelChip model={model} />
@@ -254,6 +263,7 @@ export function AgentActivity({ data, loading }: AgentActivityProps) {
                   lastActivity={m.lastActivity}
                   effectiveTokens={m.effectiveTokens}
                   active={m.active}
+                  delegating={m.delegating}
                 />
                 {(kids.length > 0 || done.length > 0) && (
                   <div className="ml-3 flex flex-col gap-2 border-l border-white/10 pl-3 sm:ml-4 sm:pl-4">

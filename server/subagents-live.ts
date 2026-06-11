@@ -48,6 +48,8 @@ export interface MainAgent {
   effectiveTokens: number;
   /** True when the session's own transcript is freshly active (not just hosting subagents). */
   active: boolean;
+  /** True when the transcript is idle but the session still has running subagents. */
+  delegating: boolean;
   status: 'running';
 }
 
@@ -368,6 +370,7 @@ async function computeLiveSubagents(): Promise<LiveSubagentsData> {
     const project = projectNameFromPath(projectPathFromFile(pf.path));
     const notifiedAt = new Map(parsed.notifications.map((n) => [n.agentId, n.ts]));
     let childCount = 0; // running or recently-completed subagents owned by this parent
+    let runningChildren = 0; // currently-running only — drives the parent's "delegating" state
 
     for (const spawn of parsed.spawns) {
       if (now - spawn.ts >= THIRTY_MIN) continue;
@@ -430,11 +433,13 @@ async function computeLiveSubagents(): Promise<LiveSubagentsData> {
         status: 'running',
       });
       childCount++;
+      runningChildren++;
     }
 
     // A session pulses as "active" while written to in the last 30s, lingers dimmed for
     // up to a minute of silence, then drops — unless it still hosts live subagents
-    // nested under it (so children have a home).
+    // nested under it (so children have a home). A silent parent with running children
+    // is "delegating" — its own transcript is idle but work happens on its behalf.
     const MAIN_ACTIVE = 30_000;
     const MAIN_LINGER = 60_000;
     const sinceWrite = now - pf.mtime;
@@ -450,6 +455,7 @@ async function computeLiveSubagents(): Promise<LiveSubagentsData> {
         lastActivity: Math.max(parsed.main.lastTs, pf.mtime),
         effectiveTokens: parsed.main.effectiveTokens,
         active: selfActive,
+        delegating: !selfActive && runningChildren > 0,
         status: 'running',
       });
     }

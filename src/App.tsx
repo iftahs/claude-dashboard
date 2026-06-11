@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react';
 import { usePolling } from './hooks/usePolling';
 import { useLimits } from './hooks/useLimits';
-import type { ActivityData, ModelsData, RecentData, WeeklyData, ToolsData, ClaudeConfig, SessionMeta, LiveUsageData, HeatmapData, ProjectData, InsightsErrors, InsightsRetries, InsightsLanguages, InsightsBranches, InsightsMcp, ComplexityPoint, InsightsYield, InsightsRejections, SubagentStats, LiveSubagents } from './types';
+import type { ActivityData, ModelsData, RecentData, WeeklyData, ToolsData, ClaudeConfig, SessionMeta, LiveUsageData, HeatmapData, ProjectData, InsightsErrors, InsightsRetries, InsightsLanguages, InsightsBranches, InsightsMcp, ComplexityPoint, InsightsYield, InsightsRejections, SubagentStats, LiveSubagents, VersionInfo } from './types';
 import { StatCard } from './components/design-system/atoms/StatCard/StatCard';
 import { BlockGauge } from './components/design-system/organisms/BlockGauge/BlockGauge';
 import { UsageBarChart } from './components/design-system/organisms/UsageBarChart/UsageBarChart';
@@ -20,6 +20,7 @@ import { SessionHistoryTable } from './components/design-system/organisms/Sessio
 import { ExportButton } from './components/design-system/molecules/ExportButton/ExportButton';
 import { Section } from './components/design-system/molecules/Section/Section';
 import { OfflineBanner } from './components/design-system/molecules/OfflineBanner/OfflineBanner';
+import { UpdateBanner } from './components/design-system/molecules/UpdateBanner/UpdateBanner';
 import { SpendingLimits } from './components/design-system/molecules/SpendingLimits/SpendingLimits';
 import { ToggleGroup } from './components/design-system/atoms/ToggleGroup/ToggleGroup';
 import { ErrorBreakdown } from './components/design-system/organisms/ErrorBreakdown/ErrorBreakdown';
@@ -78,6 +79,7 @@ export default function App() {
   const heatmap = usePolling<HeatmapData>('/api/heatmap?days=90', 60000);
   const projectCosts = usePolling<ProjectData>('/api/projects?days=90', 30000);
   const liveSubagents = usePolling<LiveSubagents>('/api/subagents/live', 4000);
+  const version = usePolling<VersionInfo>('/api/version', 1_800_000);
   const [limits, setLimits] = useLimits();
   const [showLimits, setShowLimits] = useState(false);
 
@@ -157,6 +159,9 @@ export default function App() {
         <LimitsPanel limits={limits} onChange={setLimits} onClose={() => setShowLimits(false)} />
       )}
 
+      {/* New-version notice (all tabs) */}
+      <UpdateBanner data={version.data} />
+
       {/* Tab bar */}
       <div className="mb-6 flex gap-1 rounded-xl bg-ink-800/60 p-1 ring-1 ring-white/5">
         {TABS.map(({ id, label }) => (
@@ -227,13 +232,13 @@ export default function App() {
                 </div>
               </div>
 
-              {/* Subagent live activity */}
-              <AgentActivity data={liveSubagents.data} loading={liveSubagents.loading} />
-
               {/* Plan usage bars */}
               {config.data && (
                 <PlanUsage block={block} weekly={weekly.data} liveUsage={liveUsage.data} />
               )}
+
+              {/* Agent live activity */}
+              <AgentActivity data={liveSubagents.data} loading={liveSubagents.loading} />
 
               {/* API spending gauges (only when limits configured) */}
               {hasSpendingLimits && (
