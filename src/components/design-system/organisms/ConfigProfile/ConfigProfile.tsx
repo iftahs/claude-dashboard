@@ -1,5 +1,6 @@
 import { Badge } from '@/components/design-system/atoms/Badge/Badge';
 import type { ConfigProfileProps } from './types';
+import { formatPlan } from './utils';
 
 export function ConfigProfile({ config }: ConfigProfileProps) {
   if (!config) return null;
@@ -29,8 +30,11 @@ export function ConfigProfile({ config }: ConfigProfileProps) {
         </div>
         <div className="rounded-xl bg-ink-700/50 p-3 border border-white/5">
           <span className="text-[11px] text-zinc-500 uppercase tracking-wider block mb-0.5">Subscription</span>
-          <span className="text-sm font-semibold text-cyan-400 font-mono capitalize animate-pulse-slow">
-            {config.subscriptionType ?? 'free'}
+          <span
+            className="text-sm font-semibold text-cyan-400 font-mono animate-pulse-slow"
+            title="Read from ~/.claude/.credentials.json — updates when Claude Code refreshes its login token"
+          >
+            {formatPlan(config.subscriptionType)}
           </span>
         </div>
         <div className="rounded-xl bg-ink-700/50 p-3 border border-white/5">

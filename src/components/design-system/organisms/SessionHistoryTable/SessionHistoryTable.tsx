@@ -1,8 +1,172 @@
-import { useState, useMemo, Fragment } from 'react';
+import { useState, useMemo, Fragment, useEffect, useRef } from 'react';
 import { compact } from '@/lib/format';
 import { ExportButton } from '@/components/design-system/molecules/ExportButton/ExportButton';
+import { useTranscript } from '@/hooks/useTranscript';
+import { useSearch } from '@/hooks/useSearch';
 import type { SessionHistoryTableProps } from './types';
+import type { SessionTranscriptTurn } from '@/types';
 import { formatDate, getProjectName } from './utils';
+
+// ── Transcript viewer ──────────────────────────────────────────────────────
+
+function TurnBlock({ turn }: { turn: SessionTranscriptTurn }) {
+  const isUser = turn.role === 'user';
+  const ts = turn.ts ? new Date(turn.ts).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '';
+  return (
+    <div className={`flex gap-2 text-xs ${isUser ? '' : 'flex-row-reverse'}`}>
+      {/* Role icon */}
+      <span className="flex-none select-none text-base leading-none mt-0.5">
+        {isUser ? '🧑' : '🤖'}
+      </span>
+
+      <div className={`flex flex-col gap-1 min-w-0 flex-1 ${isUser ? '' : 'items-end'}`}>
+        {/* Header: timestamp + model */}
+        <div className={`flex items-center gap-2 flex-wrap ${isUser ? '' : 'flex-row-reverse'}`}>
+          {ts && <span className="text-zinc-600 font-mono">{ts}</span>}
+          {!isUser && turn.model && (
+            <span className="text-zinc-600 italic">{turn.model.replace(/^claude-/, '').replace(/-\d{8}$/, '')}</span>
+          )}
+        </div>
+
+        {/* Text block — omitted entirely for tool-only turns */}
+        {(turn.text || !turn.tools?.length) && (
+          <div
+            className={`rounded-xl px-3 py-2 max-h-[300px] overflow-y-auto leading-relaxed whitespace-pre-wrap break-words ${
+              isUser
+                ? 'bg-ink-700/50 text-zinc-300'
+                : 'bg-clay-500/5 text-zinc-300 border border-clay-500/10'
+            }`}
+            style={{ maxWidth: '85%' }}
+          >
+            {turn.text || <span className="italic text-zinc-600">(empty)</span>}
+          </div>
+        )}
+
+        {/* Tool chips */}
+        {!isUser && turn.tools && turn.tools.length > 0 && (
+          <div className="flex flex-wrap gap-1 justify-end">
+            {turn.tools.map((t, i) => (
+              <span
+                key={i}
+                className="rounded-full bg-ink-700 border border-white/5 px-2 py-0.5 text-zinc-400"
+                title={t.brief || t.name}
+              >
+                {t.name}
+                {t.brief && (
+                  <span className="ml-1 text-zinc-600 truncate max-w-[120px] inline-block align-bottom">
+                    {t.brief}
+                  </span>
+                )}
+              </span>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+interface TranscriptPaneProps {
+  sessionId: string;
+  onFetch: (id: string) => void;
+  state: { data: import('@/types').SessionTranscript | null; loading: boolean; error: string | null } | undefined;
+}
+
+function TranscriptPane({ sessionId, onFetch, state }: TranscriptPaneProps) {
+  // Trigger fetch on mount
+  useEffect(() => {
+    onFetch(sessionId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessionId]);
+
+  if (!state || state.loading) {
+    return (
+      <div className="py-4 flex items-center gap-2 text-xs text-zinc-600">
+        <span className="inline-block h-1.5 w-1.5 rounded-full bg-zinc-700 animate-pulse" />
+        Loading transcript…
+      </div>
+    );
+  }
+  if (state.error) {
+    return <div className="py-4 text-xs text-red-400">Failed to load transcript: {state.error}</div>;
+  }
+  if (!state.data) return null;
+
+  const { turns, truncated, totalTurns } = state.data;
+
+  return (
+    <div className="flex flex-col gap-3 pt-2">
+      {truncated && (
+        <div className="text-xs text-amber-400/70 bg-amber-500/5 border border-amber-500/10 rounded-lg px-3 py-1.5">
+          Long session — middle turns omitted. Showing {turns.length} of {totalTurns} turns.
+        </div>
+      )}
+      {turns.map((turn, i) => (
+        <TurnBlock key={i} turn={turn} />
+      ))}
+    </div>
+  );
+}
+
+// ── Search results strip ───────────────────────────────────────────────────
+
+function SearchStrip({
+  query,
+  onJump,
+}: {
+  query: string;
+  onJump: (sessionId: string) => void;
+}) {
+  const { results, loading } = useSearch(query);
+
+  if (query.length < 3) return null;
+
+  if (loading) {
+    return (
+      <div className="mb-3 rounded-xl bg-ink-700/40 border border-white/5 px-3 py-2 text-xs text-zinc-600">
+        Searching transcripts…
+      </div>
+    );
+  }
+
+  if (!results || results.length === 0) {
+    return (
+      <div className="mb-3 rounded-xl bg-ink-700/40 border border-white/5 px-3 py-2 text-xs text-zinc-600">
+        No transcript matches for "{query}"
+      </div>
+    );
+  }
+
+  return (
+    <div className="mb-3 rounded-xl bg-ink-700/40 border border-white/5 overflow-hidden">
+      <div className="px-3 py-2 border-b border-white/5 text-xs font-semibold text-zinc-400">
+        Found in {results.length} session transcript{results.length !== 1 ? 's' : ''}
+      </div>
+      <div className="divide-y divide-white/5">
+        {results.slice(0, 8).map((r) => (
+          <button
+            key={r.sessionId}
+            onClick={() => onJump(r.sessionId)}
+            className="w-full text-left px-3 py-2 hover:bg-white/5 transition-colors flex flex-col gap-0.5"
+          >
+            <div className="flex items-center gap-2 text-xs">
+              <span className="font-semibold text-zinc-300 truncate">{r.project || 'unknown'}</span>
+              <span className="text-zinc-600 flex-none">{r.date}</span>
+              {r.matches > 1 && (
+                <span className="text-clay-400 flex-none">{r.matches} matches</span>
+              )}
+            </div>
+            {r.snippet && (
+              <p className="text-xs text-zinc-500 line-clamp-1">{r.snippet}</p>
+            )}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ── Main table ─────────────────────────────────────────────────────────────
 
 export function SessionHistoryTable({
   sessions,
@@ -13,10 +177,21 @@ export function SessionHistoryTable({
   const [currentPage, setCurrentPage] = useState(1);
   const [expandedSessions, setExpandedSessions] = useState<Record<string, boolean>>({});
 
+  // Transcript hook — shared instance across table
+  const { getTranscript, states: transcriptStates } = useTranscript();
+
+  // Ref map to scroll-to rows
+  const rowRefs = useRef<Map<string, HTMLTableRowElement>>(new Map());
+
   const itemsPerPage = 5;
 
   const toggleExpand = (id: string) => {
-    setExpandedSessions((prev) => ({ ...prev, [id]: !prev[id] }));
+    setExpandedSessions((prev) => {
+      const next = { ...prev, [id]: !prev[id] };
+      // If expanding, trigger transcript fetch
+      if (next[id]) getTranscript(id);
+      return next;
+    });
   };
 
   const filteredSessions = useMemo(() => {
@@ -33,6 +208,22 @@ export function SessionHistoryTable({
     const start = (currentPage - 1) * itemsPerPage;
     return filteredSessions.slice(start, start + itemsPerPage);
   }, [filteredSessions, currentPage]);
+
+  // Jump to a session from search strip: expand it (navigate to its page if needed)
+  const jumpToSession = (sessionId: string) => {
+    const idx = filteredSessions.findIndex((s) => s.session_id === sessionId);
+    if (idx >= 0) {
+      const page = Math.floor(idx / itemsPerPage) + 1;
+      setCurrentPage(page);
+      setExpandedSessions((prev) => ({ ...prev, [sessionId]: true }));
+      getTranscript(sessionId);
+      // Scroll after a tick to let DOM update
+      setTimeout(() => {
+        const el = rowRefs.current.get(sessionId);
+        el?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      }, 80);
+    }
+  };
 
   return (
     <div className="card p-5 flex flex-col h-full">
@@ -79,6 +270,9 @@ export function SessionHistoryTable({
         </div>
       </div>
 
+      {/* Full-text search results strip */}
+      <SearchStrip query={search} onJump={jumpToSession} />
+
       <div className="flex-1 overflow-x-auto">
         <table className="w-full text-left text-xs border-collapse">
           <thead>
@@ -96,10 +290,15 @@ export function SessionHistoryTable({
                 const isExpanded = !!expandedSessions[s.session_id];
                 const projectName = getProjectName(s.project_path);
                 const totalToks = s.effective_tokens ?? (s.input_tokens ?? 0) + (s.output_tokens ?? 0);
+                const transcriptState = transcriptStates.get(s.session_id);
 
                 return (
                   <Fragment key={s.session_id}>
                     <tr
+                      ref={(el) => {
+                        if (el) rowRefs.current.set(s.session_id, el);
+                        else rowRefs.current.delete(s.session_id);
+                      }}
                       onClick={() => toggleExpand(s.session_id)}
                       className="hover:bg-white/5 transition-colors cursor-pointer"
                     >
@@ -165,7 +364,7 @@ export function SessionHistoryTable({
                             </div>
 
                             {/* Middle Col: Tool usage breakdown */}
-                            <div className="md:col-span-2">
+                            <div>
                               <span className="text-xs font-bold uppercase tracking-wider text-zinc-500 block mb-2">
                                 Tool Invocation Breakdown
                               </span>
@@ -187,6 +386,32 @@ export function SessionHistoryTable({
                                 <div className="text-zinc-600 italic">No tools were invoked in this session</div>
                               )}
                             </div>
+
+                            {/* Right col: transcript toggle / loading state */}
+                            <div className="md:col-span-1 flex flex-col">
+                              <span className="text-xs font-bold uppercase tracking-wider text-zinc-500 block mb-2">
+                                Transcript
+                                {transcriptState?.data && (
+                                  <span className="ml-2 normal-case font-normal text-zinc-600">
+                                    {transcriptState.data.turns.length} turns
+                                  </span>
+                                )}
+                              </span>
+                              {transcriptState?.error && (
+                                <div className="text-xs text-red-400">
+                                  {transcriptState.error}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Full-width transcript */}
+                          <div className="mt-4 border-t border-white/5 pt-4">
+                            <TranscriptPane
+                              sessionId={s.session_id}
+                              onFetch={getTranscript}
+                              state={transcriptStates.get(s.session_id)}
+                            />
                           </div>
                         </td>
                       </tr>

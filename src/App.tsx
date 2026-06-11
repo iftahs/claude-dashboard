@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react';
 import { usePolling } from './hooks/usePolling';
 import { useLimits } from './hooks/useLimits';
-import type { ActivityData, ModelsData, RecentData, WeeklyData, ToolsData, ClaudeConfig, SessionMeta, LiveUsageData, HeatmapData, ProjectData } from './types';
+import type { ActivityData, ModelsData, RecentData, WeeklyData, ToolsData, ClaudeConfig, SessionMeta, LiveUsageData, HeatmapData, ProjectData, InsightsErrors, InsightsRetries, InsightsLanguages, InsightsBranches, InsightsMcp, ComplexityPoint, InsightsYield, InsightsRejections, SubagentStats, LiveSubagents } from './types';
 import { StatCard } from './components/design-system/atoms/StatCard/StatCard';
 import { BlockGauge } from './components/design-system/organisms/BlockGauge/BlockGauge';
 import { UsageBarChart } from './components/design-system/organisms/UsageBarChart/UsageBarChart';
@@ -21,6 +21,17 @@ import { ExportButton } from './components/design-system/molecules/ExportButton/
 import { Section } from './components/design-system/molecules/Section/Section';
 import { OfflineBanner } from './components/design-system/molecules/OfflineBanner/OfflineBanner';
 import { SpendingLimits } from './components/design-system/molecules/SpendingLimits/SpendingLimits';
+import { ToggleGroup } from './components/design-system/atoms/ToggleGroup/ToggleGroup';
+import { ErrorBreakdown } from './components/design-system/organisms/ErrorBreakdown/ErrorBreakdown';
+import { LanguageBreakdown } from './components/design-system/organisms/LanguageBreakdown/LanguageBreakdown';
+import { BranchBreakdown } from './components/design-system/organisms/BranchBreakdown/BranchBreakdown';
+import { McpBreakdown } from './components/design-system/organisms/McpBreakdown/McpBreakdown';
+import { ComplexityScatter } from './components/design-system/organisms/ComplexityScatter/ComplexityScatter';
+import { YieldPanel } from './components/design-system/organisms/YieldPanel/YieldPanel';
+import { RetryPanel } from './components/design-system/organisms/RetryPanel/RetryPanel';
+import { RejectionsPanel } from './components/design-system/organisms/RejectionsPanel/RejectionsPanel';
+import { SubagentStatsPanel } from './components/design-system/organisms/SubagentStatsPanel/SubagentStatsPanel';
+import { AgentActivity } from './components/design-system/organisms/AgentActivity/AgentActivity';
 import {
   StatCardSkeleton,
   ChartSkeleton,
@@ -34,13 +45,21 @@ import { compact, usd, hourLabel, dayLabel, shortModel } from './lib/format';
 
 const POLL = 5000;
 
-type Tab = 'live' | 'trends' | 'models' | 'sessions';
+type Tab = 'live' | 'trends' | 'models' | 'insights' | 'sessions';
 
 const TABS: { id: Tab; label: string }[] = [
   { id: 'live', label: '⚡ Live' },
   { id: 'trends', label: '📈 Trends' },
   { id: 'models', label: '🧠 Models' },
+  { id: 'insights', label: '🔍 Insights' },
   { id: 'sessions', label: '📋 Sessions' },
+];
+
+type InsightDays = '7' | '14' | '30';
+const INSIGHT_DAY_OPTIONS: { value: InsightDays; label: string }[] = [
+  { value: '7', label: '7d' },
+  { value: '14', label: '14d' },
+  { value: '30', label: '30d' },
 ];
 
 export default function App() {
@@ -58,8 +77,22 @@ export default function App() {
   const liveUsage = usePolling<LiveUsageData>('/api/usage/live', 15000);
   const heatmap = usePolling<HeatmapData>('/api/heatmap?days=90', 60000);
   const projectCosts = usePolling<ProjectData>('/api/projects?days=90', 30000);
+  const liveSubagents = usePolling<LiveSubagents>('/api/subagents/live', 4000);
   const [limits, setLimits] = useLimits();
   const [showLimits, setShowLimits] = useState(false);
+
+  // Insights tab state
+  const [insightDays, setInsightDays] = useState<InsightDays>('7');
+  const insightDaysNum = insightDays;
+  const insightErrors = usePolling<InsightsErrors>(`/api/insights/errors?days=${insightDaysNum}`, 60000);
+  const insightRetries = usePolling<InsightsRetries>(`/api/insights/retries?days=${insightDaysNum}`, 60000);
+  const insightLanguages = usePolling<InsightsLanguages[]>(`/api/insights/languages?days=${insightDaysNum}`, 60000);
+  const insightBranches = usePolling<InsightsBranches[]>(`/api/insights/branches?days=${insightDaysNum}`, 60000);
+  const insightMcp = usePolling<InsightsMcp>(`/api/insights/mcp?days=${insightDaysNum}`, 60000);
+  const insightComplexity = usePolling<ComplexityPoint[]>(`/api/insights/complexity?days=${insightDaysNum}`, 60000);
+  const insightYield = usePolling<InsightsYield>(`/api/insights/yield?days=${insightDaysNum}`, 60000);
+  const insightRejections = usePolling<InsightsRejections>(`/api/insights/rejections?days=${insightDaysNum}`, 60000);
+  const insightSubagents = usePolling<SubagentStats>(`/api/insights/subagents?days=${insightDaysNum}`, 60000);
 
   const error = recent.error || weekly.error;
   const empty =
@@ -193,6 +226,9 @@ export default function App() {
                   </Section>
                 </div>
               </div>
+
+              {/* Subagent live activity */}
+              <AgentActivity data={liveSubagents.data} loading={liveSubagents.loading} />
 
               {/* Plan usage bars */}
               {config.data && (
@@ -381,6 +417,124 @@ export default function App() {
                 </Section>
               </div>
               <CostCalculation />
+            </>
+          )}
+
+          {/* ── INSIGHTS TAB ── */}
+          {activeTab === 'insights' && (
+            <>
+              {/* Header row: day selector */}
+              <div className="flex items-center justify-between">
+                <div className="text-sm text-zinc-500">Behavior analytics for the selected window</div>
+                <ToggleGroup<InsightDays>
+                  options={INSIGHT_DAY_OPTIONS}
+                  value={insightDays}
+                  onChange={setInsightDays}
+                />
+              </div>
+
+              {/* Top stat cards */}
+              <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+                <StatCard
+                  label="Error rate"
+                  value={
+                    insightErrors.data
+                      ? `${(insightErrors.data.errorRate * 100).toFixed(1)}%`
+                      : '—'
+                  }
+                  sub={
+                    insightErrors.data
+                      ? `${insightErrors.data.errors} errors / ${insightErrors.data.totalCalls} calls`
+                      : 'loading…'
+                  }
+                  accent="#f87171"
+                />
+                <StatCard
+                  label="One-shot rate"
+                  value={
+                    insightRetries.data
+                      ? `${(insightRetries.data.oneShotRate * 100).toFixed(1)}%`
+                      : '—'
+                  }
+                  sub={
+                    insightRetries.data
+                      ? `${insightRetries.data.retried} retried edits`
+                      : 'loading…'
+                  }
+                />
+                <StatCard
+                  label="Delegation rate"
+                  value={
+                    insightSubagents.data
+                      ? `${(insightSubagents.data.delegationRate * 100).toFixed(0)}%`
+                      : '—'
+                  }
+                  sub={
+                    insightSubagents.data
+                      ? `${insightSubagents.data.spawns} subagent spawns`
+                      : 'loading…'
+                  }
+                />
+                <StatCard
+                  label="Wasted tokens"
+                  value={
+                    insightRetries.data
+                      ? compact(insightRetries.data.wastedTokens)
+                      : '—'
+                  }
+                  sub={
+                    insightRetries.data
+                      ? `est. ${usd(insightRetries.data.wastedCost)} wasted`
+                      : 'loading…'
+                  }
+                  accent="#f59e0b"
+                />
+              </div>
+
+              {/* Tool errors — full width */}
+              <Section title="Tool errors · failure analysis">
+                <ErrorBreakdown data={insightErrors.data} />
+              </Section>
+
+              {/* Languages | Branches */}
+              <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+                <Section title="Languages · edits by file type">
+                  <LanguageBreakdown data={insightLanguages.data} />
+                </Section>
+                <Section title="Branches · token usage by git branch">
+                  <BranchBreakdown data={insightBranches.data} />
+                </Section>
+              </div>
+
+              {/* MCP | Rejections */}
+              <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+                <Section title="MCP vs built-in · tool call split">
+                  <McpBreakdown data={insightMcp.data} />
+                </Section>
+                <Section title="Permission rejections · by tool">
+                  <RejectionsPanel data={insightRejections.data} />
+                </Section>
+              </div>
+
+              {/* Complexity scatter — full width */}
+              <Section title="Session complexity · tool calls vs tokens (dot size = subagents)">
+                <ComplexityScatter data={insightComplexity.data} />
+              </Section>
+
+              {/* Yield | Subagent stats */}
+              <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+                <Section title="Yield · committed vs uncommitted sessions">
+                  <YieldPanel data={insightYield.data} />
+                </Section>
+                <Section title="Subagent stats · delegation analysis">
+                  <SubagentStatsPanel data={insightSubagents.data} />
+                </Section>
+              </div>
+
+              {/* Retry panel — standalone */}
+              <Section title="Edit retries · one-shot analysis">
+                <RetryPanel data={insightRetries.data} />
+              </Section>
             </>
           )}
 

@@ -42,6 +42,14 @@ export function PlanUsage({ block, weekly, liveUsage }: PlanUsageProps) {
   const weeklyRemainingMs = Math.max(0, weeklyResetsAt - now);
   const weeklyResetStr = noActiveWeekly ? 'on next msg' : formatRemainingDays(weeklyRemainingMs);
 
+  // Model-specific weekly limits — only present on some plans (e.g. Max exposes a Sonnet cap).
+  const modelLimits = hasLive
+    ? ([
+        { label: 'Weekly · Sonnet', info: liveUsage.seven_day_sonnet, color: '#10b981' },
+        { label: 'Weekly · Opus', info: liveUsage.seven_day_opus, color: '#a78bfa' },
+      ] as const).filter((l) => l.info != null)
+    : [];
+
   return (
     <div className="card p-5 flex flex-col justify-between flex-none">
       <div className="mb-4 flex items-center justify-between">
@@ -71,6 +79,26 @@ export function PlanUsage({ block, weekly, liveUsage }: PlanUsageProps) {
           </div>
           <ProgressBar pct={weeklyPct} variant="blue" />
         </div>
+
+        {/* Per-model weekly limits (shown only when the live API reports them) */}
+        {modelLimits.map(({ label, info, color }) => {
+          const pct = Math.round(info!.utilization);
+          const resetsAt = Date.parse(info!.resets_at);
+          const resetStr = info!.resets_at == null
+            ? 'on next msg'
+            : formatRemainingDays(Math.max(0, (isNaN(resetsAt) ? now : resetsAt) - now));
+          return (
+            <div key={label} className="space-y-1.5">
+              <div className="flex justify-between items-center text-xs">
+                <span className="font-semibold text-zinc-200">{label}</span>
+                <span className="text-zinc-400 font-mono">
+                  {pct}% <span className="text-zinc-600 font-sans">·</span> resets {resetStr}
+                </span>
+              </div>
+              <ProgressBar pct={pct} color={color} />
+            </div>
+          );
+        })}
       </div>
     </div>
   );
