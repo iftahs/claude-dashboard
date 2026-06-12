@@ -1,10 +1,20 @@
-name: Auto version bump
+name: Auto version bump and changelog
 
-# Bumps the patch version in package.json on the PR's OWN branch while the PR is
-# open, so once it merges main carries a fresh version and the in-app "update
-# available" banner fires. Nothing is ever pushed to protected main, and the bot
-# never opens or approves a PR. Runs only for same-repo branches (the token
-# can't push to forks — fork PRs should bump the version manually).
+# On each PR into main this does two things, in one run, on the PR's OWN branch:
+#   1. Bumps the patch version in package.json (once per PR), so once the PR merges
+#      main carries a fresh version and the in-app "update available" banner fires.
+#   2. Has GitHub Models (free; built-in GITHUB_TOKEN, no extra secret, no API bill)
+#      read the PR's changes and prepend a matching CHANGELOG.md entry.
+#
+# Both run in the SAME job, triggered by your push — NOT in a second workflow.
+# That's deliberate: a push made with GITHUB_TOKEN does not trigger new workflow
+# runs, so a separate changelog workflow would never fire after the bump push.
+#
+# The model writes only the ### Added / ### Changed / ### Fixed prose; the version
+# header, date, and release link are added in code so they can't be hallucinated.
+#
+# Nothing is pushed to protected main. Runs only for same-repo branches (the token
+# can't push to forks — fork PRs should bump + changelog manually).
 
 on:
   pull_request:
@@ -13,10 +23,14 @@ on:
 
 permissions:
   contents: write
+  models: read
+
+concurrency:
+  group: bump-changelog-${{ github.event.pull_request.head.ref }}
+  cancel-in-progress: false
 
 jobs:
   bump:
-    # Skip fork PRs: GITHUB_TOKEN has no write access to the fork's branch.
     if: github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     steps:
@@ -31,25 +45,117 @@ jobs:
           node-version: 20
 
       - name: Bump patch version once per PR
+        id: bump
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-          # Compare this branch's version against main. If they already differ,
-          # the bump for this PR has happened — skip. This also breaks the loop:
-          # our own bump push re-triggers `synchronize`, but by then the versions
-          # differ, so the second run is a no-op.
-          git fetch origin main --depth=1
-          git show origin/main:package.json > main-package.json
-          MAIN_VERSION=$(node -p "require('./main-package.json').version")
+          # Compare this branch's version against main. If they already differ, the
+          # bump for this PR has happened — keep the existing version. (A re-run from
+          # a later push is then a no-op for the bump.)
+          git fetch origin main
+          MAIN_VERSION=$(git show origin/main:package.json | node -p "JSON.parse(require('fs').readFileSync(0,'utf8')).version")
           HEAD_VERSION=$(node -p "require('./package.json').version")
-          rm -f main-package.json
 
-          if [ "$HEAD_VERSION" != "$MAIN_VERSION" ]; then
-            echo "Version already bumped for this PR ($MAIN_VERSION -> $HEAD_VERSION); skipping."
-            exit 0
+          if [ "$HEAD_VERSION" = "$MAIN_VERSION" ]; then
+            NEW_VERSION=$(npm version patch --no-git-tag-version)
+            NEW_VERSION=${NEW_VERSION#v}
+            git commit -am "chore: bump version to v$NEW_VERSION"
+            echo "Bumped $MAIN_VERSION -> $NEW_VERSION."
+          else
+            NEW_VERSION=$HEAD_VERSION
+            echo "Version already bumped for this PR ($NEW_VERSION)."
+          fi
+          echo "version=$NEW_VERSION" >> "$GITHUB_OUTPUT"
+
+          # Generate a changelog entry only if one for this version doesn't exist yet.
+          if [ -f CHANGELOG.md ] && grep -q "## \[$NEW_VERSION\]" CHANGELOG.md; then
+            echo "CHANGELOG already has an entry for $NEW_VERSION."
+            echo "gen=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "gen=true" >> "$GITHUB_OUTPUT"
           fi
 
-          NEW_VERSION=$(npm version patch --no-git-tag-version)
-          git commit -am "chore: bump version to $NEW_VERSION"
-          git push origin "HEAD:${{ github.event.pull_request.head.ref }}"
+      - name: Gather PR changes
+        if: steps.bump.outputs.gen == 'true'
+        run: |
+          {
+            echo "Commits in this release:"
+            echo
+            git log origin/main..HEAD --no-merges --pretty=format:'- %s%n%b'
+            echo
+            echo
+            echo "Files changed:"
+            git diff --stat origin/main...HEAD
+          } > "$RUNNER_TEMP/changes.txt"
+          echo "----- model input -----"
+          cat "$RUNNER_TEMP/changes.txt"
+
+      - name: Draft the entry with GitHub Models
+        if: steps.bump.outputs.gen == 'true'
+        id: ai
+        uses: actions/ai-inference@v1
+        with:
+          model: openai/gpt-4o-mini
+          max-completion-tokens: 500
+          prompt-file: ${{ runner.temp }}/changes.txt
+          system-prompt: |
+            You write changelog entries in the Keep a Changelog style.
+
+            You are given the commits and a diff stat for a single release. Output
+            ONLY the changelog body: one or more of the sections "### Added",
+            "### Changed", "### Fixed", each followed by "- " bullet lines.
+
+            Rules:
+            - Map feat -> Added, fix -> Fixed, everything else -> Changed.
+            - Omit any section that has no items.
+            - Bullets are concise, present-tense, and user-facing — describe the
+              effect on the user, not the commit. Do not just echo commit subjects.
+            - Ignore "chore: bump version" commits entirely.
+            - Do NOT include a version header, date, links, preamble, or code fences.
+            - If there are no user-facing changes, output exactly:
+              "### Changed\n- Internal maintenance and tooling."
+
+      - name: Insert the entry into CHANGELOG.md
+        if: steps.bump.outputs.gen == 'true'
+        env:
+          VERSION: ${{ steps.bump.outputs.version }}
+          RESPONSE_FILE: ${{ steps.ai.outputs['response-file'] }}
+        run: |
+          node - "$VERSION" "$RESPONSE_FILE" <<'NODE'
+          const fs = require('fs');
+          const [version, respFile] = process.argv.slice(2);
+
+          let body = fs.readFileSync(respFile, 'utf8').trim();
+          body = body.replace(/^```[a-z]*\s*/i, '').replace(/\s*```$/i, '').trim();
+          if (!body) {
+            console.log('Empty model response; leaving CHANGELOG untouched.');
+            process.exit(0);
+          }
+
+          const date = new Date().toISOString().slice(0, 10);
+          const file = 'CHANGELOG.md';
+          let md = fs.readFileSync(file, 'utf8');
+          const section = `## [${version}] - ${date}\n\n${body}\n\n`;
+
+          const idx = md.search(/^## \[/m);
+          md = idx === -1 ? md.trimEnd() + '\n\n' + section : md.slice(0, idx) + section + md.slice(idx);
+
+          const ref = md.match(/^\[(\d+\.\d+\.\d+)\]:\s*(\S+)\/releases\/tag\/v\1\s*$/m);
+          if (ref) {
+            const line = `[${version}]: ${ref[2]}/releases/tag/v${version}\n`;
+            const first = md.search(/^\[\d+\.\d+\.\d+\]:/m);
+            md = md.slice(0, first) + line + md.slice(first);
+          }
+
+          fs.writeFileSync(file, md);
+          console.log(`Inserted changelog entry for v${version}.`);
+          NODE
+
+          if ! git diff --quiet -- CHANGELOG.md; then
+            git add CHANGELOG.md
+            git commit -m "docs: update changelog for v$VERSION"
+          fi
+
+      - name: Push version + changelog to the PR branch
+        run: git push origin "HEAD:${{ github.event.pull_request.head.ref }}"
