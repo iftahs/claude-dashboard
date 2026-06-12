@@ -1,0 +1,116 @@
+name: Auto changelog
+
+# After `version-bump.yml` bumps the patch version on a PR branch, this workflow
+# has Claude read the PR's changes and prepend a matching entry to CHANGELOG.md
+# on the same branch — so the changelog lands together with the version on merge.
+#
+# Ordering & loop safety (both workflows run on the same `synchronize` events):
+#   - Skip until the version has actually been bumped (HEAD version != main version),
+#     so we never write an entry for a version that doesn't exist yet.
+#   - Skip if CHANGELOG.md already has a section for the current version. Claude's
+#     own push re-triggers `synchronize`; by then the section exists, so it's a no-op.
+# Runs only for same-repo branches (the token can't push to forks).
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    branches: [main]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: changelog-${{ github.event.pull_request.head.ref }}
+  cancel-in-progress: true
+
+jobs:
+  changelog:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    env:
+      # Lets the Claude step skip cleanly (no red check) until the secret is added.
+      HAS_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN != '' }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Decide whether an entry is needed
+        id: check
+        run: |
+          git fetch origin main --depth=1
+          git show origin/main:package.json > "$RUNNER_TEMP/main-package.json"
+          MAIN_VERSION=$(node -p "require('$RUNNER_TEMP/main-package.json').version")
+          HEAD_VERSION=$(node -p "require('./package.json').version")
+
+          # Version not bumped yet — version-bump.yml's push will re-trigger us.
+          if [ "$HEAD_VERSION" = "$MAIN_VERSION" ]; then
+            echo "Version not bumped yet ($HEAD_VERSION); skipping changelog."
+            echo "needs=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # Entry already written (our own push re-triggers this run).
+          if [ -f CHANGELOG.md ] && grep -q "## \[$HEAD_VERSION\]" CHANGELOG.md; then
+            echo "CHANGELOG already has an entry for $HEAD_VERSION; skipping."
+            echo "needs=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "needs=true" >> "$GITHUB_OUTPUT"
+          echo "version=$HEAD_VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Write changelog entry with Claude
+        if: steps.check.outputs.needs == 'true' && env.HAS_TOKEN == 'true'
+        uses: anthropics/claude-code-action@v1
+        with:
+          # Subscriber OAuth token (no API billing). Generate locally with
+          # `claude setup-token` and add it as a repo secret. To use a pay-as-you-go
+          # API key instead, swap this for: anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          claude_args: |
+            --model claude-sonnet-4-6
+            --max-turns 20
+            --allowedTools Read,Edit,Write,Bash
+          prompt: |
+            package.json was just bumped to version ${{ steps.check.outputs.version }}
+            for this pull request, but CHANGELOG.md has no entry for it yet. Add one.
+
+            1. Understand what this PR changes. Run:
+                 git log origin/main..HEAD --no-merges --pretty=format:'%s%n%b'
+                 git diff --stat origin/main...HEAD
+               Ignore the "chore: bump version" commit — it is not a user-facing change.
+
+            2. Prepend a new section to CHANGELOG.md, directly below the intro
+               paragraph and ABOVE the most recent existing version section:
+
+                 ## [${{ steps.check.outputs.version }}] - <today's date, UTC, YYYY-MM-DD>
+                 ### Added / ### Changed / ### Fixed
+                 - concise, user-facing bullets
+
+               Match the existing entries' style exactly: short, present-tense,
+               describing user-visible changes — NOT a commit dump. Use only the
+               Keep a Changelog groups that apply (omit empty ones). Map
+               feat→Added, fix→Fixed, everything else→Changed.
+
+            3. Add a link reference at the very bottom of the file, in the same
+               format as the existing ones:
+                 [${{ steps.check.outputs.version }}]: <repoUrl>/releases/tag/v${{ steps.check.outputs.version }}
+               (derive <repoUrl> from the existing link references).
+
+            4. Touch ONLY CHANGELOG.md. Do not change the version or any other file.
+
+            5. Commit and push to this PR branch:
+                 git config user.name "github-actions[bot]"
+                 git config user.email "github-actions[bot]@users.noreply.github.com"
+                 git add CHANGELOG.md
+                 git commit -m "docs: update changelog for v${{ steps.check.outputs.version }}"
+                 git push origin HEAD:${{ github.event.pull_request.head.ref }}
