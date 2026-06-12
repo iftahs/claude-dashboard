@@ -72,12 +72,12 @@ export function UpdateBanner({ data }: UpdateBannerProps) {
         <p className="font-semibold text-amber-300">
           Update available — v{data.current} → v{data.latest}{' '}
           <a
-            href={data.compareUrl}
+            href={data.changelogUrl}
             target="_blank"
             rel="noreferrer"
             className="font-normal text-amber-400/80 hover:text-amber-200 underline underline-offset-2"
           >
-            View changes ↗
+            View changelog ↗
           </a>
         </p>
 

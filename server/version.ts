@@ -14,7 +14,7 @@ export interface VersionInfo {
   updateAvailable: boolean;
   isDocker: boolean;
   repoUrl: string;
-  compareUrl: string;
+  changelogUrl: string;
 }
 
 interface LocalPackage {
@@ -107,7 +107,7 @@ export async function getVersionInfo(): Promise<VersionInfo> {
     updateAvailable,
     isDocker: isDocker(),
     repoUrl: local.repoUrl,
-    // GitHub renders this commit log even without a `v` tag (avoids a 404).
-    compareUrl: `${local.repoUrl}/commits/main`,
+    // Link the update banner straight to the changelog on GitHub.
+    changelogUrl: `${local.repoUrl}/blob/main/CHANGELOG.md`,
   };
 }

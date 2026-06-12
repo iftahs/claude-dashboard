@@ -28,7 +28,7 @@ export interface VersionInfo {
   updateAvailable: boolean;
   isDocker: boolean;
   repoUrl: string;
-  compareUrl: string;
+  changelogUrl: string;
 }
 
 export interface Bucket extends TokenTotals {
