@@ -7,10 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.1.5] - 2026-06-12
 
-### Changed
-- Improved the changelog generation process by utilizing GitHub Models for CI.
-- Introduced a new workflow for automatically writing changelog entries with Claude on each PR. 
-- Removed manual changelog entries to ensure consistency and accuracy in updates.
+### Added
+- Changelog entries are now generated automatically on every pull request: a free
+  GitHub Models step reads the PR's changes and writes the matching entry in CI.
 
 ## [0.1.4] - 2026-06-12
 
