@@ -8,6 +8,20 @@ export interface TokenTotals {
   cost: number;
 }
 
+export type UsageSource = 'code' | 'cowork';
+
+/** Effective-token totals split by surface (Code vs Cowork). */
+export interface SourceSplit {
+  code: TokenTotals;
+  cowork: TokenTotals;
+}
+
+/** /api/sources — which usage surfaces have local data. Gates all Cowork UI. */
+export interface SourcesInfo {
+  code: { events: number; lastTs: number };
+  cowork: { available: boolean; events: number; lastTs: number };
+}
+
 export interface VersionInfo {
   current: string;
   latest: string | null;
@@ -42,6 +56,7 @@ export interface RecentData {
   buckets: Bucket[];
   totals: TokenTotals;
   byModel: ModelShare[];
+  bySource?: SourceSplit;
   activeBlock: ActiveBlock;
 }
 
@@ -53,6 +68,7 @@ export interface WeeklyData {
   totals: TokenTotals;
   prevTotals: TokenTotals;
   byModel: ModelShare[];
+  bySource?: SourceSplit;
   cacheEfficiency?: { date: string; hitRate: number; cacheReadTokens: number; totalTokens: number }[];
 }
 
@@ -116,6 +132,7 @@ export interface ClaudeConfig {
 
 export interface SessionMeta {
   session_id: string;
+  source?: UsageSource;
   project_path: string;
   start_time: string;
   duration_minutes: number;
@@ -205,6 +222,7 @@ export interface InsightsLanguages {
 
 export interface InsightsBranches {
   branch: string;
+  repo: string;
   effectiveTokens: number;
   cost: number;
   sessions: number;

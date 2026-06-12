@@ -1,4 +1,5 @@
 import { ProgressBar } from '@/components/design-system/atoms/ProgressBar/ProgressBar';
+import { InfoTip } from '@/components/design-system/atoms/InfoTip/InfoTip';
 import { spendingBarColor } from './utils';
 import type { SpendingLimitsProps } from './types';
 
@@ -20,7 +21,10 @@ export function SpendingLimits({ limits, costPerDay }: SpendingLimitsProps) {
   return (
     <div className="card p-5">
       <div className="mb-4 flex items-center justify-between">
-        <h3 className="text-sm font-bold uppercase tracking-wider text-zinc-500">API Spending</h3>
+        <h3 className="flex items-center gap-1.5 text-sm font-bold uppercase tracking-wider text-zinc-500">
+          API Spending
+          <InfoTip text="Your estimated equivalent API spend against the daily/weekly/monthly USD caps you set (⚙ limits). Caps are stored locally in your browser — this is a budgeting aid, not a real bill." />
+        </h3>
         <span className="text-xs text-zinc-600">estimated from local logs</span>
       </div>
       <div className="space-y-4">

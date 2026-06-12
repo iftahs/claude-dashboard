@@ -1,8 +1,10 @@
 import { createReadStream } from 'node:fs';
 import { readdir, stat, readFile } from 'node:fs/promises';
-import { homedir } from 'node:os';
+import { homedir, platform } from 'node:os';
 import { join } from 'node:path';
 import { createInterface } from 'node:readline';
+
+export type UsageSource = 'code' | 'cowork';
 
 export interface UsageEvent {
   ts: number; // epoch ms
@@ -15,6 +17,7 @@ export interface UsageEvent {
   tools: string[]; // tool_use names invoked in this assistant message
   projectPath: string; // decoded path of the project directory
   gitBranch: string; // git branch at the time of the message ('' if unknown)
+  source: UsageSource; // 'code' = Claude Code CLI, 'cowork' = desktop local-agent mode
 }
 
 export function claudeDir(): string {
@@ -25,7 +28,57 @@ function projectsDir(): string {
   return join(claudeDir(), 'projects');
 }
 
-async function listJsonl(dir: string): Promise<string[]> {
+/**
+ * Claude Cowork ("local agent mode" in the desktop app) writes standard Claude
+ * Code JSONL transcripts under
+ *   <coworkDir>/<acct>/<profile>/<sessionId>/.claude/projects/**\/*.jsonl
+ * The desktop-app data root differs per OS. `COWORK_DIR` overrides it (used by
+ * the Docker mount). Returns '' when no plausible default exists.
+ */
+function coworkDir(): string {
+  if (process.env.COWORK_DIR) return process.env.COWORK_DIR;
+  const home = homedir();
+  switch (platform()) {
+    case 'win32': {
+      const appData = process.env.APPDATA || join(home, 'AppData', 'Roaming');
+      return join(appData, 'Claude', 'local-agent-mode-sessions');
+    }
+    case 'darwin':
+      return join(home, 'Library', 'Application Support', 'Claude', 'local-agent-mode-sessions');
+    default:
+      return join(home, '.config', 'Claude', 'local-agent-mode-sessions');
+  }
+}
+
+export interface ScanRoot {
+  dir: string;
+  source: UsageSource;
+}
+
+/**
+ * The directories scanned for usage events. Always the Claude Code projects dir;
+ * plus the Cowork desktop root when it exists on disk. Both the main scanner and
+ * the insights scanner walk this same list so the two stay in sync.
+ */
+export function scanRoots(): ScanRoot[] {
+  const roots: ScanRoot[] = [{ dir: projectsDir(), source: 'code' }];
+  const cw = coworkDir();
+  if (cw) roots.push({ dir: cw, source: 'cowork' });
+  return roots;
+}
+
+/**
+ * Cowork roots contain metadata (`local_*.json`), audit logs (`audit.jsonl`) and
+ * the nested `.claude/projects/` transcripts. Only the latter carry token usage,
+ * so cowork files are kept only when their path sits under a `.claude/projects/`
+ * segment. Code files are always kept.
+ */
+export function keepScanFile(file: string, source: UsageSource): boolean {
+  if (source === 'code') return true;
+  return /[\\/]\.claude[\\/]projects[\\/]/.test(file);
+}
+
+async function listJsonl(dir: string, source: UsageSource = 'code'): Promise<string[]> {
   let entries: string[] = [];
   let dirents;
   try {
@@ -36,17 +89,18 @@ async function listJsonl(dir: string): Promise<string[]> {
   for (const d of dirents) {
     const full = join(dir, d.name);
     if (d.isDirectory()) {
-      entries = entries.concat(await listJsonl(full));
-    } else if (d.isFile() && d.name.endsWith('.jsonl')) {
+      entries = entries.concat(await listJsonl(full, source));
+    } else if (d.isFile() && d.name.endsWith('.jsonl') && keepScanFile(full, source)) {
       entries.push(full);
     }
   }
   return entries;
 }
 
-/** Newest mtime across all jsonl files — used as a cheap cache-invalidation signal. */
+/** Newest mtime across all scanned jsonl files — a cheap cache-invalidation signal. */
 export async function projectsFingerprint(): Promise<number> {
-  const files = await listJsonl(projectsDir());
+  const fileLists = await Promise.all(scanRoots().map((r) => listJsonl(r.dir, r.source)));
+  const files = fileLists.flat();
   let newest = 0;
   await Promise.all(
     files.map(async (f) => {
@@ -69,15 +123,20 @@ async function parseFile(
   file: string,
   seen: Map<string, number>,
   out: UsageEvent[],
-  sessionPathMap?: Map<string, string>
+  sessionPathMap?: Map<string, string>,
+  source: UsageSource = 'code'
 ): Promise<void> {
   // Derive the OS path from the JSONL file path.
   // Claude encodes project dirs as: <drive-letter>--<path-segments-joined-by-->
   // e.g.  E--dev-projects-claude-dashboard  →  e:\dev-projects\claude-dashboard
   //       C--Users-Iftah-Saar-Desktop--Dev-Projects-my-landing-page-2026  →  c:\...
   // Rule: '--' is the OS path separator; single '-' stays as a literal dash.
+  // Cowork transcripts encode a sandbox-internal path that is meaningless on the
+  // host, so we leave projectPath empty for them (keeps them out of the Projects tab).
   let projectPath = '';
-  try {
+  if (source === 'cowork') {
+    // skip decoding — sandbox path is not a real host project
+  } else try {
     const parts = file.replace(/\\/g, '/').split('/');
     const projIdx = parts.lastIndexOf('projects');
     if (projIdx !== -1 && parts[projIdx + 1]) {
@@ -124,7 +183,9 @@ async function parseFile(
     }
 
     const sessionId = obj.sessionId ?? obj.session_id ?? '';
-    const resolvedProjectPath = (sessionPathMap && sessionId) ? (sessionPathMap.get(sessionId) ?? projectPath) : projectPath;
+    const resolvedProjectPath = (source === 'code' && sessionPathMap && sessionId)
+      ? (sessionPathMap.get(sessionId) ?? projectPath)
+      : projectPath;
     const gitBranch: string = typeof obj.gitBranch === 'string' ? obj.gitBranch : '';
 
     const event: UsageEvent = {
@@ -138,6 +199,7 @@ async function parseFile(
       tools,
       projectPath: resolvedProjectPath,
       gitBranch,
+      source,
     };
 
     // Dedup: same logical response can appear multiple times (retries/streaming).
@@ -169,11 +231,16 @@ export async function scanEvents(): Promise<UsageEvent[]> {
     }
   }
 
-  const files = await listJsonl(projectsDir());
+  // Shared dedup map across all roots: a session's cliSessionId can write to both
+  // the global projects dir and a cowork root, and the requestId:message.id key
+  // collapses those into one event regardless of which root it came from.
   const seen = new Map<string, number>();
   const out: UsageEvent[] = [];
-  for (const f of files) {
-    await parseFile(f, seen, out, sessionPathMap);
+  for (const root of scanRoots()) {
+    const files = await listJsonl(root.dir, root.source);
+    for (const f of files) {
+      await parseFile(f, seen, out, sessionPathMap, root.source);
+    }
   }
   out.sort((a, b) => a.ts - b.ts);
   return out;

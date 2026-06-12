@@ -6,4 +6,6 @@ export interface SectionProps {
   right?: ReactNode;
   className?: string;
   grow?: boolean;
+  /** Optional hover explanation shown via a "?" badge next to the title. */
+  help?: ReactNode;
 }

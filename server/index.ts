@@ -6,12 +6,12 @@ import { exec } from 'node:child_process';
 import { promisify } from 'node:util';
 import express from 'express';
 import { getEvents } from './cache.ts';
-import { buildRecent, buildWeekly, buildModels, buildActivity, buildTools, buildHourlyHeatmap, buildProjectStats } from './aggregate.ts';
+import { buildRecent, buildWeekly, buildModels, buildActivity, buildTools, buildHourlyHeatmap, buildProjectStats, filterSource, type SourceFilter } from './aggregate.ts';
 import { claudeDir, readConfig, readCredentials, readStatsSummary, readSessionMetas, fetchLiveUsage } from './scan.ts';
 import { getInsights } from './insights-scan.ts';
 import {
   buildErrors, buildRetries, buildLanguages, buildBranches, buildMcp,
-  buildComplexity, buildYield, buildRejections, buildSubagentStats,
+  buildComplexity, buildYield, buildRejections, buildSubagentStats, scopeInsights,
 } from './insights.ts';
 import { getLiveSubagents } from './subagents-live.ts';
 import { getVersionInfo, isDocker } from './version.ts';
@@ -23,6 +23,11 @@ const PORT = Number(process.env.SERVER_PORT ?? 8787);
 
 function wrap(data: unknown, computedAt: number) {
   return { data, computedAt, claudeDir: claudeDir() };
+}
+
+/** Parse the optional ?source=all|code|cowork filter (default 'all'). */
+function parseSource(raw: unknown): SourceFilter {
+  return raw === 'code' || raw === 'cowork' ? raw : 'all';
 }
 
 app.get('/api/health', (_req, res) => {
@@ -87,8 +92,9 @@ app.get('/api/stats/summary', async (_req, res) => {
 // this list. See readSessionMetas() / scan.ts.
 const WRITE_TOOLS = new Set(['Edit', 'Write', 'MultiEdit', 'NotebookEdit']);
 
-app.get('/api/sessions', async (_req, res) => {
+app.get('/api/sessions', async (req, res) => {
   try {
+    const source = parseSource(req.query.source);
     const { events } = await getEvents();
     const { insights } = await getInsights();
     const sidecar = await readSessionMetas();
@@ -141,6 +147,7 @@ app.get('/api/sessions', async (_req, res) => {
     for (const sm of insights.sessionsMeta.values()) {
       if (sm.isSidechain || !sm.sessionId) continue; // skip subagent-only sessions
       if (sm.assistantMsgs === 0) continue;           // skip empty/aborted shells
+      if (source !== 'all' && sm.source !== source) continue; // surface filter
 
       const stats = eventStats.get(sm.sessionId);
       const agg = toolAgg.get(sm.sessionId);
@@ -155,6 +162,7 @@ app.get('/api/sessions', async (_req, res) => {
 
       result.push({
         session_id: sm.sessionId,
+        source: sm.source,
         project_path: sm.projectPath,
         start_time: new Date(sm.firstTs).toISOString(),
         duration_minutes: Math.max(0, Math.round((sm.lastTs - sm.firstTs) / 60000)),
@@ -181,14 +189,17 @@ app.get('/api/sessions', async (_req, res) => {
 
     // Preserve older sessions whose transcripts are gone from disk but whose
     // sidecar metadata survives — append them so the list never regresses.
+    // Sidecars are Claude Code only, so skip them when scoped to Cowork.
     const liveIds = new Set(result.map((r) => r.session_id));
     for (const s of sidecar) {
+      if (source === 'cowork') break;
       if (liveIds.has(s.session_id)) continue;
       const stats = eventStats.get(s.session_id);
       const in_tok = s.input_tokens ?? 0;
       const out_tok = s.output_tokens ?? 0;
       result.push({
         session_id: s.session_id,
+        source: 'code' as const,
         project_path: s.project_path,
         start_time: s.start_time,
         duration_minutes: s.duration_minutes ?? 0,
@@ -220,6 +231,26 @@ app.get('/api/sessions', async (_req, res) => {
   }
 });
 
+// Reports which usage surfaces have local data. The frontend gates all Cowork
+// UI (source toggle, Sources card, ?source= params) on cowork.available so that
+// Code-only users see exactly the original dashboard.
+app.get('/api/sources', async (_req, res) => {
+  try {
+    const { events, computedAt } = await getEvents();
+    let codeN = 0, coworkN = 0, codeLast = 0, coworkLast = 0;
+    for (const e of events) {
+      if (e.source === 'cowork') { coworkN++; if (e.ts > coworkLast) coworkLast = e.ts; }
+      else { codeN++; if (e.ts > codeLast) codeLast = e.ts; }
+    }
+    res.json(wrap({
+      code: { events: codeN, lastTs: codeLast },
+      cowork: { available: coworkN > 0, events: coworkN, lastTs: coworkLast },
+    }, computedAt));
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
 app.get('/api/usage/live', async (_req, res) => {
   try {
     const liveUsage = await fetchLiveUsage();
@@ -234,7 +265,8 @@ app.get('/api/usage/recent', async (req, res) => {
   try {
     const hours = Math.max(1, Math.min(72, Number(req.query.hours ?? 12)));
     const { events, computedAt } = await getEvents();
-    res.json(wrap(buildRecent(events, Date.now(), hours), computedAt));
+    const scoped = filterSource(events, parseSource(req.query.source));
+    res.json(wrap(buildRecent(scoped, Date.now(), hours), computedAt));
   } catch (e) {
     res.status(500).json({ error: String(e) });
   }
@@ -244,7 +276,8 @@ app.get('/api/usage/weekly', async (req, res) => {
   try {
     const days = Math.max(7, Math.min(28, Number(req.query.days ?? 7)));
     const { events, computedAt } = await getEvents();
-    res.json(wrap(buildWeekly(events, Date.now(), days), computedAt));
+    const scoped = filterSource(events, parseSource(req.query.source));
+    res.json(wrap(buildWeekly(scoped, Date.now(), days), computedAt));
   } catch (e) {
     res.status(500).json({ error: String(e) });
   }
@@ -254,7 +287,8 @@ app.get('/api/usage/models', async (req, res) => {
   try {
     const days = Math.max(1, Math.min(31, Number(req.query.days ?? 7)));
     const { events, computedAt } = await getEvents();
-    res.json(wrap(buildModels(events, Date.now(), days), computedAt));
+    const scoped = filterSource(events, parseSource(req.query.source));
+    res.json(wrap(buildModels(scoped, Date.now(), days), computedAt));
   } catch (e) {
     res.status(500).json({ error: String(e) });
   }
@@ -264,8 +298,9 @@ app.get('/api/activity', async (req, res) => {
   try {
     const days = Math.max(7, Math.min(180, Number(req.query.days ?? 126)));
     const { events, computedAt } = await getEvents();
+    const scoped = filterSource(events, parseSource(req.query.source));
     const stats = await readStatsSummary();
-    res.json(wrap(buildActivity(events, Date.now(), days, stats), computedAt));
+    res.json(wrap(buildActivity(scoped, Date.now(), days, stats), computedAt));
   } catch (e) {
     res.status(500).json({ error: String(e) });
   }
@@ -275,7 +310,8 @@ app.get('/api/tools', async (req, res) => {
   try {
     const days = Math.max(1, Math.min(31, Number(req.query.days ?? 7)));
     const { events, computedAt } = await getEvents();
-    res.json(wrap(buildTools(events, Date.now(), days), computedAt));
+    const scoped = filterSource(events, parseSource(req.query.source));
+    res.json(wrap(buildTools(scoped, Date.now(), days), computedAt));
   } catch (e) {
     res.status(500).json({ error: String(e) });
   }
@@ -285,7 +321,8 @@ app.get('/api/heatmap', async (req, res) => {
   try {
     const days = Math.max(7, Math.min(365, Number(req.query.days ?? 90)));
     const { events, computedAt } = await getEvents();
-    res.json(wrap(buildHourlyHeatmap(events, Date.now(), days), computedAt));
+    const scoped = filterSource(events, parseSource(req.query.source));
+    res.json(wrap(buildHourlyHeatmap(scoped, Date.now(), days), computedAt));
   } catch (e) {
     res.status(500).json({ error: String(e) });
   }
@@ -295,7 +332,10 @@ app.get('/api/projects', async (req, res) => {
   try {
     const days = Math.max(7, Math.min(365, Number(req.query.days ?? 30)));
     const { events, computedAt } = await getEvents();
-    res.json(wrap(buildProjectStats(events, Date.now(), days), computedAt));
+    // buildProjectStats already drops cowork; the source filter keeps behavior
+    // consistent when the UI explicitly scopes to one surface.
+    const scoped = filterSource(events, parseSource(req.query.source));
+    res.json(wrap(buildProjectStats(scoped, Date.now(), days), computedAt));
   } catch (e) {
     res.status(500).json({ error: String(e) });
   }
@@ -313,7 +353,8 @@ app.get('/api/insights/errors', async (req, res) => {
   try {
     const days = clampDays(req.query.days);
     const { insights, computedAt } = await getInsights();
-    res.json(wrap(buildErrors(insights, days), computedAt));
+    const scoped = scopeInsights(insights, parseSource(req.query.source));
+    res.json(wrap(buildErrors(scoped, days), computedAt));
   } catch (e) {
     res.status(500).json({ error: String(e) });
   }
@@ -323,7 +364,8 @@ app.get('/api/insights/retries', async (req, res) => {
   try {
     const days = clampDays(req.query.days);
     const { insights, computedAt } = await getInsights();
-    res.json(wrap(buildRetries(insights, days), computedAt));
+    const scoped = scopeInsights(insights, parseSource(req.query.source));
+    res.json(wrap(buildRetries(scoped, days), computedAt));
   } catch (e) {
     res.status(500).json({ error: String(e) });
   }
@@ -333,7 +375,8 @@ app.get('/api/insights/languages', async (req, res) => {
   try {
     const days = clampDays(req.query.days);
     const { insights, computedAt } = await getInsights();
-    res.json(wrap(buildLanguages(insights, days), computedAt));
+    const scoped = scopeInsights(insights, parseSource(req.query.source));
+    res.json(wrap(buildLanguages(scoped, days), computedAt));
   } catch (e) {
     res.status(500).json({ error: String(e) });
   }
@@ -343,7 +386,8 @@ app.get('/api/insights/branches', async (req, res) => {
   try {
     const days = clampDays(req.query.days);
     const { insights, computedAt } = await getInsights();
-    res.json(wrap(buildBranches(insights, days), computedAt));
+    const scoped = scopeInsights(insights, parseSource(req.query.source));
+    res.json(wrap(buildBranches(scoped, days), computedAt));
   } catch (e) {
     res.status(500).json({ error: String(e) });
   }
@@ -353,7 +397,8 @@ app.get('/api/insights/mcp', async (req, res) => {
   try {
     const days = clampDays(req.query.days);
     const { insights, computedAt } = await getInsights();
-    res.json(wrap(buildMcp(insights, days), computedAt));
+    const scoped = scopeInsights(insights, parseSource(req.query.source));
+    res.json(wrap(buildMcp(scoped, days), computedAt));
   } catch (e) {
     res.status(500).json({ error: String(e) });
   }
@@ -363,7 +408,8 @@ app.get('/api/insights/complexity', async (req, res) => {
   try {
     const days = clampDays(req.query.days);
     const { insights, computedAt } = await getInsights();
-    res.json(wrap(buildComplexity(insights, days), computedAt));
+    const scoped = scopeInsights(insights, parseSource(req.query.source));
+    res.json(wrap(buildComplexity(scoped, days), computedAt));
   } catch (e) {
     res.status(500).json({ error: String(e) });
   }
@@ -373,7 +419,8 @@ app.get('/api/insights/yield', async (req, res) => {
   try {
     const days = clampDays(req.query.days);
     const { insights, computedAt } = await getInsights();
-    res.json(wrap(buildYield(insights, days), computedAt));
+    const scoped = scopeInsights(insights, parseSource(req.query.source));
+    res.json(wrap(buildYield(scoped, days), computedAt));
   } catch (e) {
     res.status(500).json({ error: String(e) });
   }
@@ -383,7 +430,8 @@ app.get('/api/insights/rejections', async (req, res) => {
   try {
     const days = clampDays(req.query.days);
     const { insights, computedAt } = await getInsights();
-    res.json(wrap(buildRejections(insights, days), computedAt));
+    const scoped = scopeInsights(insights, parseSource(req.query.source));
+    res.json(wrap(buildRejections(scoped, days), computedAt));
   } catch (e) {
     res.status(500).json({ error: String(e) });
   }
@@ -393,7 +441,8 @@ app.get('/api/insights/subagents', async (req, res) => {
   try {
     const days = clampDays(req.query.days);
     const { insights, computedAt } = await getInsights();
-    res.json(wrap(buildSubagentStats(insights, days), computedAt));
+    const scoped = scopeInsights(insights, parseSource(req.query.source));
+    res.json(wrap(buildSubagentStats(scoped, days), computedAt));
   } catch (e) {
     res.status(500).json({ error: String(e) });
   }
@@ -595,4 +644,10 @@ if (existsSync(distDir)) {
 
 app.listen(PORT, () => {
   console.log(`[server] listening on http://localhost:${PORT} (claudeDir=${claudeDir()})`);
+  // Prime the event + insights caches in the background so the first request
+  // (often /api/sessions, which needs both) doesn't pay the full cold-scan cost
+  // — that scan of ~100MB+ of JSONL can take several seconds. Errors are ignored;
+  // the endpoints will simply scan on demand if this fails.
+  void getEvents().catch(() => {});
+  void getInsights().catch(() => {});
 });

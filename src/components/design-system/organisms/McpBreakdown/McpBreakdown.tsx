@@ -50,25 +50,34 @@ export function McpBreakdown({ data }: McpBreakdownProps) {
         </div>
       </div>
 
-      {/* Per-server list */}
+      {/* Plain-language explanation of what the split means */}
+      <p className="text-[11px] leading-relaxed text-zinc-500">
+        <span className="text-zinc-400">Built-in</span> = Claude's native tools (Read, Bash, Edit…).{' '}
+        <span className="text-zinc-400">MCP</span> = tools from connected MCP servers. Numbers are
+        tool-call counts in this window; <span className="text-red-400">errors</span> are calls that
+        failed or were rejected.
+      </p>
+
+      {/* Per-server table: name · calls · errors, columns aligned */}
       {data.perServer.length > 0 && (
         <div>
-          <div className="mb-2 text-xs font-semibold uppercase tracking-wider text-zinc-500">
-            Per server
+          <div className="mb-1.5 flex items-center gap-2 border-b border-white/5 pb-1 text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
+            <span className="flex-1">MCP server</span>
+            <span className="w-14 text-right">calls</span>
+            <span className="w-14 text-right">errors</span>
           </div>
           <div className="space-y-1.5">
             {data.perServer.map((s) => (
-              <div key={s.server} className="flex items-center justify-between gap-2 text-xs">
-                <span
-                  className="flex-1 truncate font-mono text-zinc-400"
-                  title={s.server}
-                >
+              <div key={s.server} className="flex items-center gap-2 text-xs">
+                <span className="flex-1 truncate font-mono text-zinc-400" title={s.server}>
                   {s.server}
                 </span>
-                <span className="tabular-nums text-zinc-300">{compact(s.calls)}</span>
-                {s.errors > 0 && (
-                  <span className="tabular-nums text-red-400">{s.errors} err</span>
-                )}
+                <span className="w-14 text-right tabular-nums text-zinc-300">{compact(s.calls)}</span>
+                <span
+                  className={`w-14 text-right tabular-nums ${s.errors > 0 ? 'text-red-400' : 'text-zinc-600'}`}
+                >
+                  {s.errors > 0 ? s.errors : '—'}
+                </span>
               </div>
             ))}
           </div>

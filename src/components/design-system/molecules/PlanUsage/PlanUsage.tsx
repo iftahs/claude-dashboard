@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { ProgressBar } from '@/components/design-system/atoms/ProgressBar/ProgressBar';
+import { InfoTip } from '@/components/design-system/atoms/InfoTip/InfoTip';
 import { formatRemainingHours, formatRemainingDays, blockBarColor } from './utils';
 import type { PlanUsageProps } from './types';
 
@@ -53,7 +54,10 @@ export function PlanUsage({ block, weekly, liveUsage }: PlanUsageProps) {
   return (
     <div className="card p-5 flex flex-col justify-between flex-none">
       <div className="mb-4 flex items-center justify-between">
-        <h3 className="text-sm font-bold uppercase tracking-wider text-zinc-300">Plan usage</h3>
+        <h3 className="flex items-center gap-1.5 text-sm font-bold uppercase tracking-wider text-zinc-300">
+          Plan usage
+          <InfoTip text="Your live subscription limits from Claude.ai: the 5-hour window plus the weekly all-models and Sonnet caps, each with % used and time to reset. Pulled from Anthropic's usage API." />
+        </h3>
         <span className="text-zinc-500 font-mono text-xs select-none">→</span>
       </div>
 

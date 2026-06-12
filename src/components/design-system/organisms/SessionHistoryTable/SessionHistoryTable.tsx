@@ -1,6 +1,7 @@
 import { useState, useMemo, useEffect } from 'react';
 import { compact } from '@/lib/format';
 import { ExportButton } from '@/components/design-system/molecules/ExportButton/ExportButton';
+import { InfoTip } from '@/components/design-system/atoms/InfoTip/InfoTip';
 import { Modal } from '@/components/design-system/molecules/Modal/Modal';
 import { useTranscript } from '@/hooks/useTranscript';
 import { useSearch } from '@/hooks/useSearch';
@@ -215,8 +216,9 @@ export function SessionHistoryTable({
     <div className="card p-5 flex flex-col h-full">
       <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between flex-none">
         <div>
-          <h3 className="text-sm font-bold uppercase tracking-wider text-zinc-300">
+          <h3 className="flex items-center gap-1.5 text-sm font-bold uppercase tracking-wider text-zinc-300">
             Session History Log · {periodDays}d
+            <InfoTip text="Every session in the window — start time, project, first prompt, duration and tokens. Click a row to open its full transcript. Search by project name or prompt text; export the list with the button." />
           </h3>
           <p className="text-xs text-zinc-500 mt-0.5">Search and review past execution records</p>
         </div>
@@ -273,7 +275,7 @@ export function SessionHistoryTable({
           <tbody className="divide-y divide-white/5 text-zinc-300">
             {paginatedSessions.length > 0 ? (
               paginatedSessions.map((s) => {
-                const projectName = getProjectName(s.project_path);
+                const projectName = s.source === 'cowork' ? 'Cowork' : getProjectName(s.project_path);
                 const totalToks = s.effective_tokens ?? (s.input_tokens ?? 0) + (s.output_tokens ?? 0);
 
                 return (
@@ -346,7 +348,7 @@ export function SessionHistoryTable({
           modalSession && (
             <div className="flex items-center gap-3 min-w-0 text-sm">
               <span className="font-bold text-zinc-100 truncate">
-                {getProjectName(modalSession.project_path)}
+                {modalSession.source === 'cowork' ? 'Cowork' : getProjectName(modalSession.project_path)}
               </span>
               <span className="text-zinc-500 font-mono text-xs flex-none">
                 {formatDate(modalSession.start_time)}

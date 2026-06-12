@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { compact, usd } from '@/lib/format';
 import { ToggleGroup } from '@/components/design-system/atoms/ToggleGroup/ToggleGroup';
+import { InfoTip } from '@/components/design-system/atoms/InfoTip/InfoTip';
 import type { ProjectBreakdownProps, LocalProjectStat } from './types';
 import { normalizePath } from './utils';
 
@@ -92,8 +93,9 @@ export function ProjectBreakdown({
     return (
       <div className="card p-5 h-full flex flex-col justify-between min-h-[260px]">
         <div>
-          <h3 className="text-sm font-bold uppercase tracking-wider text-zinc-300">
+          <h3 className="flex items-center gap-1.5 text-sm font-bold uppercase tracking-wider text-zinc-300">
             Workspace Analytics · {periodDays}d
+            <InfoTip text="Per-project rollup of your sessions — cost, time, effective tokens and files touched, one row per project. Sort with the buttons. Cowork sessions run in a sandbox with no host project, so they're excluded here." />
           </h3>
           <p className="text-xs text-zinc-500 mt-0.5">Summary of activity across development projects</p>
         </div>
@@ -108,8 +110,9 @@ export function ProjectBreakdown({
     <div className="card p-5 flex flex-col h-full">
       <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between flex-none">
         <div>
-          <h3 className="text-sm font-bold uppercase tracking-wider text-zinc-300">
+          <h3 className="flex items-center gap-1.5 text-sm font-bold uppercase tracking-wider text-zinc-300">
             Workspace Analytics · {periodDays}d
+            <InfoTip text="Per-project rollup of your sessions — cost, time, effective tokens and files touched, one row per project. Sort with the buttons. Cowork sessions run in a sandbox with no host project, so they're excluded here." />
           </h3>
           <p className="text-xs text-zinc-500 mt-0.5">Summary of activity across development projects</p>
         </div>

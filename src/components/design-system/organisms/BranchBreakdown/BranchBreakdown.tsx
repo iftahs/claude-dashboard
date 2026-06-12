@@ -27,13 +27,12 @@ export function BranchBreakdown({ data }: BranchBreakdownProps) {
   return (
     <div className="space-y-2.5">
       {data.map((b) => (
-        <div key={b.branch} className="space-y-1">
+        <div key={`${b.repo} ${b.branch}`} className="space-y-1">
           <div className="flex items-center justify-between gap-2">
-            <span
-              className="flex-1 truncate font-mono text-xs text-zinc-300"
-              title={b.branch}
-            >
-              {b.branch}
+            <span className="flex min-w-0 flex-1 items-baseline gap-1.5" title={`${b.repo} · ${b.branch}`}>
+              <span className="shrink-0 truncate text-xs text-zinc-500">{b.repo}</span>
+              <span className="shrink-0 text-zinc-700">/</span>
+              <span className="truncate font-mono text-xs text-zinc-300">{b.branch}</span>
             </span>
             <div className="flex shrink-0 items-center gap-3 text-xs tabular-nums">
               <span className="text-zinc-400">{compact(b.effectiveTokens)}</span>

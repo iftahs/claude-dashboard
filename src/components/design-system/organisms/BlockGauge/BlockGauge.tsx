@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { compact } from '@/lib/format';
 import { useBlockAlerts } from '@/hooks/useBlockAlerts';
+import { InfoTip } from '@/components/design-system/atoms/InfoTip/InfoTip';
 import type { BlockGaugeProps } from './types';
 import { BLOCK_MS, DEFAULT_BLOCK_LIMIT, formatRemaining } from './utils';
 
@@ -97,8 +98,12 @@ export function BlockGauge({ block, liveUsage }: BlockGaugeProps) {
   return (
     <div className="card flex flex-col items-center justify-center p-6">
       <div className="text-center">
-        <div className="text-xs uppercase tracking-wider text-zinc-500 font-bold">
+        <div className="flex items-center justify-center gap-1.5 text-xs uppercase tracking-wider text-zinc-500 font-bold">
           Claude Code · block usage
+          <InfoTip
+            align="center"
+            text="Your current 5-hour usage block, anchored to your most recent session's first message (how Anthropic starts a 5h window). The ring shows % of the live account limit from Claude.ai; rows below show this block's effective tokens, cache reads, reset time and burn rate."
+          />
         </div>
         {statusBadge}
       </div>
