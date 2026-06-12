@@ -1,14 +1,20 @@
 name: Auto changelog
 
 # After `version-bump.yml` bumps the patch version on a PR branch, this workflow
-# has Claude read the PR's changes and prepend a matching entry to CHANGELOG.md
-# on the same branch — so the changelog lands together with the version on merge.
+# uses GitHub Models (free, authenticated with the built-in GITHUB_TOKEN — no
+# extra secret, no API billing) to read the PR's changes and prepend a matching
+# entry to CHANGELOG.md on the same branch, so the changelog lands together with
+# the version on merge.
+#
+# The model writes only the prose (the ### Added / ### Changed / ### Fixed
+# bullets); the version header, date, and release link are added deterministically
+# in code so they can't be hallucinated.
 #
 # Ordering & loop safety (both workflows run on the same `synchronize` events):
-#   - Skip until the version has actually been bumped (HEAD version != main version),
+#   - Skip until the version is actually bumped (HEAD version != main version),
 #     so we never write an entry for a version that doesn't exist yet.
-#   - Skip if CHANGELOG.md already has a section for the current version. Claude's
-#     own push re-triggers `synchronize`; by then the section exists, so it's a no-op.
+#   - Skip if CHANGELOG.md already has a section for the current version. The
+#     bot's own push re-triggers `synchronize`; by then the section exists → no-op.
 # Runs only for same-repo branches (the token can't push to forks).
 
 on:
@@ -18,7 +24,7 @@ on:
 
 permissions:
   contents: write
-  pull-requests: write
+  models: read
 
 concurrency:
   group: changelog-${{ github.event.pull_request.head.ref }}
@@ -28,9 +34,6 @@ jobs:
   changelog:
     if: github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
-    env:
-      # Lets the Claude step skip cleanly (no red check) until the secret is added.
-      HAS_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN != '' }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -45,7 +48,7 @@ jobs:
       - name: Decide whether an entry is needed
         id: check
         run: |
-          git fetch origin main --depth=1
+          git fetch origin main
           git show origin/main:package.json > "$RUNNER_TEMP/main-package.json"
           MAIN_VERSION=$(node -p "require('$RUNNER_TEMP/main-package.json').version")
           HEAD_VERSION=$(node -p "require('./package.json').version")
@@ -67,50 +70,92 @@ jobs:
           echo "needs=true" >> "$GITHUB_OUTPUT"
           echo "version=$HEAD_VERSION" >> "$GITHUB_OUTPUT"
 
-      - name: Write changelog entry with Claude
-        if: steps.check.outputs.needs == 'true' && env.HAS_TOKEN == 'true'
-        uses: anthropics/claude-code-action@v1
+      - name: Gather PR changes
+        if: steps.check.outputs.needs == 'true'
+        run: |
+          {
+            echo "Commits in this release:"
+            echo
+            git log origin/main..HEAD --no-merges --pretty=format:'- %s%n%b'
+            echo
+            echo
+            echo "Files changed:"
+            git diff --stat origin/main...HEAD
+          } > "$RUNNER_TEMP/changes.txt"
+          echo "----- model input -----"
+          cat "$RUNNER_TEMP/changes.txt"
+
+      - name: Draft the entry with GitHub Models
+        if: steps.check.outputs.needs == 'true'
+        id: ai
+        uses: actions/ai-inference@v1
         with:
-          # Subscriber OAuth token (no API billing). Generate locally with
-          # `claude setup-token` and add it as a repo secret. To use a pay-as-you-go
-          # API key instead, swap this for: anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
-          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          claude_args: |
-            --model claude-sonnet-4-6
-            --max-turns 20
-            --allowedTools Read,Edit,Write,Bash
-          prompt: |
-            package.json was just bumped to version ${{ steps.check.outputs.version }}
-            for this pull request, but CHANGELOG.md has no entry for it yet. Add one.
+          model: openai/gpt-4o-mini
+          max-completion-tokens: 500
+          prompt-file: ${{ runner.temp }}/changes.txt
+          system-prompt: |
+            You write changelog entries in the Keep a Changelog style.
 
-            1. Understand what this PR changes. Run:
-                 git log origin/main..HEAD --no-merges --pretty=format:'%s%n%b'
-                 git diff --stat origin/main...HEAD
-               Ignore the "chore: bump version" commit — it is not a user-facing change.
+            You are given the commits and a diff stat for a single release. Output
+            ONLY the changelog body: one or more of the sections "### Added",
+            "### Changed", "### Fixed", each followed by "- " bullet lines.
 
-            2. Prepend a new section to CHANGELOG.md, directly below the intro
-               paragraph and ABOVE the most recent existing version section:
+            Rules:
+            - Map feat -> Added, fix -> Fixed, everything else -> Changed.
+            - Omit any section that has no items.
+            - Bullets are concise, present-tense, and user-facing — describe the
+              effect on the user, not the commit. Do not just echo commit subjects.
+            - Ignore "chore: bump version" commits entirely.
+            - Do NOT include a version header, date, links, preamble, or code fences.
+            - If there are no user-facing changes, output exactly:
+              "### Changed\n- Internal maintenance and tooling."
 
-                 ## [${{ steps.check.outputs.version }}] - <today's date, UTC, YYYY-MM-DD>
-                 ### Added / ### Changed / ### Fixed
-                 - concise, user-facing bullets
+      - name: Insert into CHANGELOG and push
+        if: steps.check.outputs.needs == 'true'
+        env:
+          VERSION: ${{ steps.check.outputs.version }}
+          RESPONSE_FILE: ${{ steps.ai.outputs['response-file'] }}
+        run: |
+          node - "$VERSION" "$RESPONSE_FILE" <<'NODE'
+          const fs = require('fs');
+          const [version, respFile] = process.argv.slice(2);
 
-               Match the existing entries' style exactly: short, present-tense,
-               describing user-visible changes — NOT a commit dump. Use only the
-               Keep a Changelog groups that apply (omit empty ones). Map
-               feat→Added, fix→Fixed, everything else→Changed.
+          let body = fs.readFileSync(respFile, 'utf8').trim();
+          // Strip accidental code fences.
+          body = body.replace(/^```[a-z]*\s*/i, '').replace(/\s*```$/i, '').trim();
+          if (!body) {
+            console.log('Empty model response; leaving CHANGELOG untouched.');
+            process.exit(0);
+          }
 
-            3. Add a link reference at the very bottom of the file, in the same
-               format as the existing ones:
-                 [${{ steps.check.outputs.version }}]: <repoUrl>/releases/tag/v${{ steps.check.outputs.version }}
-               (derive <repoUrl> from the existing link references).
+          const date = new Date().toISOString().slice(0, 10);
+          const file = 'CHANGELOG.md';
+          let md = fs.readFileSync(file, 'utf8');
+          const section = `## [${version}] - ${date}\n\n${body}\n\n`;
 
-            4. Touch ONLY CHANGELOG.md. Do not change the version or any other file.
+          // Insert above the most recent existing version section.
+          const idx = md.search(/^## \[/m);
+          md = idx === -1 ? md.trimEnd() + '\n\n' + section : md.slice(0, idx) + section + md.slice(idx);
 
-            5. Commit and push to this PR branch:
-                 git config user.name "github-actions[bot]"
-                 git config user.email "github-actions[bot]@users.noreply.github.com"
-                 git add CHANGELOG.md
-                 git commit -m "docs: update changelog for v${{ steps.check.outputs.version }}"
-                 git push origin HEAD:${{ github.event.pull_request.head.ref }}
+          // Add a release link reference, mirroring the existing ones.
+          const ref = md.match(/^\[(\d+\.\d+\.\d+)\]:\s*(\S+)\/releases\/tag\/v\1\s*$/m);
+          if (ref) {
+            const line = `[${version}]: ${ref[2]}/releases/tag/v${version}\n`;
+            const first = md.search(/^\[\d+\.\d+\.\d+\]:/m);
+            md = md.slice(0, first) + line + md.slice(first);
+          }
+
+          fs.writeFileSync(file, md);
+          console.log(`Inserted changelog entry for v${version}.`);
+          NODE
+
+          if git diff --quiet -- CHANGELOG.md; then
+            echo "No CHANGELOG change to commit."
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add CHANGELOG.md
+          git commit -m "docs: update changelog for v$VERSION"
+          git push origin "HEAD:${{ github.event.pull_request.head.ref }}"
