@@ -5,6 +5,15 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.6] - 2026-06-12
+
+### Added
+- Show the live subscription plan from Anthropic's profile API in the Subscription card. 
+- Map subscription types to display live plan tiers such as "Max 5x". 
+
+### Changed
+- Adjusted Subscription card behavior to fall back on local credentials when offline or when the token is expired.
+
 ## [0.1.5] - 2026-06-12
 
 ### Added
@@ -74,6 +83,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Live-API fallback to the local logs when there is no active block
   (`resets_at = null`).
 
+[0.1.6]: https://github.com/iftahs/claude-dashboard/releases/tag/v0.1.6
 [0.1.5]: https://github.com/iftahs/claude-dashboard/releases/tag/v0.1.5
 [0.1.4]: https://github.com/iftahs/claude-dashboard/releases/tag/v0.1.4
 [0.1.3]: https://github.com/iftahs/claude-dashboard/releases/tag/v0.1.3
