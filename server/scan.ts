@@ -312,7 +312,23 @@ let cachedLiveUsage: {
   fetchedAt: number;
 } | null = null;
 
+let cachedLiveProfile: {
+  data: any;
+  fetchedAt: number;
+} | null = null;
+
 const CACHE_TTL = 30000; // 30 seconds local cache to avoid rate limit issues
+const PROFILE_TTL = 30 * 60 * 1000; // 30 min — the plan changes rarely
+
+/** Shared headers for Anthropic's OAuth endpoints (usage + profile). */
+function oauthHeaders(accessToken: string): Record<string, string> {
+  return {
+    'Authorization': `Bearer ${accessToken}`,
+    'anthropic-beta': 'oauth-2025-04-20',
+    'User-Agent': 'claude-code/2.1.162',
+    'Accept': 'application/json',
+  };
+}
 
 export async function fetchLiveUsage(): Promise<any> {
   if (cachedLiveUsage && (Date.now() - cachedLiveUsage.fetchedAt < CACHE_TTL)) {
@@ -330,12 +346,7 @@ export async function fetchLiveUsage(): Promise<any> {
   }
 
   const url = 'https://api.anthropic.com/api/oauth/usage';
-  const headers = {
-    'Authorization': `Bearer ${credentials.claudeAiOauth.accessToken}`,
-    'anthropic-beta': 'oauth-2025-04-20',
-    'User-Agent': 'claude-code/2.1.162',
-    'Accept': 'application/json',
-  };
+  const headers = oauthHeaders(credentials.claudeAiOauth.accessToken);
 
   const res = await fetch(url, { headers });
   if (res.status === 403) {
@@ -350,6 +361,40 @@ export async function fetchLiveUsage(): Promise<any> {
     data,
     fetchedAt: Date.now(),
   };
+  return data;
+}
+
+/**
+ * Live account/plan from Anthropic's OAuth profile endpoint. Returns the plan
+ * the user is *actually* on right now — unlike the `subscriptionType` baked into
+ * `.credentials.json`, which goes stale after a plan change until the next login.
+ * Cached 30 min; throws (caller falls back to the local file) when offline/expired.
+ */
+export async function fetchLiveProfile(): Promise<any> {
+  if (cachedLiveProfile && (Date.now() - cachedLiveProfile.fetchedAt < PROFILE_TTL)) {
+    return cachedLiveProfile.data;
+  }
+
+  const credentials = await readCredentials();
+  const accessToken = credentials?.claudeAiOauth?.accessToken;
+  if (!accessToken) {
+    throw new Error('No access token found in credentials');
+  }
+
+  const expiresAt = credentials.claudeAiOauth.expiresAt;
+  if (expiresAt && Date.now() >= expiresAt) {
+    throw new Error('OAuth token expired');
+  }
+
+  const res = await fetch('https://api.anthropic.com/api/oauth/profile', {
+    headers: oauthHeaders(accessToken),
+  });
+  if (!res.ok) {
+    throw new Error(`Failed to fetch profile from Anthropic API: ${res.status} ${res.statusText}`);
+  }
+
+  const data = await res.json();
+  cachedLiveProfile = { data, fetchedAt: Date.now() };
   return data;
 }
 

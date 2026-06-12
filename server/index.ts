@@ -7,7 +7,7 @@ import { promisify } from 'node:util';
 import express from 'express';
 import { getEvents } from './cache.ts';
 import { buildRecent, buildWeekly, buildModels, buildActivity, buildTools, buildHourlyHeatmap, buildProjectStats, filterSource, type SourceFilter } from './aggregate.ts';
-import { claudeDir, readConfig, readCredentials, readStatsSummary, readSessionMetas, fetchLiveUsage } from './scan.ts';
+import { claudeDir, readConfig, readCredentials, readStatsSummary, readSessionMetas, fetchLiveUsage, fetchLiveProfile } from './scan.ts';
 import { getInsights } from './insights-scan.ts';
 import {
   buildErrors, buildRetries, buildLanguages, buildBranches, buildMcp,
@@ -64,11 +64,30 @@ app.get('/api/config', async (_req, res) => {
   try {
     const config = await readConfig();
     const credentials = await readCredentials();
-    const merged = {
-      ...config,
-      subscriptionType: credentials?.claudeAiOauth?.subscriptionType ?? null,
-      rateLimitTier: credentials?.claudeAiOauth?.rateLimitTier ?? null,
-    };
+
+    // Start from the local credentials file, then override with the live profile
+    // from Anthropic — `.credentials.json` keeps a stale `subscriptionType` after
+    // a plan change until the next login, whereas the profile endpoint is current.
+    let subscriptionType: string | null = credentials?.claudeAiOauth?.subscriptionType ?? null;
+    let rateLimitTier: string | null = credentials?.claudeAiOauth?.rateLimitTier ?? null;
+    try {
+      const profile = await fetchLiveProfile();
+      const account = profile?.account ?? {};
+      const org = profile?.organization ?? {};
+      const tier = String(org.rate_limit_tier ?? '');
+      if (account.has_claude_max) {
+        subscriptionType = /20x/.test(tier) ? 'max_20x' : /5x/.test(tier) ? 'max_5x' : 'max';
+      } else if (account.has_claude_pro) {
+        subscriptionType = 'pro';
+      } else if (account.uuid) {
+        subscriptionType = 'free';
+      }
+      if (org.rate_limit_tier) rateLimitTier = org.rate_limit_tier;
+    } catch {
+      // Offline or expired token — keep the values read from the local file.
+    }
+
+    const merged = { ...config, subscriptionType, rateLimitTier };
     res.json(wrap(merged, Date.now()));
   } catch (e) {
     res.status(500).json({ error: String(e) });
