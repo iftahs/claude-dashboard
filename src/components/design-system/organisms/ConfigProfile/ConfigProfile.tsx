@@ -1,4 +1,5 @@
 import { Badge } from '@/components/design-system/atoms/Badge/Badge';
+import { InfoTip } from '@/components/design-system/atoms/InfoTip/InfoTip';
 import type { ConfigProfileProps } from './types';
 import { formatPlan } from './utils';
 
@@ -13,7 +14,10 @@ export function ConfigProfile({ config }: ConfigProfileProps) {
   return (
     <div className="card p-5 flex flex-col">
       <div className="mb-4 flex-none">
-        <h3 className="text-sm font-bold uppercase tracking-wider text-zinc-300">Claude Code Config Profile</h3>
+        <h3 className="flex items-center gap-1.5 text-sm font-bold uppercase tracking-wider text-zinc-300">
+          Claude Code Config Profile
+          <InfoTip text="Your active Claude Code CLI settings read from settings.json: default model, effort level, subscription, permission mode, enabled integrations, and the workspaces & command prefixes you've authorized." />
+        </h3>
         <p className="text-xs text-zinc-500 mt-0.5">Current active CLI environment settings</p>
       </div>
 

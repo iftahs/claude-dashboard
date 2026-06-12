@@ -5,9 +5,31 @@
  */
 
 import type { InsightsData, ToolCallRecord, ToolResultRecord } from './insights-scan.ts';
+import type { UsageSource } from './scan.ts';
 import { estimateCost } from './pricing.ts';
 
 const DAY_MS = 24 * 3600_000;
+
+/**
+ * Narrow InsightsData to a single surface so the Insights tab honors the
+ * Code/Cowork toggle. Filters tool calls, task spawns and session metadata by
+ * `source`; `toolResults` (keyed by tool_use_id) and `searchCorpus` are left
+ * whole — builders join them via the already-filtered tool calls / sessions,
+ * so leftover entries are simply never looked up. 'all' is a pass-through.
+ */
+export function scopeInsights(d: InsightsData, source: 'all' | UsageSource): InsightsData {
+  if (source === 'all') return d;
+  const sessionsMeta = new Map(
+    [...d.sessionsMeta].filter(([, sm]) => sm.source === source)
+  );
+  return {
+    toolCalls: d.toolCalls.filter((tc) => tc.source === source),
+    toolResults: d.toolResults,
+    taskSpawns: d.taskSpawns.filter((t) => t.source === source),
+    sessionsMeta,
+    searchCorpus: d.searchCorpus,
+  };
+}
 
 function cutoff(days: number, now = Date.now()): number {
   return now - days * DAY_MS;
@@ -242,25 +264,33 @@ export function buildLanguages(d: InsightsData, days: number, now = Date.now()) 
 
 export function buildBranches(d: InsightsData, days: number, now = Date.now()) {
   const from = cutoff(days, now);
-  const branchMap = new Map<string, { effectiveTokens: number; cost: number; sessions: Set<string> }>();
+  // Key by repo + branch so the same branch name (e.g. "main") in different repos
+  // stays separate and each row can be attributed to its repository.
+  const branchMap = new Map<string, { branch: string; repo: string; effectiveTokens: number; cost: number; sessions: Set<string> }>();
 
   for (const sm of d.sessionsMeta.values()) {
     if (sm.lastTs < from) continue;
     if (!sm.gitBranch) continue;
 
-    let entry = branchMap.get(sm.gitBranch);
+    const repo = sm.projectPath
+      ? sm.projectPath.split(/[\\/]/).filter(Boolean).pop() ?? sm.projectPath
+      : 'unknown';
+    const key = `${repo} ${sm.gitBranch}`;
+
+    let entry = branchMap.get(key);
     if (!entry) {
-      entry = { effectiveTokens: 0, cost: 0, sessions: new Set() };
-      branchMap.set(sm.gitBranch, entry);
+      entry = { branch: sm.gitBranch, repo, effectiveTokens: 0, cost: 0, sessions: new Set() };
+      branchMap.set(key, entry);
     }
     entry.effectiveTokens += sm.effectiveTokens;
     entry.cost += sm.cost;
     entry.sessions.add(sm.sessionId);
   }
 
-  return [...branchMap.entries()]
-    .map(([branch, v]) => ({
-      branch,
+  return [...branchMap.values()]
+    .map((v) => ({
+      branch: v.branch,
+      repo: v.repo,
       effectiveTokens: v.effectiveTokens,
       cost: v.cost,
       sessions: v.sessions.size,

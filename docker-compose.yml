@@ -9,8 +9,14 @@ services:
       # Mount your real ~/.claude into the container, read-only.
       # Set CLAUDE_DIR_HOST in a .env file (see .env.example).
       - "${CLAUDE_DIR_HOST}:/data/.claude:ro"
+      # Claude Cowork (desktop "local agent mode") data, read-only. Optional:
+      # if COWORK_DIR_HOST is unset it falls back to .claude, which contains no
+      # nested .claude/projects transcripts at the scanned depth → zero cowork
+      # events (harmless) and the container still boots. See .env.example.
+      - "${COWORK_DIR_HOST:-${CLAUDE_DIR_HOST}}:/data/cowork:ro"
     environment:
       - CLAUDE_DIR=/data/.claude
+      - COWORK_DIR=/data/cowork
       - SERVER_PORT=8787
       - APP_RUNTIME=docker
       # Day buckets follow the container clock — pin it to your local timezone

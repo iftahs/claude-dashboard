@@ -10,7 +10,7 @@ import { readdir, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import { createInterface } from 'node:readline';
 import { estimateCost } from './pricing.ts';
-import { claudeDir } from './scan.ts';
+import { scanRoots, keepScanFile, type UsageSource } from './scan.ts';
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -26,6 +26,7 @@ export interface ToolCallRecord {
   gitBranch: string;
   projectPath: string;
   id: string;
+  source: UsageSource;
 }
 
 export interface ToolResultRecord {
@@ -46,6 +47,7 @@ export interface TaskSpawnRecord {
   completed: boolean;
   gitBranch: string;
   projectPath: string;
+  source: UsageSource;
 }
 
 export interface SessionMetaRecord {
@@ -71,6 +73,7 @@ export interface SessionMetaRecord {
   cost: number;
   file: string;
   agentId?: string;
+  source: UsageSource; // 'code' = Claude Code CLI, 'cowork' = desktop local-agent mode
 }
 
 export interface InsightsData {
@@ -94,10 +97,6 @@ function decodeProjectPath(encoded: string): string {
   return '/' + encoded.replace(/--/g, '/');
 }
 
-function projectsDir(): string {
-  return join(claudeDir(), 'projects');
-}
-
 function num(v: unknown): number {
   return typeof v === 'number' && Number.isFinite(v) ? v : 0;
 }
@@ -106,7 +105,7 @@ function num(v: unknown): number {
 // File listing (recursive, including subagent directories)
 // ---------------------------------------------------------------------------
 
-async function listAllJsonl(dir: string): Promise<string[]> {
+async function listAllJsonl(dir: string, source: UsageSource = 'code'): Promise<string[]> {
   let entries: string[] = [];
   let dirents;
   try {
@@ -117,21 +116,29 @@ async function listAllJsonl(dir: string): Promise<string[]> {
   for (const d of dirents) {
     const full = join(dir, d.name);
     if (d.isDirectory()) {
-      entries = entries.concat(await listAllJsonl(full));
-    } else if (d.isFile() && d.name.endsWith('.jsonl')) {
+      entries = entries.concat(await listAllJsonl(full, source));
+    } else if (d.isFile() && d.name.endsWith('.jsonl') && keepScanFile(full, source)) {
       entries.push(full);
     }
   }
   return entries;
 }
 
+/** Every scanned jsonl file paired with its source, across all scan roots. */
+async function listAllRootFiles(): Promise<{ file: string; source: UsageSource }[]> {
+  const perRoot = await Promise.all(
+    scanRoots().map(async (r) => (await listAllJsonl(r.dir, r.source)).map((file) => ({ file, source: r.source })))
+  );
+  return perRoot.flat();
+}
+
 export async function projectsFingerprint(): Promise<number> {
-  const files = await listAllJsonl(projectsDir());
+  const files = await listAllRootFiles();
   let newest = 0;
   await Promise.all(
-    files.map(async (f) => {
+    files.map(async ({ file }) => {
       try {
-        const s = await stat(f);
+        const s = await stat(file);
         if (s.mtimeMs > newest) newest = s.mtimeMs;
       } catch { /* ignore */ }
     })
@@ -211,7 +218,7 @@ function isGitPushCommand(toolName: string, input: any): boolean {
 // ---------------------------------------------------------------------------
 
 export async function scanInsights(): Promise<InsightsData> {
-  const files = await listAllJsonl(projectsDir());
+  const files = await listAllRootFiles();
 
   const toolCalls: ToolCallRecord[] = [];
   // Map tool_use_id → ToolResultRecord
@@ -226,14 +233,16 @@ export async function scanInsights(): Promise<InsightsData> {
   const pendingGitCommits = new Map<string, string>();
   const pendingGitPushes = new Map<string, string>();
 
-  for (const file of files) {
+  for (const { file, source } of files) {
     // Skip files > 5MB
     try {
       const st = await stat(file);
       if (st.size > 5 * 1024 * 1024) continue;
     } catch { continue; }
 
-    const projectPath = projectPathFromFile(file);
+    // Cowork transcripts encode a sandbox-internal path that is meaningless on the
+    // host, so leave it empty (keeps cowork sessions out of the Projects tab).
+    const projectPath = source === 'cowork' ? '' : projectPathFromFile(file);
     const agentId = agentIdFromFileName(file);
     // Determine isSidechain from file path: subagent files are under a "subagents/" dir.
     // This is more reliable than the per-entry flag because all entries in a subagent file
@@ -282,6 +291,7 @@ export async function scanInsights(): Promise<InsightsData> {
           cost: 0,
           file,
           agentId,
+          source,
         };
         sessionsMeta.set(sessionId, sm);
       } else if (!fileIsSidechain && sm.isSidechain) {
@@ -464,6 +474,7 @@ export async function scanInsights(): Promise<InsightsData> {
               gitBranch,
               projectPath,
               id: toolId,
+              source,
             });
 
             // Task/Agent spawn detection
@@ -483,6 +494,7 @@ export async function scanInsights(): Promise<InsightsData> {
                 completed: false,
                 gitBranch,
                 projectPath,
+                source,
               });
 
               sm.subagentSpawns++;

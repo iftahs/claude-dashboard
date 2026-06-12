@@ -243,7 +243,10 @@ export function AgentActivity({ data, loading }: AgentActivityProps) {
   const orphanCompleted = completed.filter((c) => !mainKeys.has(c.parentKey));
 
   return (
-    <Section title="Agents · live activity">
+    <Section
+      title="Agents · live activity"
+      help="Live view of agents working right now: main agents, their running subagents (Task/Agent spawns), and recently finished ones — refreshed every few seconds from active session logs. Empty when nothing is running."
+    >
       {loading && !data ? (
         <div className="h-10 flex items-center text-xs text-zinc-600">Loading…</div>
       ) : hasActivity ? (

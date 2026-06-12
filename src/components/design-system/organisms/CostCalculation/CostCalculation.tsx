@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { usd, compact } from '@/lib/format';
+import { InfoTip } from '@/components/design-system/atoms/InfoTip/InfoTip';
 import type { ModelPrice } from './types';
 import { PRICING_DATA } from './utils';
 
@@ -28,7 +29,10 @@ export function CostCalculation() {
     <div className="card p-6">
       <div className="mb-6 flex flex-col justify-between gap-4 md:flex-row md:items-center">
         <div>
-          <h2 className="text-lg font-bold text-zinc-100">Cost Calculation Explained</h2>
+          <h2 className="flex items-center gap-2 text-lg font-bold text-zinc-100">
+            Cost Calculation Explained
+            <InfoTip text="Reference pay-as-you-go API prices (per 1M tokens, by model). Your subscription has no per-token bill — these power the 'estimated equivalent cost' figures. Use the calculator to price a hypothetical request; cache reads are billed at ~10% of input." />
+          </h2>
           <p className="text-xs text-zinc-500">
             Anthropic charges based on the number of tokens processed. Cache reads are discounted by 90%.
           </p>

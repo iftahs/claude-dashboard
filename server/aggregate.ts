@@ -1,4 +1,4 @@
-import type { UsageEvent } from './scan.ts';
+import type { UsageEvent, UsageSource } from './scan.ts';
 import { estimateCost } from './pricing.ts';
 
 const HOUR = 3600_000;
@@ -98,6 +98,27 @@ function sumTotals(events: UsageEvent[]): TokenTotals {
   return t;
 }
 
+export interface SourceSplit {
+  code: TokenTotals;
+  cowork: TokenTotals;
+}
+
+/** Effective-token totals split by surface (Code vs Cowork) for the Sources card. */
+function sourceSplit(events: UsageEvent[]): SourceSplit {
+  const code = emptyTotals();
+  const cowork = emptyTotals();
+  for (const e of events) add(e.source === 'cowork' ? cowork : code, e);
+  return { code, cowork };
+}
+
+export type SourceFilter = 'all' | UsageSource;
+
+/** Narrow an event list to one surface; 'all' passes everything through. */
+export function filterSource(events: UsageEvent[], source: SourceFilter): UsageEvent[] {
+  if (source === 'all') return events;
+  return events.filter((e) => e.source === source);
+}
+
 export interface ActiveBlock {
   start: number;
   resetsAt: number;
@@ -183,6 +204,7 @@ export function buildRecent(events: UsageEvent[], now: number, hours = 5) {
     buckets: bucketize(events, from, now, HOUR),
     totals: sumTotals(windowEvents),
     byModel: modelShares(windowEvents),
+    bySource: sourceSplit(windowEvents),
     activeBlock: computeActiveBlock(events, now),
   };
 }
@@ -213,6 +235,7 @@ export function buildWeekly(events: UsageEvent[], now: number, days = 7) {
     totals: sumTotals(windowEvents),
     prevTotals: sumTotals(prevEvents),
     byModel: modelShares(windowEvents),
+    bySource: sourceSplit(windowEvents),
     cacheEfficiency,
   };
 }
@@ -349,7 +372,9 @@ export function buildProjectStats(events: UsageEvent[], now: number, days: numbe
   }>();
 
   for (const e of events) {
-    if (e.ts < from || !e.projectPath) continue;
+    // Cowork sessions carry sandbox-internal paths, so they're excluded here
+    // (projectPath is blank for them anyway — this is belt-and-suspenders).
+    if (e.ts < from || !e.projectPath || e.source === 'cowork') continue;
     let p = map.get(e.projectPath);
     if (!p) {
       p = { path: e.projectPath, effectiveTokens: 0, cost: 0, sessionIds: new Set() };
