@@ -11,4 +11,6 @@ export interface ToggleGroupProps<T extends string> extends VariantProps<typeof 
   value: T;
   onChange: (v: T) => void;
   uppercase?: boolean;
+  /** Stretch to full width with equal-width segments and dividers between them. */
+  grow?: boolean;
 }

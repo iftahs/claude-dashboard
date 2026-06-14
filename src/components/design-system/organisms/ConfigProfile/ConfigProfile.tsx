@@ -3,7 +3,7 @@ import { InfoTip } from '@/components/design-system/atoms/InfoTip/InfoTip';
 import type { ConfigProfileProps } from './types';
 import { formatPlan } from './utils';
 
-export function ConfigProfile({ config }: ConfigProfileProps) {
+export function ConfigProfile({ config, isApi = false }: ConfigProfileProps) {
   if (!config) return null;
 
   const allowedDirs = config.permissions?.additionalDirectories ?? [];
@@ -35,18 +35,24 @@ export function ConfigProfile({ config }: ConfigProfileProps) {
           </span>
         </div>
         <div className="rounded-xl bg-ink-700/50 p-3 border border-white/5">
-          <span className="text-[11px] text-zinc-500 uppercase tracking-wider block mb-0.5">Subscription</span>
+          <span className="text-[11px] text-zinc-500 uppercase tracking-wider block mb-0.5">
+            {isApi ? 'Billing' : 'Subscription'}
+          </span>
           <span
-            className="text-sm font-semibold text-cyan-400 font-mono animate-pulse-slow"
-            title="Read from ~/.claude/.credentials.json — updates when Claude Code refreshes its login token"
+            className="text-sm font-semibold text-cyan-400 font-mono"
+            title={
+              isApi
+                ? 'No Claude.ai subscription token found — Claude Code is billed pay-as-you-go (API).'
+                : 'Read from ~/.claude/.credentials.json — updates when Claude Code refreshes its login token'
+            }
           >
-            {formatPlan(config.subscriptionType)}
+            {isApi ? 'API · pay-as-you-go' : formatPlan(config.subscriptionType)}
           </span>
         </div>
         <div className="rounded-xl bg-ink-700/50 p-3 border border-white/5">
           <span className="text-[11px] text-zinc-500 uppercase tracking-wider block mb-0.5">Rate Limit Tier</span>
-          <span className="text-sm font-semibold text-indigo-400 font-mono truncate block" title={config.rateLimitTier ?? 'default'}>
-            {config.rateLimitTier ? config.rateLimitTier.replace(/_/g, ' ') : 'default'}
+          <span className="text-sm font-semibold text-indigo-400 font-mono truncate block" title={isApi ? 'n/a in API mode' : (config.rateLimitTier ?? 'default')}>
+            {isApi ? '—' : config.rateLimitTier ? config.rateLimitTier.replace(/_/g, ' ') : 'default'}
           </span>
         </div>
         <div className="rounded-xl bg-ink-700/50 p-3 border border-white/5">

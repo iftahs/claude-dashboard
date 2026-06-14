@@ -2,6 +2,7 @@ import { useState, useMemo, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { usePolling } from './hooks/usePolling';
 import { useLimits } from './hooks/useLimits';
+import { useSettings } from './hooks/useSettings';
 import type { ActivityData, ModelsData, RecentData, WeeklyData, ToolsData, ClaudeConfig, SessionMeta, LiveUsageData, HeatmapData, ProjectData, InsightsErrors, InsightsRetries, InsightsLanguages, InsightsBranches, InsightsMcp, ComplexityPoint, InsightsYield, InsightsRejections, SubagentStats, LiveSubagents, VersionInfo, SourcesInfo, UsageSource } from './types';
 import { StatCard } from './components/design-system/atoms/StatCard/StatCard';
 import { BlockGauge } from './components/design-system/organisms/BlockGauge/BlockGauge';
@@ -12,7 +13,8 @@ import { PeakHoursHeatmap } from './components/design-system/organisms/PeakHours
 import { CacheEfficiencyChart } from './components/design-system/organisms/CacheEfficiencyChart/CacheEfficiencyChart';
 import { ToolUsage } from './components/design-system/organisms/ToolUsage/ToolUsage';
 import { LiveBadge } from './components/design-system/atoms/LiveBadge/LiveBadge';
-import { LimitsPanel } from './components/design-system/molecules/LimitsPanel/LimitsPanel';
+import { SettingsModal } from './components/design-system/molecules/SettingsModal/SettingsModal';
+import { ApiModeNote } from './components/design-system/molecules/ApiModeNote/ApiModeNote';
 import { CostCalculation } from './components/design-system/organisms/CostCalculation/CostCalculation';
 import { ConfigProfile } from './components/design-system/organisms/ConfigProfile/ConfigProfile';
 import { PlanUsage } from './components/design-system/molecules/PlanUsage/PlanUsage';
@@ -114,7 +116,17 @@ export default function App() {
   const liveSubagents = usePolling<LiveSubagents>('/api/subagents/live', 4000);
   const version = usePolling<VersionInfo>('/api/version', 1_800_000);
   const [limits, setLimits] = useLimits();
-  const [showLimits, setShowLimits] = useState(false);
+  const [settings, setSettings] = useSettings();
+  const [showSettings, setShowSettings] = useState(false);
+
+  // Auth mode — auto-detected by the backend (presence of a Claude.ai OAuth token),
+  // with an optional manual override from the Settings modal. API / pay-as-you-go
+  // mode swaps the subscription-rate-limit framing for a cost view. Default to
+  // subscription until config loads so the UI never flashes API mode for subscribers.
+  const detectedMode: 'api' | 'subscription' = config.data?.authMode ?? 'subscription';
+  const effectiveMode =
+    settings.modeOverride === 'auto' ? detectedMode : settings.modeOverride;
+  const isApi = effectiveMode === 'api';
 
   // Insights tab state
   const [insightDays, setInsightDays] = useState<InsightDays>('7');
@@ -184,18 +196,26 @@ export default function App() {
             </div>
           )}
           <button
-            onClick={() => setShowLimits((v) => !v)}
-            className="rounded-lg px-3 py-1.5 text-xs text-zinc-400 ring-1 ring-white/10 hover:text-zinc-200"
-            title="Configure API spending limits"
+            onClick={() => setShowSettings(true)}
+            className="flex h-8 w-8 items-center justify-center rounded-lg text-base text-zinc-400 ring-1 ring-white/10 hover:text-zinc-200 hover:ring-white/20"
+            title="Settings — usage mode & spending limits"
+            aria-label="Settings"
           >
-            ⚙ limits
+            ⚙
           </button>
           <LiveBadge computedAt={recent.computedAt} error={error} />
         </div>
       </header>
 
-      {showLimits && (
-        <LimitsPanel limits={limits} onChange={setLimits} onClose={() => setShowLimits(false)} />
+      {showSettings && (
+        <SettingsModal
+          limits={limits}
+          onChangeLimits={setLimits}
+          settings={settings}
+          onChangeSettings={setSettings}
+          detectedMode={detectedMode}
+          onClose={() => setShowSettings(false)}
+        />
       )}
 
       {/* New-version notice (all tabs) */}
@@ -228,9 +248,12 @@ export default function App() {
           {/* ── LIVE TAB ── */}
           {activeTab === 'live' && (
             <>
-              {/* Offline banner */}
-          {liveUsage.data?.error && (
-            <OfflineBanner error={liveUsage.data.error} />
+              {/* Auth-mode notice: a neutral pay-as-you-go note for API users,
+                  the subscription session/offline banner otherwise. */}
+          {isApi ? (
+            <ApiModeNote />
+          ) : (
+            liveUsage.data?.error && <OfflineBanner error={liveUsage.data.error} />
           )}
 
           {/* Block gauge + hourly chart */}
@@ -238,7 +261,13 @@ export default function App() {
                 {recent.loading ? (
                   <GaugeSkeleton />
                 ) : (
-                  <BlockGauge block={block} liveUsage={liveUsage.data} />
+                  <BlockGauge
+                    block={block}
+                    liveUsage={liveUsage.data}
+                    isApi={isApi}
+                    costPerDay={costPerDay}
+                    dailyLimit={limits.dailyLimit}
+                  />
                 )}
                 <div className="flex flex-col lg:col-span-2">
                   <Section
@@ -272,14 +301,20 @@ export default function App() {
                 </div>
               </div>
 
-              {/* Plan usage bars */}
-              {config.data && (
+              {/* Subscription rate-limit bars — only meaningful with a plan. */}
+              {config.data && !isApi && (
                 <PlanUsage block={block} weekly={weekly.data} liveUsage={liveUsage.data} />
               )}
 
-              {/* API spending gauges (only when limits configured) */}
-              {hasSpendingLimits && (
-                <SpendingLimits limits={limits} costPerDay={costPerDay} />
+              {/* Spend vs caps — always shown in API mode (the cost IS the bill);
+                  in subscription mode only when the user has configured caps. */}
+              {(isApi || hasSpendingLimits) && (
+                <SpendingLimits
+                  limits={limits}
+                  costPerDay={costPerDay}
+                  weekCost={weekly.data?.totals.cost}
+                  alwaysShow={isApi}
+                />
               )}
             </>
           )}
@@ -673,7 +708,7 @@ export default function App() {
                 <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
                   <div className="lg:col-span-1 self-start">
                     {config.data ? (
-                      <ConfigProfile config={config.data} />
+                      <ConfigProfile config={config.data} isApi={isApi} />
                     ) : config.loading ? (
                       <div className="card p-5">
                         <Skeleton className="h-[200px] w-full rounded-2xl" />
