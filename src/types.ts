@@ -119,7 +119,6 @@ export interface ClaudeConfig {
   autoUpdatesChannel?: string;
   subscriptionType?: string | null;
   rateLimitTier?: string | null;
-  authMode?: 'api' | 'subscription';
   enabledPlugins?: Record<string, boolean>;
   extraKnownMarketplaces?: Record<string, unknown>;
   permissions?: {
