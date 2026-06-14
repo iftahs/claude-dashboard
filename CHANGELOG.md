@@ -5,6 +5,18 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.7] - 2026-06-14
+
+### Added
+- API / pay-as-you-go usage mode: auto-detected from your Claude credentials, with a
+  cost view (estimated spend per block, spend-vs-caps) replacing the subscription
+  rate-limit framing for users without a Claude.ai subscription token.
+- Settings modal (⚙) with a manual usage-mode override and spending-cap configuration.
+
+### Changed
+- The "session expired" banner now only shows for subscription users; API users see a
+  neutral "API · pay-as-you-go" note instead.
+
 ## [0.1.6] - 2026-06-12
 
 ### Added
@@ -83,6 +95,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Live-API fallback to the local logs when there is no active block
   (`resets_at = null`).
 
+[0.1.7]: https://github.com/iftahs/claude-dashboard/releases/tag/v0.1.7
 [0.1.6]: https://github.com/iftahs/claude-dashboard/releases/tag/v0.1.6
 [0.1.5]: https://github.com/iftahs/claude-dashboard/releases/tag/v0.1.5
 [0.1.4]: https://github.com/iftahs/claude-dashboard/releases/tag/v0.1.4
