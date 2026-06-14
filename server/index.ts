@@ -70,6 +70,14 @@ app.get('/api/config', async (_req, res) => {
     // a plan change until the next login, whereas the profile endpoint is current.
     let subscriptionType: string | null = credentials?.claudeAiOauth?.subscriptionType ?? null;
     let rateLimitTier: string | null = credentials?.claudeAiOauth?.rateLimitTier ?? null;
+
+    // Auth mode — a Claude.ai subscription stores an OAuth token under
+    // `claudeAiOauth` (used for live usage/profile); API / pay-as-you-go users
+    // have no such block, so the subscription/plan framing doesn't apply.
+    // File-based so it works identically in dev and Docker.
+    const authMode: 'api' | 'subscription' = credentials?.claudeAiOauth?.accessToken
+      ? 'subscription'
+      : 'api';
     try {
       const profile = await fetchLiveProfile();
       const account = profile?.account ?? {};
@@ -87,7 +95,7 @@ app.get('/api/config', async (_req, res) => {
       // Offline or expired token — keep the values read from the local file.
     }
 
-    const merged = { ...config, subscriptionType, rateLimitTier };
+    const merged = { ...config, subscriptionType, rateLimitTier, authMode };
     res.json(wrap(merged, Date.now()));
   } catch (e) {
     res.status(500).json({ error: String(e) });
