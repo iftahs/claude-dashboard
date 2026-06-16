@@ -24,6 +24,9 @@ Real-time view of what Claude Code is doing **right now**, reconstructed live fr
 
 ![Agents Tab with a live subagent](.github/agents_tab.png)
 
+<img width="1183" height="851" alt="image" src="https://github.com/user-attachments/assets/ffe86bcd-4893-4b9a-9676-5addfaf44906" />
+
+
 ### 3. 📈 Trends Tab
 * **Tokens vs. Cost Chart Toggle**: Click to switch the daily stacked bar chart between **Tokens** and **Cost (USD)**.
 * **Estimated Projection Area**: Shows a projected monthly cost reference bar for the remaining days of the month based on your daily average.
