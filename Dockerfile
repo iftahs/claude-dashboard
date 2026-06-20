@@ -4,6 +4,13 @@ WORKDIR /app
 COPY package*.json ./
 RUN npm ci
 COPY . .
+# Anonymous product analytics (PostHog). VITE_* are baked at build time.
+# Set VITE_DISABLE_ANALYTICS=1 to ship a fully telemetry-free build;
+# override VITE_POSTHOG_TOKEN to point a fork at your own PostHog project.
+ARG VITE_DISABLE_ANALYTICS
+ARG VITE_POSTHOG_TOKEN
+ENV VITE_DISABLE_ANALYTICS=$VITE_DISABLE_ANALYTICS
+ENV VITE_POSTHOG_TOKEN=$VITE_POSTHOG_TOKEN
 RUN npm run build
 
 # ---- runtime stage: Express serving API + static dist ----

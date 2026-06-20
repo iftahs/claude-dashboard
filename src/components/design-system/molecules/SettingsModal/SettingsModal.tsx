@@ -10,6 +10,8 @@ export function SettingsModal({
   settings,
   onChangeSettings,
   detectedMode,
+  analyticsOptOut,
+  onChangeAnalyticsOptOut,
   onClose,
 }: SettingsModalProps) {
   const [dailyVal, setDailyVal] = useState(fmt(limits.dailyLimit));
@@ -121,6 +123,26 @@ export function SettingsModal({
               Save
             </button>
           </div>
+        </section>
+
+        {/* ── Telemetry ──────────────────────────────────────────────── */}
+        <section className="mt-6 border-t border-white/5 pt-5">
+          <h4 className="mb-1 text-sm font-semibold text-zinc-300">Telemetry</h4>
+          <p className="mb-3 text-xs text-zinc-500">
+            Your usage logs never leave your machine. The app sends only{' '}
+            <span className="text-zinc-400">anonymous</span> product-analytics events (which tab is
+            opened, exports, an anonymous install count) so the author can improve it — no tokens,
+            file or project paths, session contents, or personal data. Opt out any time.
+          </p>
+          <label className="flex cursor-pointer items-center gap-2 text-xs text-zinc-300">
+            <input
+              type="checkbox"
+              checked={analyticsOptOut}
+              onChange={(e) => onChangeAnalyticsOptOut(e.target.checked)}
+              className="h-4 w-4 rounded border-white/20 bg-ink-700 accent-clay-500"
+            />
+            Disable anonymous analytics
+          </label>
         </section>
       </div>
     </div>

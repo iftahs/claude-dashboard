@@ -1,6 +1,6 @@
 # Claude Dashboard
 
-A beautiful, **local, offline** dashboard for your [Claude Code](https://claude.com/claude-code) usage. It reads the JSON logs Claude Code already writes to `~/.claude` and visualizes them — no API key, no account login, and works completely offline. 
+A beautiful, **local-first** dashboard for your [Claude Code](https://claude.com/claude-code) usage. It reads the JSON logs Claude Code already writes to `~/.claude` and visualizes them — no API key, no account login. Your usage logs never leave your machine; the app sends only anonymous feature-usage analytics, which you can switch off (see [Privacy & telemetry](#privacy--telemetry)).
 
 ![Claude Dashboard Loaded](.github/dashboard_loaded.png)
 
@@ -149,6 +149,19 @@ It reflects **only** what Claude Code records locally. Two things deliberately a
 - **Claude.ai web usage** — that's server-side per-conversation and never written to `~/.claude`.
 
 You *can* set a personal token cap in the ⚙ limits panel to see a "% used" gauge — that compares your real measured usage against a number you enter.
+
+## Privacy & telemetry
+
+Your Claude usage data — logs, tokens, project paths, session contents — **never leaves your machine**. The only network calls the dashboard makes for *your* data reuse the OAuth token Claude Code already stores locally to read live usage and your plan from Anthropic.
+
+Separately, the app sends **anonymous product-analytics events** to [PostHog](https://posthog.com) so the author can see how many people use the dashboard and which features matter. This is deliberately minimal and privacy-hardened:
+
+- **What's sent:** which tab is opened, exports, source-toggle/range changes, an anonymous install count, and a coarse plan/usage-mode label.
+- **What's *never* sent:** OAuth tokens, file or project paths, project names, session IDs, transcript content, or any personal data. Browser autocapture and session replay are turned **off** so the UI's on-screen paths can't be scraped.
+- **Opt out any time:**
+  - In the app: **⚙ Settings → Telemetry → Disable anonymous analytics** (takes effect immediately, persisted in your browser).
+  - At build time: build with `VITE_DISABLE_ANALYTICS=1` (set it in `.env` for Docker — see [`.env.example`](.env.example)) for a fully telemetry-free image.
+- Analytics is also disabled automatically in local dev builds.
 
 ## Contributing
 

@@ -47,6 +47,7 @@ import {
   Skeleton,
 } from './components/design-system/atoms/Skeleton/Skeleton';
 import { compact, usd, hourLabel, dayLabel, shortModel } from './lib/format';
+import { track, setUserContext, isOptedOut, setOptOut } from './lib/analytics';
 
 const POLL = 5000;
 
@@ -118,6 +119,7 @@ export default function App() {
   const [limits, setLimits] = useLimits();
   const [settings, setSettings] = useSettings();
   const [showSettings, setShowSettings] = useState(false);
+  const [analyticsOptOut, setAnalyticsOptOut] = useState(isOptedOut());
 
   // Auth mode — auto-detected by the backend (presence of a Claude.ai OAuth token),
   // with an optional manual override from the Settings modal. API / pay-as-you-go
@@ -131,6 +133,14 @@ export default function App() {
   // Insights tab state
   const [insightDays, setInsightDays] = useState<InsightDays>('7');
   const insightDaysNum = insightDays;
+
+  // ── Product analytics (anonymous, path-free events only — see lib/analytics) ──
+  useEffect(() => {
+    track('tab_viewed', { tab: activeTab });
+  }, [activeTab]);
+  useEffect(() => {
+    if (config.data) setUserContext({ plan: config.data.subscriptionType, usageMode: effectiveMode });
+  }, [config.data, effectiveMode]);
   const insightErrors = usePolling<InsightsErrors>(withSrc(`/api/insights/errors?days=${insightDaysNum}`), 60000);
   const insightRetries = usePolling<InsightsRetries>(withSrc(`/api/insights/retries?days=${insightDaysNum}`), 60000);
   const insightLanguages = usePolling<InsightsLanguages[]>(withSrc(`/api/insights/languages?days=${insightDaysNum}`), 60000);
@@ -192,7 +202,14 @@ export default function App() {
           {coworkAvailable && (
             <div className="flex items-center gap-2" title="Filter usage by surface: Claude Code CLI vs Cowork (desktop local-agent mode)">
               <span className="text-[11px] uppercase tracking-wide text-zinc-600">source</span>
-              <ToggleGroup<SourceFilter> options={SOURCE_OPTIONS} value={source} onChange={setSource} />
+              <ToggleGroup<SourceFilter>
+                options={SOURCE_OPTIONS}
+                value={source}
+                onChange={(s) => {
+                  setSource(s);
+                  track('source_changed', { source: s });
+                }}
+              />
             </div>
           )}
           <button
@@ -214,6 +231,11 @@ export default function App() {
           settings={settings}
           onChangeSettings={setSettings}
           detectedMode={detectedMode}
+          analyticsOptOut={analyticsOptOut}
+          onChangeAnalyticsOptOut={(v) => {
+            setOptOut(v);
+            setAnalyticsOptOut(v);
+          }}
           onClose={() => setShowSettings(false)}
         />
       )}
@@ -558,7 +580,10 @@ export default function App() {
                 <ToggleGroup<InsightDays>
                   options={INSIGHT_DAY_OPTIONS}
                   value={insightDays}
-                  onChange={setInsightDays}
+                  onChange={(d) => {
+                    setInsightDays(d);
+                    track('insight_range_changed', { days: d });
+                  }}
                 />
               </div>
 

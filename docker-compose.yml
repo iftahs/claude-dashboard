@@ -1,6 +1,11 @@
 services:
   dashboard:
-    build: .
+    build:
+      context: .
+      args:
+        # Set VITE_DISABLE_ANALYTICS=1 in your .env to opt out of anonymous
+        # product analytics at build time (see .env.example). Empty = analytics on.
+        VITE_DISABLE_ANALYTICS: "${VITE_DISABLE_ANALYTICS:-}"
     image: claude-dashboard
     container_name: claude-dashboard
     ports:
