@@ -15,8 +15,11 @@ import posthog from 'posthog-js';
 
 const PLACEHOLDER_TOKEN = 'phc_REPLACE_WITH_YOUR_POSTHOG_PROJECT_TOKEN';
 const DEFAULT_TOKEN = 'phc_sAQMSNXAegoawRUwFiyQZkMDdTtzdaeVb2xVAawBRnA7';
-const TOKEN: string = import.meta.env.VITE_POSTHOG_TOKEN ?? DEFAULT_TOKEN;
-const API_HOST: string = import.meta.env.VITE_POSTHOG_HOST ?? 'https://eu.i.posthog.com';
+// Use `||` not `??`: a build-time env baked as an empty string (e.g. Docker's
+// `ENV VITE_POSTHOG_TOKEN=$VITE_POSTHOG_TOKEN` with the arg unset) must fall
+// back to the default — `??` would keep the empty string and disable analytics.
+const TOKEN: string = import.meta.env.VITE_POSTHOG_TOKEN || DEFAULT_TOKEN;
+const API_HOST: string = import.meta.env.VITE_POSTHOG_HOST || 'https://eu.i.posthog.com';
 
 const OPTOUT_KEY = 'claude-dashboard-analytics-optout';
 
