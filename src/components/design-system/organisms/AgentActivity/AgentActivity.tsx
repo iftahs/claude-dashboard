@@ -230,6 +230,17 @@ function GroupLabel({ children }: { children: string }) {
   );
 }
 
+// Live tally shown in the section header: how many agents/subagents are running
+// in parallel right now. Pulses while anything is active.
+function CountChip({ count, label, pulse }: { count: number; label: string; pulse?: boolean }) {
+  return (
+    <span className="inline-flex items-center gap-1.5 rounded-full bg-white/5 px-2.5 py-1 text-xs font-semibold tabular-nums text-zinc-300 ring-1 ring-white/10">
+      {pulse && <span className="pulse-dot flex-none" />}
+      {count} {label}
+    </span>
+  );
+}
+
 export function AgentActivity({ data, loading }: AgentActivityProps) {
   const running = data?.running ?? [];
   const completed = data?.recentlyCompleted ?? [];
@@ -242,10 +253,29 @@ export function AgentActivity({ data, loading }: AgentActivityProps) {
   const orphanRunning = running.filter((r) => !mainKeys.has(r.parentKey));
   const orphanCompleted = completed.filter((c) => !mainKeys.has(c.parentKey));
 
+  const runningSubagents = running.length;
+  const activeMains = mains.filter((m) => m.active || m.delegating).length;
+
   return (
     <Section
       title="Agents · live activity"
       help="Live view of agents working right now: main agents, their running subagents (Task/Agent spawns), and recently finished ones — refreshed every few seconds from active session logs. Empty when nothing is running."
+      right={
+        runningSubagents > 0 || activeMains > 0 ? (
+          <div className="flex items-center gap-2">
+            {runningSubagents > 0 && (
+              <CountChip
+                count={runningSubagents}
+                label={runningSubagents === 1 ? 'subagent' : 'subagents'}
+                pulse
+              />
+            )}
+            {activeMains > 0 && (
+              <CountChip count={activeMains} label={activeMains === 1 ? 'main' : 'mains'} />
+            )}
+          </div>
+        ) : undefined
+      }
     >
       {loading && !data ? (
         <div className="h-10 flex items-center text-xs text-zinc-600">Loading…</div>
