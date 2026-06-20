@@ -78,6 +78,13 @@ const SOURCE_OPTIONS: { value: SourceFilter; label: string }[] = [
 ];
 const SOURCE_COLOR: Record<UsageSource, string> = { code: '#d97757', cowork: '#6366f1' };
 
+// Pill color for the Live Usage tab badge, scaled by 5-hour limit utilization.
+function usagePillClasses(pct: number): string {
+  if (pct >= 80) return 'bg-red-500/15 text-red-300';
+  if (pct >= 50) return 'bg-amber-500/15 text-amber-300';
+  return 'bg-emerald-500/15 text-emerald-300';
+}
+
 export default function App() {
   const location = useLocation();
   const navigate = useNavigate();
@@ -149,6 +156,18 @@ export default function App() {
     (weekly.data?.totals.totalTokens ?? 0) === 0;
 
   const block = recent.data?.activeBlock ?? null;
+  // Live count of agents working in parallel right now: running subagents +
+  // main sessions that are actively working or delegating. Drives the Agents
+  // tab badge (visible from any tab) and the Agents section header chips.
+  const runningAgentCount =
+    (liveSubagents.data?.running.length ?? 0) +
+    (liveSubagents.data?.mainAgents.filter((m) => m.active || m.delegating).length ?? 0);
+  // Current 5-hour limit utilization (already 0–100) for the Live Usage tab badge.
+  // Only when the live API returned a value for an active block (no error).
+  const fiveHourPct =
+    liveUsage.data && !liveUsage.data.error && liveUsage.data.five_hour?.resets_at != null
+      ? Math.round(liveUsage.data.five_hour.utilization)
+      : null;
   const topModel = models.data?.models[0];
   const weeklyEffective = weekly.data?.totals.effectiveTokens ?? 0;
   const prevWeeklyEffective = weekly.data?.prevTotals.effectiveTokens ?? 0;
@@ -233,7 +252,26 @@ export default function App() {
                 : 'text-zinc-500 hover:text-zinc-300 hover:bg-ink-700/40'
             }`}
           >
-            {label}
+            <span className="inline-flex items-center gap-1.5">
+              {label}
+              {id === 'agents' && runningAgentCount > 0 && (
+                <span
+                  className="inline-flex items-center gap-1 rounded-full bg-clay-500/20 px-1.5 py-0.5 text-[10px] font-bold tabular-nums text-clay-300"
+                  title={`${runningAgentCount} agent${runningAgentCount === 1 ? '' : 's'} running right now`}
+                >
+                  <span className="pulse-dot flex-none" />
+                  {runningAgentCount}
+                </span>
+              )}
+              {id === 'live' && fiveHourPct != null && (
+                <span
+                  className={`inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-bold tabular-nums ${usagePillClasses(fiveHourPct)}`}
+                  title={`5-hour limit: ${fiveHourPct}% used`}
+                >
+                  {fiveHourPct}%
+                </span>
+              )}
+            </span>
           </button>
         ))}
       </div>
