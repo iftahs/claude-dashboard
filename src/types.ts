@@ -288,6 +288,9 @@ export interface RecentlyCompletedSubagent {
   description: string;
   model: string;
   completedAt: number;
+  background: boolean;
+  effectiveTokens: number;
+  project: string;
 }
 
 export interface MainAgent {
@@ -308,6 +311,129 @@ export interface LiveSubagents {
   running: LiveSubagent[];
   recentlyCompleted: RecentlyCompletedSubagent[];
   mainAgents: MainAgent[];
+}
+
+// ── Dynamic workflows ────────────────────────────────────────────────────────
+
+export type WorkflowAgentState = 'done' | 'running' | 'queued' | 'error' | 'stalled';
+
+export interface WorkflowAgentInfo {
+  agentId: string;
+  label: string;
+  phaseTitle: string;
+  model: string;
+  state: WorkflowAgentState;
+  tokens: number;
+  toolCalls: number;
+  durationMs: number;
+  startedAt: number;
+  lastToolName?: string;
+}
+
+export interface WorkflowRun {
+  runId: string;
+  name: string;
+  summary: string;
+  status: 'running' | 'completed' | 'failed' | 'unknown';
+  isLive: boolean;
+  startedAt: number;
+  durationMs: number;
+  lastActivity: number;
+  phaseDone: number | null;
+  phaseTotal: number | null;
+  phases: { title: string; detail: string }[];
+  agents: WorkflowAgentInfo[];
+  agentCount: number;
+  runningAgents: number;
+  tokens: number;
+  toolCalls: number;
+  defaultModel: string;
+  project: string;
+  resultStats?: Record<string, number | string>;
+  logsTail?: string[];
+}
+
+export interface WorkflowsData {
+  live: WorkflowRun[];
+  recent: WorkflowRun[];
+}
+
+// ── AI Insights ──────────────────────────────────────────────────────────────
+
+export type AiProvider = 'claude' | 'openai' | 'gemini';
+export type AiBackend = 'cli' | 'api' | 'apikey' | 'claude' | 'openai' | 'gemini' | 'none';
+
+export interface AiConfig {
+  provider: AiProvider;
+  model: string;
+  apiKey: string;
+}
+
+export interface AiStatus {
+  available: AiBackend;
+  model: string;
+  reason?: string;
+}
+
+export interface AiChatResponse {
+  answer: string;
+  backend: AiBackend;
+}
+
+export interface AiInsightResponse {
+  insight: string;
+  backend: AiBackend;
+}
+
+// ── Workspace & extra insights panels ────────────────────────────────────────
+
+export interface CommandUsageData {
+  totalCommands: number;
+  uniqueCommands: number;
+  commands: { command: string; count: number }[];
+}
+
+export interface FileChurnEntry {
+  path: string;
+  name: string;
+  edits: number;
+  projectName: string;
+  lastTs: number;
+}
+
+export interface FileChurnData {
+  totalEdits: number;
+  uniqueFiles: number;
+  files: FileChurnEntry[];
+}
+
+export interface TaskItem {
+  id: string;
+  subject: string;
+  status: string;
+  blocked: boolean;
+}
+
+export interface PlanItem {
+  name: string;
+  title: string;
+  sizeBytes: number;
+  ageDays: number;
+}
+
+export interface WorkspaceTasksData {
+  tasks: { total: number; byStatus: Record<string, number>; completionRate: number; items: TaskItem[] };
+  plans: { total: number; items: PlanItem[] };
+}
+
+export interface InventoryData {
+  plugins: { name: string; marketplace: string; version: string; installedAt?: string }[];
+  marketplaces: string[];
+  enabledPlugins: string[];
+  mcpServers: { name: string; scope: 'global' | 'project' }[];
+  hooks: string[];
+  model?: string;
+  effortLevel?: string;
 }
 
 export interface SessionTranscriptTurn {

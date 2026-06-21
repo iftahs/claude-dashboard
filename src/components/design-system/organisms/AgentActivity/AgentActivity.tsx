@@ -111,20 +111,22 @@ function CompletedRow({
   description,
   model,
   completedAt,
+  effectiveTokens = 0,
 }: {
   name: string;
   description: string;
   model: string;
   completedAt: number;
+  effectiveTokens?: number;
 }) {
-  const sec = Math.max(0, Math.floor((Date.now() - completedAt) / 1000));
+  const ago = formatElapsed(elapsedSec(completedAt));
   return (
     <div
       className="flex items-center gap-2 rounded-xl px-3 py-2 text-xs"
       style={{
         backgroundColor: 'rgba(16,185,129,0.04)',
         border: '1px solid rgba(16,185,129,0.1)',
-        animation: 'agent-fade-out 4s ease-in 1s both',
+        animation: 'agent-enter 0.3s ease-out both',
       }}
     >
       <span className="text-emerald-500 flex-none">✓</span>
@@ -133,10 +135,13 @@ function CompletedRow({
         <span className="text-zinc-600 truncate flex-1 hidden sm:block">{description}</span>
       )}
       <ModelChip model={model} />
+      {effectiveTokens > 0 && (
+        <span className="flex-none tabular-nums text-zinc-500">{compact(effectiveTokens)} tok</span>
+      )}
       <span className="bg-emerald-500/10 text-emerald-400 rounded-full px-2 py-0.5 text-xs font-semibold flex-none">
         done
       </span>
-      <span className="text-zinc-600 font-mono flex-none">{sec}s ago</span>
+      <span className="text-zinc-600 font-mono flex-none">{ago} ago</span>
     </div>
   );
 }
@@ -324,6 +329,7 @@ export function AgentActivity({ data, loading }: AgentActivityProps) {
                             description={c.description}
                             model={c.model}
                             completedAt={c.completedAt}
+                            effectiveTokens={c.effectiveTokens}
                           />
                         ))}
                       </div>
@@ -361,6 +367,7 @@ export function AgentActivity({ data, loading }: AgentActivityProps) {
                       description={c.description}
                       model={c.model}
                       completedAt={c.completedAt}
+                      effectiveTokens={c.effectiveTokens}
                     />
                   ))}
                 </div>

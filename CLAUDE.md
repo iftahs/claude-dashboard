@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-A **local, offline** dashboard for Claude Code usage. The backend reads the JSON logs Claude Code already writes under `~/.claude` and serves aggregated JSON; the React UI visualizes it. No API key, no login. Any network calls reuse the OAuth token Claude Code stores locally to hit Anthropic's OAuth endpoints (live usage via `/api/usage/live`, and the live plan via `/api/config`); nothing else leaves the machine.
+A **local-first** dashboard for Claude Code usage. The backend reads the JSON logs Claude Code already writes under `~/.claude` and serves aggregated JSON; the React UI visualizes it. No API key, no login. Network calls for *your* data reuse the OAuth token Claude Code stores locally to hit Anthropic's OAuth endpoints (live usage via `/api/usage/live`, and the live plan via `/api/config`); no usage data, paths, or transcripts leave the machine. The **only** outbound exception is anonymous product analytics (PostHog) — see "Frontend / analytics" below; it's opt-out and ships no PII.
 
 ## Commands
 
@@ -37,6 +37,8 @@ $env:CLAUDE_DIR = "D:\backups\.claude"; npm run dev
 
 In Docker, `~/.claude` and the Cowork root are mounted read-only at `/data/.claude` and `/data/cowork` (`CLAUDE_DIR_HOST` / `COWORK_DIR_HOST` in `.env`). `COWORK_DIR_HOST` is optional; unset, it falls back to the `.claude` mount and yields zero cowork events.
 
+Frontend build-time vars (`VITE_*`, baked by `vite build` — in Docker they pass through `build.args` in `docker-compose.yml`, see the `ARG`s in the Dockerfile build stage): `VITE_DISABLE_ANALYTICS=1` ships a telemetry-free build; `VITE_POSTHOG_TOKEN` / `VITE_POSTHOG_HOST` override the analytics project token/host.
+
 ## Architecture
 
 Two processes in dev; one in Docker. The data flow on the backend is always **scan → cache → aggregate → endpoint**.
@@ -67,6 +69,7 @@ These are deliberate and easy to break:
 - **`hooks/useLimits.ts`** — user-set USD spend caps persisted in `localStorage` (key `claude-dashboard-limits-v2`); purely client-side, never sent to the backend.
 - Components live in `components/design-system/{atoms,molecules,organisms}/` (atomic design). One folder per component: `Name.tsx` (component only), `types.ts` (all prop interfaces), `utils.ts` (module-level helpers), and — atoms only — `Name.variants.ts` with `class-variance-authority` variants. Shared primitives: `ProgressBar`, `ToggleGroup`, `Badge`, `LegendDot` (atoms); `Section`, `ChartTooltip`, `HoverTooltip`, `ExportButton` (molecules) — reuse these instead of re-inlining track/fill divs, button groups, pills, or tooltip cards. Imports across folders use the `@/` alias (→ `src/`); same-folder imports stay relative.
 - `lib/format.ts` (compact numbers, USD, labels) and `lib/palette.ts` (per-model colors) are shared helpers. Charts use `recharts`. Styling is Tailwind with a custom `ink`/`clay` palette and `darkMode: 'class'`.
+- **`lib/analytics.ts`** — anonymous product analytics via PostHog (`posthog-js` + `@posthog/react`, provider in `main.tsx`). Only **explicit, path-free** events are sent (`track('tab_viewed' | 'source_changed' | 'insight_range_changed' | 'export_clicked', …)`); **autocapture and session replay are disabled** so the on-screen project paths/session IDs are never scraped. Never pass paths, cwd, session IDs, or transcript text to `track()`. Gated by `analyticsEnabled()`: on only in PROD builds, with a real token, when `VITE_DISABLE_ANALYTICS!=='1'`, and the user hasn't opted out (`localStorage` key `claude-dashboard-analytics-optout`, toggled in `SettingsModal` → Telemetry). The project token is a publishable ingest-only key (placeholder by default — replace `PLACEHOLDER_TOKEN` or set `VITE_POSTHOG_TOKEN`).
 - `types.ts` mirrors the backend's aggregate shapes — when you change an `aggregate.ts` return type, update `types.ts` to match.
 
 ## Conventions

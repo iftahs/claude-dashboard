@@ -320,8 +320,8 @@ let cachedLiveProfile: {
 const CACHE_TTL = 30000; // 30 seconds local cache to avoid rate limit issues
 const PROFILE_TTL = 30 * 60 * 1000; // 30 min — the plan changes rarely
 
-/** Shared headers for Anthropic's OAuth endpoints (usage + profile). */
-function oauthHeaders(accessToken: string): Record<string, string> {
+/** Shared headers for Anthropic's OAuth endpoints (usage + profile + messages). */
+export function oauthHeaders(accessToken: string): Record<string, string> {
   return {
     'Authorization': `Bearer ${accessToken}`,
     'anthropic-beta': 'oauth-2025-04-20',

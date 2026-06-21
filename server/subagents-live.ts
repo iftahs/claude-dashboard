@@ -35,6 +35,10 @@ export interface RecentlyCompletedSubagent {
   description: string;
   model: string;
   completedAt: number;
+  /** True for run_in_background tasks — kept in the list far longer (mirrors the CLI panel). */
+  background: boolean;
+  effectiveTokens: number;
+  project: string;
 }
 
 export interface MainAgent {
@@ -338,7 +342,8 @@ async function computeLiveSubagents(): Promise<LiveSubagentsData> {
   const now = Date.now();
   const THIRTY_MIN = 30 * 60_000;
   const ACTIVE_WINDOW = 5 * 60_000; // sidechain writes can pause during long LLM turns
-  const COMPLETED_WINDOW = 60_000; // finished subagents linger one minute, then drop
+  const COMPLETED_WINDOW = 30 * 60_000; // recently-finished subagents linger ~30 min (mirrors the CLI Background-tasks "Finished" list)
+  const BG_COMPLETED_WINDOW = 60 * 60_000; // outer cap for spawn age + sidechain enrichment
 
   const allFiles = await listJsonl(projectsDir());
   const isSidechainPath = (p: string) => p.includes('/subagents/') || p.includes('\\subagents\\');
@@ -354,7 +359,9 @@ async function computeLiveSubagents(): Promise<LiveSubagentsData> {
   // Sidechain transcripts modified in the last 30 min — model/token enrichment + activity signal.
   const sidechains = new Map<string, SidechainInfo>();
   for (const f of allFiles) {
-    if (now - f.mtime >= THIRTY_MIN || f.size > MAX_FILE || !isSidechainPath(f.path)) continue;
+    // Widen to the background window so finished background tasks keep their
+    // token/model enrichment for up to an hour.
+    if (now - f.mtime >= BG_COMPLETED_WINDOW || f.size > MAX_FILE || !isSidechainPath(f.path)) continue;
     const agentId = agentIdFromFileName(f.path);
     if (!agentId) continue;
     sidechains.set(agentId, await parseSidechainFile(f.path, agentId, f.mtime));
@@ -373,7 +380,10 @@ async function computeLiveSubagents(): Promise<LiveSubagentsData> {
     let runningChildren = 0; // currently-running only — drives the parent's "delegating" state
 
     for (const spawn of parsed.spawns) {
-      if (now - spawn.ts >= THIRTY_MIN) continue;
+      const spawnAge = now - spawn.ts;
+      // Hard cap: an hour (covers the background "finished" window). The running
+      // path below additionally requires the spawn to be < 30 min old.
+      if (spawnAge >= BG_COMPLETED_WINDOW) continue;
       const result = parsed.results.get(spawn.id);
 
       // Link spawn → sidechain: by agentId from an async-launch result, else by prompt prefix.
@@ -400,6 +410,10 @@ async function computeLiveSubagents(): Promise<LiveSubagentsData> {
               ? notifiedAt.get(result.agentId)
               : undefined;
 
+      // Keep every recently-finished subagent for ~30 min so the dashboard mirrors
+      // Claude Code's Background-tasks "Finished" list (these parallel Agent runs
+      // return a normal tool_result, so they aren't flagged async — don't gate on it).
+      const isBackground = result?.isAsyncLaunch === true;
       if (doneAt !== undefined) {
         if (now - doneAt < COMPLETED_WINDOW) {
           recentlyCompleted.push({
@@ -409,15 +423,20 @@ async function computeLiveSubagents(): Promise<LiveSubagentsData> {
             description: spawn.description,
             model,
             completedAt: doneAt,
+            background: isBackground,
+            effectiveTokens: sc?.effectiveTokens ?? 0,
+            project,
           });
           childCount++;
         }
         continue;
       }
 
+      // Running path: don't surface stale spawns as "running" beyond 30 min.
+      if (spawnAge >= THIRTY_MIN) continue;
+
       // Still running. Background agents without a fresh sidechain are likely finished in a
       // way we missed (or hung) — only show them while their transcript is recently active.
-      const isBackground = result?.isAsyncLaunch === true;
       if (isBackground && (!sc || now - sc.mtime >= ACTIVE_WINDOW)) continue;
 
       running.push({
@@ -481,7 +500,7 @@ async function computeLiveSubagents(): Promise<LiveSubagentsData> {
   running.sort((a, b) => a.startedAt - b.startedAt);
   recentlyCompleted.sort((a, b) => b.completedAt - a.completedAt);
   mainAgents.sort((a, b) => b.lastActivity - a.lastActivity);
-  return { running, recentlyCompleted, mainAgents };
+  return { running, recentlyCompleted: recentlyCompleted.slice(0, 25), mainAgents };
 }
 
 // ---------------------------------------------------------------------------

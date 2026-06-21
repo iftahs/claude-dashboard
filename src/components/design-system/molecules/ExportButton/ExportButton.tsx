@@ -1,5 +1,6 @@
 import { useState, useRef } from 'react';
 import { exportCsv, exportJson } from '@/lib/export';
+import { track } from '@/lib/analytics';
 import type { ExportButtonProps } from './types';
 
 export function ExportButton({ label = 'Export', getData }: ExportButtonProps) {
@@ -10,6 +11,8 @@ export function ExportButton({ label = 'Export', getData }: ExportButtonProps) {
     const result = getData();
     if (!result) return;
     setOpen(false);
+    // filenames are static slugs (e.g. "trends-7d", "sessions") — no PII.
+    track('export_clicked', { chart: result.filename, format });
     if (format === 'csv') exportCsv(result.csv, `${result.filename}.csv`);
     else exportJson(result.json, `${result.filename}.json`);
   };

@@ -1,7 +1,7 @@
 {
   "name": "claude-dashboard",
   "private": false,
-  "version": "0.1.7",
+  "version": "0.1.8",
   "type": "module",
   "description": "Beautiful local dashboard for Claude Code usage — 5-hour blocks, weekly trends, model breakdown, tool usage and an activity heatmap, read straight from your ~/.claude logs.",
   "license": "MIT",
@@ -12,7 +12,7 @@
     "url": "https://github.com/iftahs/claude-dashboard.git"
   },
   "scripts": {
-    "dev": "concurrently -n server,web -c blue,magenta \"npm:dev:server\" \"npm:dev:web\"",
+    "dev": "cross-env SERVER_PORT=8788 concurrently -n server,web -c blue,magenta \"npm:dev:server\" \"npm:dev:web\"",
     "dev:server": "tsx watch server/index.ts",
     "dev:web": "vite",
     "build": "tsc -b && vite build",
@@ -25,8 +25,10 @@
     "docker:logs": "docker compose logs -f"
   },
   "dependencies": {
+    "@posthog/react": "^1.10.2",
     "class-variance-authority": "^0.7.1",
     "express": "^4.21.2",
+    "posthog-js": "^1.390.2",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-router-dom": "^7.17.0",
@@ -40,6 +42,7 @@
     "@vitejs/plugin-react": "^4.3.4",
     "autoprefixer": "^10.4.20",
     "concurrently": "^9.1.0",
+    "cross-env": "^10.1.0",
     "postcss": "^8.4.49",
     "tailwindcss": "^3.4.17",
     "tsx": "^4.19.2",
