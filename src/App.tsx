@@ -1,9 +1,10 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
+import type { ReactNode } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { usePolling } from './hooks/usePolling';
 import { useLimits } from './hooks/useLimits';
 import { useSettings } from './hooks/useSettings';
-import type { ActivityData, ModelsData, RecentData, WeeklyData, ToolsData, ClaudeConfig, SessionMeta, LiveUsageData, HeatmapData, ProjectData, InsightsErrors, InsightsRetries, InsightsLanguages, InsightsBranches, InsightsMcp, ComplexityPoint, InsightsYield, InsightsRejections, SubagentStats, LiveSubagents, VersionInfo, SourcesInfo, UsageSource } from './types';
+import type { ActivityData, ModelsData, RecentData, WeeklyData, ToolsData, ClaudeConfig, SessionMeta, LiveUsageData, HeatmapData, ProjectData, InsightsErrors, InsightsRetries, InsightsLanguages, InsightsBranches, InsightsMcp, ComplexityPoint, InsightsYield, InsightsRejections, SubagentStats, LiveSubagents, WorkflowsData, CommandUsageData, FileChurnData, WorkspaceTasksData, InventoryData, VersionInfo, SourcesInfo, UsageSource } from './types';
 import { StatCard } from './components/design-system/atoms/StatCard/StatCard';
 import { BlockGauge } from './components/design-system/organisms/BlockGauge/BlockGauge';
 import { UsageBarChart } from './components/design-system/organisms/UsageBarChart/UsageBarChart';
@@ -13,8 +14,8 @@ import { PeakHoursHeatmap } from './components/design-system/organisms/PeakHours
 import { CacheEfficiencyChart } from './components/design-system/organisms/CacheEfficiencyChart/CacheEfficiencyChart';
 import { ToolUsage } from './components/design-system/organisms/ToolUsage/ToolUsage';
 import { LiveBadge } from './components/design-system/atoms/LiveBadge/LiveBadge';
-import { SettingsModal } from './components/design-system/molecules/SettingsModal/SettingsModal';
-import { ApiModeNote } from './components/design-system/molecules/ApiModeNote/ApiModeNote';
+import { SettingsView } from './components/design-system/organisms/SettingsView/SettingsView';
+import { Sidebar } from './components/design-system/organisms/Sidebar/Sidebar';
 import { CostCalculation } from './components/design-system/organisms/CostCalculation/CostCalculation';
 import { ConfigProfile } from './components/design-system/organisms/ConfigProfile/ConfigProfile';
 import { PlanUsage } from './components/design-system/molecules/PlanUsage/PlanUsage';
@@ -22,8 +23,6 @@ import { ProjectBreakdown } from './components/design-system/organisms/ProjectBr
 import { SessionHistoryTable } from './components/design-system/organisms/SessionHistoryTable/SessionHistoryTable';
 import { ExportButton } from './components/design-system/molecules/ExportButton/ExportButton';
 import { Section } from './components/design-system/molecules/Section/Section';
-import { OfflineBanner } from './components/design-system/molecules/OfflineBanner/OfflineBanner';
-import { UpdateBanner } from './components/design-system/molecules/UpdateBanner/UpdateBanner';
 import { SpendingLimits } from './components/design-system/molecules/SpendingLimits/SpendingLimits';
 import { ToggleGroup } from './components/design-system/atoms/ToggleGroup/ToggleGroup';
 import { LegendDot } from './components/design-system/atoms/LegendDot/LegendDot';
@@ -37,6 +36,13 @@ import { RetryPanel } from './components/design-system/organisms/RetryPanel/Retr
 import { RejectionsPanel } from './components/design-system/organisms/RejectionsPanel/RejectionsPanel';
 import { SubagentStatsPanel } from './components/design-system/organisms/SubagentStatsPanel/SubagentStatsPanel';
 import { AgentActivity } from './components/design-system/organisms/AgentActivity/AgentActivity';
+import { WorkflowsView } from './components/design-system/organisms/WorkflowsView/WorkflowsView';
+import { AiChat } from './components/design-system/organisms/AiChat/AiChat';
+import { AiInsightInline } from './components/design-system/molecules/AiInsightInline/AiInsightInline';
+import { CommandUsage } from './components/design-system/organisms/CommandUsage/CommandUsage';
+import { FileChurn } from './components/design-system/organisms/FileChurn/FileChurn';
+import { TasksPanel } from './components/design-system/organisms/TasksPanel/TasksPanel';
+import { PluginsInventory } from './components/design-system/organisms/PluginsInventory/PluginsInventory';
 import {
   StatCardSkeleton,
   ChartSkeleton,
@@ -48,18 +54,30 @@ import {
 } from './components/design-system/atoms/Skeleton/Skeleton';
 import { compact, usd, hourLabel, dayLabel, shortModel } from './lib/format';
 import { track, setUserContext, isOptedOut, setOptOut } from './lib/analytics';
+import { useNotifications } from './hooks/useNotifications';
+import { useUpdateToast } from './hooks/useUpdateToast';
+import { useAiStatus } from './hooks/useAiStatus';
+import { useAiInsight } from './hooks/useAiInsight';
+import { useAiConfig } from './hooks/useAiConfig';
 
 const POLL = 5000;
 
-type Tab = 'live' | 'agents' | 'trends' | 'models' | 'insights' | 'sessions';
+type Tab = 'live' | 'agents' | 'workflows' | 'trends' | 'models' | 'insights' | 'workspace' | 'ai' | 'sessions' | 'settings';
 
-const TABS: { id: Tab; label: string }[] = [
-  { id: 'live', label: '⚡ Live Usage' },
-  { id: 'agents', label: '🤖 Agents · Live Activity' },
-  { id: 'trends', label: '📈 Trends' },
-  { id: 'models', label: '🧠 Models' },
-  { id: 'insights', label: '🔍 Insights' },
-  { id: 'sessions', label: '📋 Sessions' },
+// `settings` must stay last — it's pinned to the bottom of the sidebar nav.
+// Icons are a separate field so the sidebar can align them in a fixed-width slot
+// (emoji glyphs render at different widths, which otherwise misaligns the labels).
+const TABS: { id: Tab; icon: string; label: string }[] = [
+  { id: 'live', icon: '⚡', label: 'Live Usage' },
+  { id: 'agents', icon: '🤖', label: 'Agents · Live Activity' },
+  { id: 'workflows', icon: '🔀', label: 'Workflows' },
+  { id: 'trends', icon: '📈', label: 'Trends' },
+  { id: 'models', icon: '🧠', label: 'Models' },
+  { id: 'insights', icon: '🔍', label: 'Insights' },
+  { id: 'workspace', icon: '🗂', label: 'Workspace' },
+  { id: 'ai', icon: '🪄', label: 'AI Insights' },
+  { id: 'sessions', icon: '📋', label: 'Sessions' },
+  { id: 'settings', icon: '⚙', label: 'Settings' },
 ];
 
 type InsightDays = '7' | '14' | '30';
@@ -122,10 +140,10 @@ export default function App() {
   const heatmap = usePolling<HeatmapData>(withSrc('/api/heatmap?days=90'), 60000);
   const projectCosts = usePolling<ProjectData>(withSrc('/api/projects?days=90'), 30000);
   const liveSubagents = usePolling<LiveSubagents>('/api/subagents/live', 4000);
+  const workflows = usePolling<WorkflowsData>('/api/workflows', 4000);
   const version = usePolling<VersionInfo>('/api/version', 1_800_000);
   const [limits, setLimits] = useLimits();
   const [settings, setSettings] = useSettings();
-  const [showSettings, setShowSettings] = useState(false);
   const [analyticsOptOut, setAnalyticsOptOut] = useState(isOptedOut());
 
   // Auth mode — auto-detected by the backend (presence of a Claude.ai OAuth token),
@@ -148,6 +166,70 @@ export default function App() {
   useEffect(() => {
     if (config.data) setUserContext({ plan: config.data.subscriptionType, usageMode: effectiveMode });
   }, [config.data, effectiveMode]);
+
+  // ── Notifications (toasts replace the old inline banners) ──
+  const { notify, dismiss } = useNotifications();
+  useUpdateToast(version.data);
+
+  // ── AI Insights ──
+  const aiStatus = useAiStatus();
+  const [aiConfig, setAiConfig] = useAiConfig();
+  // Available if the user set a key in Settings, or the server has a fallback (CLI/token).
+  const aiDisabled = !aiConfig.apiKey && aiStatus.data?.available === 'none';
+  const ai = useAiInsight();
+  const onAiInsight = (section: string, data: unknown) => {
+    track('ai_insight_clicked', { section });
+    ai.run(section, data, aiConfig);
+  };
+  const aiInline = (section: string): ReactNode => {
+    const s = ai.states.get(section);
+    if (!s) return null;
+    return (
+      <AiInsightInline
+        text={s.text ?? undefined}
+        loading={s.loading}
+        error={s.error ?? undefined}
+        backend={s.backend}
+        onDismiss={() => ai.dismiss(section)}
+      />
+    );
+  };
+
+  // Claude.ai offline / expired token (subscription mode only). Reactive: shows
+  // while the live API reports an error, auto-clears when it recovers.
+  useEffect(() => {
+    const err = !isApi ? liveUsage.data?.error : undefined;
+    if (!err) {
+      dismiss('offline');
+      return;
+    }
+    const lc = err.toLowerCase();
+    const expired = lc.includes('expired') || lc.includes('no access token');
+    notify({
+      id: 'offline',
+      severity: 'warning',
+      title: expired ? 'Claude.ai session expired' : 'Claude.ai connection offline',
+      message: expired
+        ? 'Token needs a refresh — run `claude` in your terminal and it refreshes automatically.'
+        : `${err} — try running \`claude\` in a terminal.`,
+    });
+  }, [isApi, liveUsage.data?.error, notify, dismiss]);
+
+  // Pay-as-you-go note — shown once per session when API mode is active.
+  const apiNotified = useRef(false);
+  useEffect(() => {
+    if (isApi && config.data && !apiNotified.current) {
+      apiNotified.current = true;
+      notify({
+        id: 'api-mode',
+        severity: 'info',
+        timeoutMs: 9000,
+        title: 'API · pay-as-you-go',
+        message:
+          "No Claude.ai subscription detected — dollar figures are estimated from local logs at Anthropic's API rates. Set spending caps in ⚙ Settings.",
+      });
+    }
+  }, [isApi, config.data, notify]);
   const insightErrors = usePolling<InsightsErrors>(withSrc(`/api/insights/errors?days=${insightDaysNum}`), 60000);
   const insightRetries = usePolling<InsightsRetries>(withSrc(`/api/insights/retries?days=${insightDaysNum}`), 60000);
   const insightLanguages = usePolling<InsightsLanguages[]>(withSrc(`/api/insights/languages?days=${insightDaysNum}`), 60000);
@@ -157,6 +239,10 @@ export default function App() {
   const insightYield = usePolling<InsightsYield>(withSrc(`/api/insights/yield?days=${insightDaysNum}`), 60000);
   const insightRejections = usePolling<InsightsRejections>(withSrc(`/api/insights/rejections?days=${insightDaysNum}`), 60000);
   const insightSubagents = usePolling<SubagentStats>(withSrc(`/api/insights/subagents?days=${insightDaysNum}`), 60000);
+  const insightCommands = usePolling<CommandUsageData>(`/api/insights/commands?days=${insightDaysNum}`, 60000);
+  const insightChurn = usePolling<FileChurnData>(withSrc(`/api/insights/churn?days=${insightDaysNum}`), 60000);
+  const workspaceTasks = usePolling<WorkspaceTasksData>('/api/workspace/tasks', 60000);
+  const inventory = usePolling<InventoryData>('/api/workspace/inventory', 120000);
 
   const error = recent.error || weekly.error;
   const empty =
@@ -172,6 +258,7 @@ export default function App() {
   const runningAgentCount =
     (liveSubagents.data?.running.length ?? 0) +
     (liveSubagents.data?.mainAgents.filter((m) => m.active || m.delegating).length ?? 0);
+  const liveWorkflowCount = workflows.data?.live.length ?? 0;
   // Current 5-hour limit utilization (already 0–100) for the Live Usage tab badge.
   // Only when the live API returned a value for an active block (no error).
   const fiveHourPct =
@@ -204,47 +291,82 @@ export default function App() {
     return Math.ceil(diffMs / (1000 * 60 * 60 * 24));
   }, [sessions.data]);
 
-  return (
-    <div className="mx-auto max-w-6xl px-5 py-8">
-      <header className="mb-6 flex items-end justify-between">
-        <div>
-          <h1 className="text-2xl font-extrabold text-zinc-100">Claude Usage</h1>
-          <p className="mt-1 text-sm text-zinc-500">
-            {recent.claudeDir ? (
-              <span className="font-mono text-xs">{recent.claudeDir}</span>
-            ) : (
-              'local logs'
-            )}
-          </p>
-        </div>
-        <div className="flex items-center gap-4">
-          {coworkAvailable && (
-            <div className="flex items-center gap-2" title="Filter usage by surface: Claude Code CLI vs Cowork (desktop local-agent mode)">
-              <span className="text-[11px] uppercase tracking-wide text-zinc-600">source</span>
-              <ToggleGroup<SourceFilter>
-                options={SOURCE_OPTIONS}
-                value={source}
-                onChange={(s) => {
-                  setSource(s);
-                  track('source_changed', { source: s });
-                }}
-              />
-            </div>
-          )}
-          <button
-            onClick={() => setShowSettings(true)}
-            className="flex h-8 w-8 items-center justify-center rounded-lg text-base text-zinc-400 ring-1 ring-white/10 hover:text-zinc-200 hover:ring-white/20"
-            title="Settings — usage mode & spending limits"
-            aria-label="Settings"
+  const sidebarTabs = TABS.map((t): { id: string; icon: string; label: string; badge?: ReactNode } => {
+    const base = { id: t.id, icon: t.icon, label: t.label };
+    if (t.id === 'agents' && runningAgentCount > 0) {
+      return {
+        ...base,
+        badge: (
+          <span
+            className="inline-flex items-center gap-1 rounded-full bg-clay-500/20 px-1.5 py-0.5 text-[10px] font-bold tabular-nums text-clay-300"
+            title={`${runningAgentCount} agent${runningAgentCount === 1 ? '' : 's'} running right now`}
           >
-            ⚙
-          </button>
-          <LiveBadge computedAt={recent.computedAt} error={error} />
-        </div>
-      </header>
+            <span className="pulse-dot flex-none" />
+            {runningAgentCount}
+          </span>
+        ),
+      };
+    }
+    if (t.id === 'live' && fiveHourPct != null) {
+      return {
+        ...base,
+        badge: (
+          <span
+            className={`inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-bold tabular-nums ${usagePillClasses(fiveHourPct)}`}
+            title={`5-hour limit: ${fiveHourPct}% used`}
+          >
+            {fiveHourPct}%
+          </span>
+        ),
+      };
+    }
+    if (t.id === 'workflows' && liveWorkflowCount > 0) {
+      return {
+        ...base,
+        badge: (
+          <span
+            className="inline-flex items-center gap-1 rounded-full bg-clay-500/20 px-1.5 py-0.5 text-[10px] font-bold tabular-nums text-clay-300"
+            title={`${liveWorkflowCount} workflow${liveWorkflowCount === 1 ? '' : 's'} running right now`}
+          >
+            <span className="pulse-dot flex-none" />
+            {liveWorkflowCount}
+          </span>
+        ),
+      };
+    }
+    return base;
+  });
 
-      {showSettings && (
-        <SettingsModal
+  return (
+    <div className="flex h-screen">
+      <Sidebar
+        tabs={sidebarTabs}
+        activeTab={activeTab}
+        onNavigate={(id) => navigate(`/${id}`)}
+        claudeDir={recent.claudeDir ?? null}
+        version={version.data}
+      />
+      <main className="flex-1 overflow-y-auto">
+        <div className="mx-auto max-w-6xl px-5 py-8">
+          <header className="mb-6 flex items-center justify-end gap-4">
+            {coworkAvailable && (
+              <div className="flex items-center gap-2" title="Filter usage by surface: Claude Code CLI vs Cowork (desktop local-agent mode)">
+                <span className="text-[11px] uppercase tracking-wide text-zinc-600">source</span>
+                <ToggleGroup<SourceFilter>
+                  options={SOURCE_OPTIONS}
+                  value={source}
+                  onChange={(s) => {
+                    setSource(s);
+                    track('source_changed', { source: s });
+                  }}
+                />
+              </div>
+            )}
+            <LiveBadge computedAt={recent.computedAt} error={error} />
+          </header>
+
+      {activeTab === 'settings' ? (
+        <SettingsView
           limits={limits}
           onChangeLimits={setLimits}
           settings={settings}
@@ -255,50 +377,10 @@ export default function App() {
             setOptOut(v);
             setAnalyticsOptOut(v);
           }}
-          onClose={() => setShowSettings(false)}
+          aiConfig={aiConfig}
+          onChangeAiConfig={setAiConfig}
         />
-      )}
-
-      {/* New-version notice (all tabs) */}
-      <UpdateBanner data={version.data} />
-
-      {/* Tab bar */}
-      <div className="mb-6 flex gap-1 rounded-xl bg-ink-800/60 p-1 ring-1 ring-white/5">
-        {TABS.map(({ id, label }) => (
-          <button
-            key={id}
-            onClick={() => navigate(`/${id}`)}
-            className={`flex-1 rounded-lg px-4 py-2.5 text-sm font-medium transition-all duration-200 ${
-              activeTab === id
-                ? 'bg-ink-700 text-zinc-100 shadow-sm ring-1 ring-white/10'
-                : 'text-zinc-500 hover:text-zinc-300 hover:bg-ink-700/40'
-            }`}
-          >
-            <span className="inline-flex items-center gap-1.5">
-              {label}
-              {id === 'agents' && runningAgentCount > 0 && (
-                <span
-                  className="inline-flex items-center gap-1 rounded-full bg-clay-500/20 px-1.5 py-0.5 text-[10px] font-bold tabular-nums text-clay-300"
-                  title={`${runningAgentCount} agent${runningAgentCount === 1 ? '' : 's'} running right now`}
-                >
-                  <span className="pulse-dot flex-none" />
-                  {runningAgentCount}
-                </span>
-              )}
-              {id === 'live' && fiveHourPct != null && (
-                <span
-                  className={`inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-bold tabular-nums ${usagePillClasses(fiveHourPct)}`}
-                  title={`5-hour limit: ${fiveHourPct}% used`}
-                >
-                  {fiveHourPct}%
-                </span>
-              )}
-            </span>
-          </button>
-        ))}
-      </div>
-
-      {empty ? (
+      ) : empty ? (
         <div className="card mt-6 p-12 text-center text-zinc-400">
           No usage logs found. Use Claude Code, then this dashboard will populate.
         </div>
@@ -308,15 +390,7 @@ export default function App() {
           {/* ── LIVE TAB ── */}
           {activeTab === 'live' && (
             <>
-              {/* Auth-mode notice: a neutral pay-as-you-go note for API users,
-                  the subscription session/offline banner otherwise. */}
-          {isApi ? (
-            <ApiModeNote />
-          ) : (
-            liveUsage.data?.error && <OfflineBanner error={liveUsage.data.error} />
-          )}
-
-          {/* Block gauge + hourly chart */}
+              {/* Block gauge + hourly chart */}
               <div className="grid grid-cols-1 items-stretch gap-6 lg:grid-cols-3">
                 {recent.loading ? (
                   <GaugeSkeleton />
@@ -382,6 +456,11 @@ export default function App() {
           {/* ── AGENTS TAB ── */}
           {activeTab === 'agents' && (
             <AgentActivity data={liveSubagents.data} loading={liveSubagents.loading} />
+          )}
+
+          {/* ── WORKFLOWS TAB ── */}
+          {activeTab === 'workflows' && (
+            <WorkflowsView data={workflows.data} loading={workflows.loading} />
           )}
 
           {/* ── TRENDS TAB ── */}
@@ -472,6 +551,11 @@ export default function App() {
                   <Section
                     title={`Last ${weekDays} days · daily ${dailyMetric} by model`}
                     help="Daily tokens (or equivalent cost), stacked by model. The dotted segment past today is a projection from your recent daily average. Toggle tokens/cost and the window on the right."
+                    aiSection="trends"
+                    aiDisabled={aiDisabled}
+                    aiLoading={ai.states.get('trends')?.loading}
+                    onAiInsight={() => onAiInsight('trends', weekly.data)}
+                    aiInsight={aiInline('trends')}
                     right={
                       <div className="flex items-center gap-3">
                         {delta !== null && (
@@ -587,6 +671,11 @@ export default function App() {
                 <Section
                   title="Model breakdown · 7d"
                   help="Share of effective tokens by model over the last 7 days, with each model's cost per 1M effective tokens. Shows which models your usage leans on."
+                  aiSection="models"
+                  aiDisabled={aiDisabled}
+                  aiLoading={ai.states.get('models')?.loading}
+                  onAiInsight={() => onAiInsight('models', models.data)}
+                  aiInsight={aiInline('models')}
                 >
                   {models.data ? (
                     <ModelBreakdown models={models.data.models} />
@@ -597,6 +686,11 @@ export default function App() {
                 <Section
                   title="Tool usage · 7d"
                   help="How many times each tool was invoked over the last 7 days, ranked. Reflects which tools the work relied on most."
+                  aiSection="tools"
+                  aiDisabled={aiDisabled}
+                  aiLoading={ai.states.get('tools')?.loading}
+                  onAiInsight={() => onAiInsight('tools', tools.data)}
+                  aiInsight={aiInline('tools')}
                 >
                   {tools.data ? (
                     <ToolUsage tools={tools.data.tools} totalCalls={tools.data.totalCalls} />
@@ -691,6 +785,11 @@ export default function App() {
               <Section
                 title="Tool errors · failure analysis"
                 help="Failed/rejected tool calls in this window, grouped by error category (left) and by tool (right). The line shows errors per day. Percentages are each tool's own error rate."
+                aiSection="errors"
+                aiDisabled={aiDisabled}
+                aiLoading={ai.states.get('errors')?.loading}
+                onAiInsight={() => onAiInsight('errors', insightErrors.data)}
+                aiInsight={aiInline('errors')}
               >
                 <ErrorBreakdown data={insightErrors.data} />
               </Section>
@@ -700,12 +799,22 @@ export default function App() {
                 <Section
                   title="Languages · edits by file type"
                   help="Files touched in this window, bucketed by extension into a language. Solid = edits/writes; dimmed = reads. Shows what kinds of files the work concentrated on."
+                  aiSection="languages"
+                  aiDisabled={aiDisabled}
+                  aiLoading={ai.states.get('languages')?.loading}
+                  onAiInsight={() => onAiInsight('languages', insightLanguages.data)}
+                  aiInsight={aiInline('languages')}
                 >
                   <LanguageBreakdown data={insightLanguages.data} />
                 </Section>
                 <Section
                   title="Branches · token usage by git branch"
                   help="Effective tokens, cost and session count attributed to each git branch (shown as repo / branch). Reflects which branches the most work went into."
+                  aiSection="branches"
+                  aiDisabled={aiDisabled}
+                  aiLoading={ai.states.get('branches')?.loading}
+                  onAiInsight={() => onAiInsight('branches', insightBranches.data)}
+                  aiInsight={aiInline('branches')}
                 >
                   <BranchBreakdown data={insightBranches.data} />
                 </Section>
@@ -716,12 +825,22 @@ export default function App() {
                 <Section
                   title="MCP vs built-in · tool call split"
                   help="How tool calls split between Claude's built-in tools and tools from connected MCP servers. The per-server table lists call counts and how many failed (errors), one row per MCP server."
+                  aiSection="mcp"
+                  aiDisabled={aiDisabled}
+                  aiLoading={ai.states.get('mcp')?.loading}
+                  onAiInsight={() => onAiInsight('mcp', insightMcp.data)}
+                  aiInsight={aiInline('mcp')}
                 >
                   <McpBreakdown data={insightMcp.data} />
                 </Section>
                 <Section
                   title="Permission rejections · by tool"
                   help="Tool calls you declined when Claude asked for permission, grouped by tool. High counts flag tools Claude reaches for that you often block."
+                  aiSection="rejections"
+                  aiDisabled={aiDisabled}
+                  aiLoading={ai.states.get('rejections')?.loading}
+                  onAiInsight={() => onAiInsight('rejections', insightRejections.data)}
+                  aiInsight={aiInline('rejections')}
                 >
                   <RejectionsPanel data={insightRejections.data} />
                 </Section>
@@ -731,6 +850,11 @@ export default function App() {
               <Section
                 title="Session complexity · tool calls vs tokens (dot size = subagents)"
                 help="One dot per session: x = number of tool calls, y = effective tokens, dot size = subagents spawned. Dots to the upper-right are the heaviest, most complex sessions."
+                aiSection="complexity"
+                aiDisabled={aiDisabled}
+                aiLoading={ai.states.get('complexity')?.loading}
+                onAiInsight={() => onAiInsight('complexity', insightComplexity.data)}
+                aiInsight={aiInline('complexity')}
               >
                 <ComplexityScatter data={insightComplexity.data} />
               </Section>
@@ -740,12 +864,22 @@ export default function App() {
                 <Section
                   title="Yield · committed vs uncommitted sessions"
                   help="Sessions that ran a git commit vs those that didn't — a rough proxy for which work landed. Lists the biggest uncommitted sessions by tokens."
+                  aiSection="yield"
+                  aiDisabled={aiDisabled}
+                  aiLoading={ai.states.get('yield')?.loading}
+                  onAiInsight={() => onAiInsight('yield', insightYield.data)}
+                  aiInsight={aiInline('yield')}
                 >
                   <YieldPanel data={insightYield.data} />
                 </Section>
                 <Section
                   title="Subagent stats · delegation analysis"
                   help="Subagent (Task/Agent) spawns in this window: total, average per delegating session, and breakdowns by subagent type and model."
+                  aiSection="subagents"
+                  aiDisabled={aiDisabled}
+                  aiLoading={ai.states.get('subagents')?.loading}
+                  onAiInsight={() => onAiInsight('subagents', insightSubagents.data)}
+                  aiInsight={aiInline('subagents')}
                 >
                   <SubagentStatsPanel data={insightSubagents.data} />
                 </Section>
@@ -755,10 +889,80 @@ export default function App() {
               <Section
                 title="Edit retries · one-shot analysis"
                 help="Edit/Write calls that succeeded first try vs those retried after an error, with the estimated tokens and cost wasted on the retries."
+                aiSection="retries"
+                aiDisabled={aiDisabled}
+                aiLoading={ai.states.get('retries')?.loading}
+                onAiInsight={() => onAiInsight('retries', insightRetries.data)}
+                aiInsight={aiInline('retries')}
               >
                 <RetryPanel data={insightRetries.data} />
               </Section>
+
+              {/* Commands | File churn */}
+              <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+                <Section
+                  title="Commands · slash-command & skill usage"
+                  help="How often each slash command / skill was invoked in this window, from your local command history. Reflects which commands you reach for most."
+                  aiSection="commands"
+                  aiDisabled={aiDisabled}
+                  aiLoading={ai.states.get('commands')?.loading}
+                  onAiInsight={() => onAiInsight('commands', insightCommands.data)}
+                  aiInsight={aiInline('commands')}
+                >
+                  <CommandUsage data={insightCommands.data} />
+                </Section>
+                <Section
+                  title="File churn · most-edited files"
+                  help="Files edited most often (Edit/Write/MultiEdit calls) in this window. Hover a row for the full path. High churn flags the files the work concentrated on."
+                  aiSection="churn"
+                  aiDisabled={aiDisabled}
+                  aiLoading={ai.states.get('churn')?.loading}
+                  onAiInsight={() => onAiInsight('churn', insightChurn.data)}
+                  aiInsight={aiInline('churn')}
+                >
+                  <FileChurn data={insightChurn.data} />
+                </Section>
+              </div>
             </>
+          )}
+
+          {/* ── WORKSPACE TAB ── */}
+          {activeTab === 'workspace' && (
+            <>
+              <Section
+                title="Tasks & plans"
+                help="Tasks tracked by Claude Code's task tooling (completion + blocked) and the plan documents under ~/.claude/plans, with size and age."
+                aiSection="tasks"
+                aiDisabled={aiDisabled}
+                aiLoading={ai.states.get('tasks')?.loading}
+                onAiInsight={() => onAiInsight('tasks', workspaceTasks.data)}
+                aiInsight={aiInline('tasks')}
+              >
+                <TasksPanel data={workspaceTasks.data} />
+              </Section>
+              <Section
+                title="Plugins & MCP · installed integrations"
+                help="Installed plugins, registered MCP servers (global vs project-scoped), plugin marketplaces and any configured hooks — your local Claude Code integration inventory."
+                aiSection="plugins"
+                aiDisabled={aiDisabled}
+                aiLoading={ai.states.get('plugins')?.loading}
+                onAiInsight={() => onAiInsight('plugins', inventory.data)}
+                aiInsight={aiInline('plugins')}
+              >
+                <PluginsInventory data={inventory.data} />
+              </Section>
+            </>
+          )}
+
+          {/* ── AI INSIGHTS TAB ── */}
+          {activeTab === 'ai' && (
+            <AiChat
+              status={aiStatus.data ?? null}
+              config={aiConfig}
+              onChangeConfig={setAiConfig}
+              onAsked={() => track('ai_chat_asked')}
+              onOpenSettings={() => navigate('/settings')}
+            />
           )}
 
           {/* ── SESSIONS TAB ── */}
@@ -811,37 +1015,8 @@ export default function App() {
           )}
         </div>
       )}
-
-      {/* Footer credits */}
-      <footer className="mt-10 border-t border-white/5 pt-6 pb-2 text-center text-xs text-zinc-600">
-        <p>
-          Built by{' '}
-          <a
-            href="https://iftah.dev"
-            target="_blank"
-            rel="noreferrer"
-            className="font-medium text-zinc-400 transition-colors hover:text-clay-400"
-          >
-            Iftah Saar
-          </a>
-          {version.data?.current && (
-            <span className="text-zinc-700"> · v{version.data.current}</span>
-          )}
-          {version.data?.repoUrl && (
-            <>
-              {' · '}
-              <a
-                href={version.data.repoUrl}
-                target="_blank"
-                rel="noreferrer"
-                className="transition-colors hover:text-zinc-400"
-              >
-                GitHub
-              </a>
-            </>
-          )}
-        </p>
-      </footer>
+        </div>
+      </main>
     </div>
   );
 }

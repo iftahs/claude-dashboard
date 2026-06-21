@@ -11,14 +11,20 @@ import { claudeDir, readConfig, readCredentials, readStatsSummary, readSessionMe
 import { getInsights } from './insights-scan.ts';
 import {
   buildErrors, buildRetries, buildLanguages, buildBranches, buildMcp,
-  buildComplexity, buildYield, buildRejections, buildSubagentStats, scopeInsights,
+  buildComplexity, buildYield, buildRejections, buildSubagentStats, buildFileChurn, scopeInsights,
 } from './insights.ts';
+import { getCommandUsage } from './history.ts';
+import { getWorkspaceTasks, getInventory } from './workspace.ts';
 import { getLiveSubagents } from './subagents-live.ts';
+import { getWorkflows } from './workflows.ts';
+import { runAi, runAiStream, resolveBackend, AiUnavailableError, AiTokenRejectedError, AiCallError, type AiCreds } from './ai.ts';
+import { buildAiContext, buildChatUserMessage, CHAT_SYSTEM, buildSectionUserMessage, SECTION_SYSTEM, SUGGEST_SYSTEM, buildSuggestMessage, type ChatTurn } from './ai-context.ts';
 import { getVersionInfo, isDocker } from './version.ts';
 
 const execAsync = promisify(exec);
 
 const app = express();
+app.use(express.json({ limit: '1mb' }));
 const PORT = Number(process.env.SERVER_PORT ?? 8787);
 
 function wrap(data: unknown, computedAt: number) {
@@ -475,10 +481,211 @@ app.get('/api/insights/subagents', async (req, res) => {
   }
 });
 
+// File churn — most-edited files (Edit/Write/MultiEdit) over the window.
+app.get('/api/insights/churn', async (req, res) => {
+  try {
+    const days = clampDays(req.query.days);
+    const { insights, computedAt } = await getInsights();
+    const scoped = scopeInsights(insights, parseSource(req.query.source));
+    res.json(wrap(buildFileChurn(scoped, days), computedAt));
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+// Slash-command / skill usage from history.jsonl (no source filter).
+app.get('/api/insights/commands', async (req, res) => {
+  try {
+    const days = clampDays(req.query.days);
+    res.json(wrap(await getCommandUsage(days), Date.now()));
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
 app.get('/api/subagents/live', async (_req, res) => {
   try {
     const data = await getLiveSubagents();
     res.json(wrap(data, Date.now()));
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+// Dynamic workflows: live runs + recent completed runs (code root only).
+app.get('/api/workflows', async (_req, res) => {
+  try {
+    const data = await getWorkflows();
+    res.json(wrap(data, Date.now()));
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// AI Insights — chat over usage aggregates + per-section "explain this".
+// Backend: `claude -p` CLI when available, else Anthropic API (OAuth/api-key).
+// ---------------------------------------------------------------------------
+
+const MAX_QUESTION = 2000;
+const MAX_HISTORY = 12;
+const MAX_SECTION_BYTES = 64 * 1024;
+
+function sendAiError(res: express.Response, e: unknown) {
+  if (e instanceof AiUnavailableError) return void res.status(503).json({ error: e.message });
+  if (e instanceof AiTokenRejectedError) return void res.status(502).json({ error: e.message });
+  if (e instanceof AiCallError) return void res.status(502).json({ error: e.message });
+  const msg = e instanceof Error ? e.message : String(e);
+  if (/fetch failed|ENOTFOUND|ETIMEDOUT|ECONNREFUSED|aborted|timeout/i.test(msg))
+    return void res.status(502).json({ error: 'Could not reach the AI provider (network error or timeout). Check your connection and API key.' });
+  res.status(500).json({ error: msg });
+}
+
+/** Parse + clamp a client-supplied chat history array. */
+function parseHistory(raw: any): ChatTurn[] {
+  return (Array.isArray(raw) ? raw : [])
+    .slice(-MAX_HISTORY)
+    .filter((m: any) => (m?.role === 'user' || m?.role === 'assistant') && typeof m?.content === 'string')
+    .map((m: any) => ({ role: m.role, content: String(m.content).slice(0, 4000) }));
+}
+
+/** Best-effort extraction of a string[] of follow-up questions from model text. */
+function parseSuggestions(text: string): string[] {
+  if (!text) return [];
+  let arr: unknown;
+  const start = text.indexOf('[');
+  const end = text.lastIndexOf(']');
+  if (start !== -1 && end > start) {
+    try {
+      arr = JSON.parse(text.slice(start, end + 1));
+    } catch {
+      /* fall through to line parsing */
+    }
+  }
+  let out: string[];
+  if (Array.isArray(arr)) {
+    out = arr.filter((x): x is string => typeof x === 'string');
+  } else {
+    out = text
+      .split('\n')
+      .map((l) => l.replace(/^[\s\-*\d.)"']+/, '').replace(/["',]+$/, '').trim())
+      .filter((l) => l.length > 0 && l.length < 120);
+  }
+  return out.map((s) => s.trim()).filter(Boolean).slice(0, 4);
+}
+
+/** Validate client-supplied AI credentials (Settings → AI Insights). */
+function parseAiCreds(raw: any): AiCreds | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const provider = raw.provider;
+  const apiKey = typeof raw.apiKey === 'string' ? raw.apiKey.trim() : '';
+  const model = typeof raw.model === 'string' ? raw.model.trim() : '';
+  if ((provider === 'claude' || provider === 'openai' || provider === 'gemini') && apiKey && model) {
+    return { provider, model, apiKey };
+  }
+  return null;
+}
+
+app.get('/api/ai/status', async (_req, res) => {
+  try {
+    res.json(wrap(await resolveBackend(), Date.now()));
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+app.post('/api/ai/chat', async (req, res) => {
+  try {
+    const question = String(req.body?.question ?? '').trim().slice(0, MAX_QUESTION);
+    if (question.length < 2) {
+      res.status(400).json({ error: 'question required' });
+      return;
+    }
+    const history = parseHistory(req.body?.history);
+    const ctx = await buildAiContext();
+    const creds = parseAiCreds(req.body?.config);
+    // Stream the answer as chunked text/plain. Headers flush on the first delta;
+    // an error before any delta is still sent as JSON (headers not yet sent).
+    res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+    res.setHeader('Cache-Control', 'no-cache, no-transform');
+    res.setHeader('X-Accel-Buffering', 'no');
+    await runAiStream(
+      { system: CHAT_SYSTEM, user: buildChatUserMessage(ctx, question, history) },
+      creds,
+      {
+        onStart: (backend) => res.setHeader('X-AI-Backend', backend),
+        onDelta: (t) => res.write(t),
+      },
+    );
+    res.end();
+  } catch (e) {
+    if (!res.headersSent) sendAiError(res, e);
+    else res.end();
+  }
+});
+
+app.post('/api/ai/insight', async (req, res) => {
+  try {
+    const section = String(req.body?.section ?? '').trim().slice(0, 40);
+    if (!section) {
+      res.status(400).json({ error: 'section required' });
+      return;
+    }
+    const data = req.body?.data;
+    if (JSON.stringify(data ?? null).length > MAX_SECTION_BYTES) {
+      res.status(413).json({ error: 'section data too large' });
+      return;
+    }
+    const creds = parseAiCreds(req.body?.config);
+    const { text, backend } = await runAi(
+      {
+        system: SECTION_SYSTEM,
+        user: buildSectionUserMessage(section, data),
+        maxTokens: 400,
+      },
+      creds,
+    );
+    res.json(wrap({ insight: text, backend }, Date.now()));
+  } catch (e) {
+    sendAiError(res, e);
+  }
+});
+
+// Conversation-aware follow-up question suggestions (chips under the chat).
+app.post('/api/ai/suggestions', async (req, res) => {
+  try {
+    const history = parseHistory(req.body?.history);
+    if (history.length === 0) {
+      res.json(wrap({ suggestions: [] }, Date.now()));
+      return;
+    }
+    const ctx = await buildAiContext();
+    const creds = parseAiCreds(req.body?.config);
+    const { text } = await runAi(
+      { system: SUGGEST_SYSTEM, user: buildSuggestMessage(ctx, history), maxTokens: 200 },
+      creds,
+    );
+    res.json(wrap({ suggestions: parseSuggestions(text) }, Date.now()));
+  } catch (e) {
+    sendAiError(res, e);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Workspace: tasks + plans, and plugin / MCP inventory.
+// ---------------------------------------------------------------------------
+
+app.get('/api/workspace/tasks', async (_req, res) => {
+  try {
+    res.json(wrap(await getWorkspaceTasks(), Date.now()));
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+app.get('/api/workspace/inventory', async (_req, res) => {
+  try {
+    res.json(wrap(await getInventory(), Date.now()));
   } catch (e) {
     res.status(500).json({ error: String(e) });
   }

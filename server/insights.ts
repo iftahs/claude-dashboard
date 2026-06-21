@@ -497,3 +497,45 @@ export function buildSubagentStats(d: InsightsData, days: number, now = Date.now
     delegationRate: totalNonSidechainSessions > 0 ? sessionsWithSpawns / totalNonSidechainSessions : 0,
   };
 }
+
+// ---------------------------------------------------------------------------
+// buildFileChurn — most-edited files (Edit/Write/MultiEdit/NotebookEdit)
+// ---------------------------------------------------------------------------
+
+const EDIT_TOOLS = new Set(['Edit', 'Write', 'MultiEdit', 'NotebookEdit']);
+
+export interface FileChurnEntry {
+  path: string;
+  name: string;
+  edits: number;
+  projectName: string;
+  lastTs: number;
+}
+
+export function buildFileChurn(d: InsightsData, days: number, now = Date.now()) {
+  const from = cutoff(days, now);
+  const map = new Map<string, { path: string; edits: number; lastTs: number; projectPath: string }>();
+  for (const tc of d.toolCalls) {
+    if (tc.ts < from) continue;
+    if (!tc.filePath || !EDIT_TOOLS.has(tc.name)) continue;
+    let e = map.get(tc.filePath);
+    if (!e) {
+      e = { path: tc.filePath, edits: 0, lastTs: tc.ts, projectPath: tc.projectPath };
+      map.set(tc.filePath, e);
+    }
+    e.edits++;
+    if (tc.ts > e.lastTs) e.lastTs = tc.ts;
+  }
+  const files: FileChurnEntry[] = [...map.values()]
+    .map((v) => ({
+      path: v.path,
+      name: v.path.split(/[\\/]/).filter(Boolean).pop() ?? v.path,
+      edits: v.edits,
+      projectName: v.projectPath.split(/[\\/]/).filter(Boolean).pop() ?? '',
+      lastTs: v.lastTs,
+    }))
+    .sort((a, b) => b.edits - a.edits)
+    .slice(0, 25);
+  const totalEdits = [...map.values()].reduce((s, v) => s + v.edits, 0);
+  return { totalEdits, uniqueFiles: map.size, files };
+}

@@ -5,6 +5,8 @@ import posthog from 'posthog-js';
 import { PostHogProvider } from '@posthog/react';
 import App from './App';
 import { initAnalytics } from './lib/analytics';
+import { NotificationProvider } from './hooks/useNotifications';
+import { NotificationHost } from './components/design-system/organisms/NotificationHost/NotificationHost';
 import './index.css';
 
 initAnalytics();
@@ -13,7 +15,10 @@ createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <PostHogProvider client={posthog}>
       <BrowserRouter>
-        <App />
+        <NotificationProvider>
+          <App />
+          <NotificationHost />
+        </NotificationProvider>
       </BrowserRouter>
     </PostHogProvider>
   </StrictMode>

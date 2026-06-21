@@ -33,5 +33,28 @@ COPY server ./server
 COPY tsconfig.json ./
 COPY --from=build /app/dist ./dist
 
+# ---- optional: bundle the Claude Code CLI so AI Insights can use `claude -p` ----
+# Off by default (keeps the image small). Enable with build arg WITH_CLAUDE_CLI=1
+# (see docker-compose.yml / .env). System ripgrep + USE_BUILTIN_RIPGREP=0 avoids
+# the bundled glibc ripgrep, which doesn't run on musl/alpine.
+ARG WITH_CLAUDE_CLI=0
+ENV CLAUDE_CONFIG_DIR=/claude-cli
+ENV USE_BUILTIN_RIPGREP=0
+RUN if [ "$WITH_CLAUDE_CLI" = "1" ]; then \
+      apk add --no-cache ripgrep git && \
+      npm install -g @anthropic-ai/claude-code && \
+      npm cache clean --force; \
+    fi
+
 EXPOSE 8787
-CMD ["npx", "tsx", "server/index.ts"]
+
+# When the CLI is present, seed a writable config dir from the read-only ~/.claude
+# mount (the CLI refreshes tokens / writes logs, so it can't use the :ro mount),
+# then start the server. Without the CLI this is a no-op.
+CMD if command -v claude >/dev/null 2>&1 && [ -n "$CLAUDE_CONFIG_DIR" ]; then \
+      mkdir -p "$CLAUDE_CONFIG_DIR"; \
+      [ -f /data/.claude/.credentials.json ] && cp -f /data/.claude/.credentials.json "$CLAUDE_CONFIG_DIR/.credentials.json" || true; \
+      [ -f /data/.claude/settings.json ] && cp -f /data/.claude/settings.json "$CLAUDE_CONFIG_DIR/settings.json" || true; \
+      [ -f "$CLAUDE_CONFIG_DIR/.claude.json" ] || echo '{"hasCompletedOnboarding":true}' > "$CLAUDE_CONFIG_DIR/.claude.json"; \
+    fi; \
+    exec npx tsx server/index.ts
