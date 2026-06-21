@@ -27,8 +27,11 @@ export function SettingsView({
   const providers = Object.keys(PROVIDER_LABELS) as AiProvider[];
 
   function changeProvider(provider: AiProvider) {
-    // Reset model to the new provider's first option.
-    onChangeAiConfig({ ...aiConfig, provider, model: PROVIDER_MODELS[provider][0] });
+    // Reset the model to the new provider's first option AND clear the saved key:
+    // keys are provider-specific, so carrying one over would send the wrong
+    // credential to the new provider's API (e.g. an Anthropic key to OpenAI).
+    setAiKey('');
+    onChangeAiConfig({ ...aiConfig, provider, model: PROVIDER_MODELS[provider][0], apiKey: '' });
   }
   function saveAiKey() {
     onChangeAiConfig({ ...aiConfig, apiKey: aiKey.trim() });

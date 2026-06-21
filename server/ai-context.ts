@@ -129,9 +129,32 @@ const SECTION_PROMPTS: Record<string, string> = {
   plugins: 'Summarize this plugins & MCP inventory: installed plugins, MCP servers and any notable integrations.',
 };
 
+// Keys that may carry full paths or session identifiers. The privacy contract is
+// that those never leave the machine, so strip them from any panel payload before
+// it goes into a prompt bound for an external model (e.g. FileChurn's `path`,
+// Complexity's `sessionId`). Aggregate metrics and basenames are kept.
+const SENSITIVE_KEYS = new Set(
+  ['path', 'filePath', 'fullPath', 'projectPath', 'project_path', 'cwd', 'sessionId', 'transcriptPath'].map((k) =>
+    k.toLowerCase(),
+  ),
+);
+
+function scrubForModel(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(scrubForModel);
+  if (value && typeof value === 'object') {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+      if (SENSITIVE_KEYS.has(k.toLowerCase())) continue;
+      out[k] = scrubForModel(v);
+    }
+    return out;
+  }
+  return value;
+}
+
 export function buildSectionUserMessage(section: string, data: unknown): string {
   const instr = SECTION_PROMPTS[section] ?? 'Summarize this dashboard panel data in 2-3 plain-language sentences.';
-  return `${instr}\n\nDATA (JSON):\n${JSON.stringify(data)}`;
+  return `${instr}\n\nDATA (JSON):\n${JSON.stringify(scrubForModel(data))}`;
 }
 
 // ── Follow-up suggestions ───────────────────────────────────────────────────

@@ -6,6 +6,9 @@
   "description": "Beautiful local dashboard for Claude Code usage — 5-hour blocks, weekly trends, model breakdown, tool usage and an activity heatmap, read straight from your ~/.claude logs.",
   "license": "MIT",
   "author": "Iftah Saar (https://iftah.dev)",
+  "engines": {
+    "node": ">=20"
+  },
   "homepage": "https://github.com/iftahs/claude-dashboard",
   "repository": {
     "type": "git",
