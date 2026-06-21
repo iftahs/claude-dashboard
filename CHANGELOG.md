@@ -5,6 +5,19 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.8] - 2026-06-21
+
+### Added
+- Introduced a left sidebar navigation with ten deep-linkable views for easier access.
+- Added a Workflows tab to display live and recent dynamic workflow runs.
+- Implemented a Workspace tab for managing tasks and plugins inventory.
+- Launched AI Insights for privacy-safe usage aggregates and section explanations.
+- Updated the Notifications system with a unified toast and settings modal as a full-screen view.
+- Introduced anonymous PostHog product analytics to measure install count and feature usage.
+
+### Fixed
+- Implemented a fallback for the PostHog token if the environment variable is empty, ensuring analytics events are sent.
+
 ## [0.1.7] - 2026-06-14
 
 ### Added
@@ -95,6 +108,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Live-API fallback to the local logs when there is no active block
   (`resets_at = null`).
 
+[0.1.8]: https://github.com/iftahs/claude-dashboard/releases/tag/v0.1.8
 [0.1.7]: https://github.com/iftahs/claude-dashboard/releases/tag/v0.1.7
 [0.1.6]: https://github.com/iftahs/claude-dashboard/releases/tag/v0.1.6
 [0.1.5]: https://github.com/iftahs/claude-dashboard/releases/tag/v0.1.5
