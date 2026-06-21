@@ -94,7 +94,7 @@ A full-screen settings view (pinned to the bottom of the sidebar) for **usage mo
 
 ## Quick start
 
-Requires [Node.js](https://nodejs.org) 18+.
+Requires [Node.js](https://nodejs.org) 20+ (the active LTS — some dependencies require it).
 
 ```bash
 git clone https://github.com/iftahs/claude-dashboard.git
