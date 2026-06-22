@@ -285,6 +285,18 @@ export default function App() {
   // Actual billed spend from the LiteLLM gateway (null on error / not-yet-loaded →
   // the card is simply hidden, so the dashboard degrades gracefully).
   const litellmSpend = litellm.data && !('error' in litellm.data) ? litellm.data : null;
+  // Real billed cost (today / last 7 days / month-to-date) for the Live-tab spend
+  // widgets, when a LiteLLM gateway is configured — so API SPENDING and the daily-cap
+  // ring reflect what the gateway actually bills instead of the local-logs estimate.
+  // Today = the most recent daily entry; week = the last 7 of the daily series.
+  const litellmActual = litellmAvailable && litellmSpend
+    ? {
+        today: litellmSpend.daily[litellmSpend.daily.length - 1]?.cost ?? 0,
+        week: litellmSpend.daily.slice(-7).reduce((s, d) => s + d.cost, 0),
+        month: litellmSpend.monthToDate,
+        note: litellmHost ? `actual · via ${litellmHost}` : 'actual billed',
+      }
+    : null;
   const hasSpendingLimits =
     limits.dailyLimit != null || limits.weeklyLimit != null || limits.monthlyLimit != null;
 
@@ -415,6 +427,7 @@ export default function App() {
                     isApi={isApi}
                     costPerDay={costPerDay}
                     dailyLimit={limits.dailyLimit}
+                    todayActualCost={litellmActual?.today ?? null}
                   />
                 )}
                 <div className="flex flex-col lg:col-span-2">
@@ -462,6 +475,7 @@ export default function App() {
                   costPerDay={costPerDay}
                   weekCost={weekly.data?.totals.cost}
                   alwaysShow={isApi}
+                  actual={litellmActual ?? undefined}
                 />
               )}
             </>

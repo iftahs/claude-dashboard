@@ -5,7 +5,7 @@ import { InfoTip } from '@/components/design-system/atoms/InfoTip/InfoTip';
 import type { BlockGaugeProps } from './types';
 import { BLOCK_MS, DEFAULT_BLOCK_LIMIT, formatRemaining } from './utils';
 
-export function BlockGauge({ block, liveUsage, isApi = false, costPerDay = 0, dailyLimit = null }: BlockGaugeProps) {
+export function BlockGauge({ block, liveUsage, isApi = false, costPerDay = 0, dailyLimit = null, todayActualCost = null }: BlockGaugeProps) {
   const [, force] = useState(0);
   useEffect(() => {
     const id = setInterval(() => force((n) => n + 1), 1000);
@@ -26,7 +26,10 @@ export function BlockGauge({ block, liveUsage, isApi = false, costPerDay = 0, da
   // otherwise it stays empty (informational, not a limit gauge).
   const cost = block?.totals.cost ?? 0;
   const prevCost = block?.prevTotals.cost ?? 0;
-  const capPct = isApi && dailyLimit ? Math.min(100, (costPerDay / dailyLimit) * 100) : null;
+  // Daily-cap ring: prefer real billed spend so far today (gateway) over the
+  // estimated average $/day, so the cap warning reflects actual money spent.
+  const dailySpend = todayActualCost ?? costPerDay;
+  const capPct = isApi && dailyLimit ? Math.min(100, (dailySpend / dailyLimit) * 100) : null;
 
   const tokPct = hasLive
     ? liveUsage.five_hour.utilization
@@ -88,7 +91,9 @@ export function BlockGauge({ block, liveUsage, isApi = false, costPerDay = 0, da
   if (isApi) {
     statusBadge = (
       <div className="mt-0.5 text-[10px] text-zinc-500 select-none">
-        Current 5-hour session · estimated from local logs
+        {todayActualCost != null
+          ? '5-hour block (est.) · cap ring = real gateway spend'
+          : 'Current 5-hour session · estimated from local logs'}
       </div>
     );
   } else if (hasLive) {
@@ -128,7 +133,9 @@ export function BlockGauge({ block, liveUsage, isApi = false, costPerDay = 0, da
             align="center"
             text={
               isApi
-                ? "Estimated cost of your current 5-hour usage block, anchored to your most recent session's first message. Dollar figures use Anthropic's published API rates and are computed from local logs. The ring fills against your daily spending cap when one is set in ⚙ Settings."
+                ? todayActualCost != null
+                  ? "The big number is the estimated cost of your current 5-hour block (published API rates, from local logs). The daily-cap ring uses your real billed spend so far today from your LiteLLM gateway — see API Spending below for the real today / week / month figures. Set a daily cap in ⚙ Settings."
+                  : "Estimated cost of your current 5-hour usage block, anchored to your most recent session's first message. Dollar figures use Anthropic's published API rates and are computed from local logs. The ring fills against your daily spending cap when one is set in ⚙ Settings."
                 : "Your current 5-hour usage block, anchored to your most recent session's first message (how Anthropic starts a 5h window). The ring shows % of the live account limit from Claude.ai; rows below show this block's effective tokens, cache reads, reset time and burn rate."
             }
           />
