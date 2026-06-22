@@ -4,7 +4,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { usePolling } from './hooks/usePolling';
 import { useLimits } from './hooks/useLimits';
 import { useSettings } from './hooks/useSettings';
-import type { ActivityData, ModelsData, RecentData, WeeklyData, ToolsData, ClaudeConfig, SessionMeta, LiveUsageData, HeatmapData, ProjectData, InsightsErrors, InsightsRetries, InsightsLanguages, InsightsBranches, InsightsMcp, ComplexityPoint, InsightsYield, InsightsRejections, SubagentStats, LiveSubagents, WorkflowsData, CommandUsageData, FileChurnData, WorkspaceTasksData, InventoryData, VersionInfo, SourcesInfo, UsageSource } from './types';
+import type { ActivityData, ModelsData, RecentData, WeeklyData, ToolsData, ClaudeConfig, SessionMeta, LiveUsageData, HeatmapData, ProjectData, InsightsErrors, InsightsRetries, InsightsLanguages, InsightsBranches, InsightsMcp, ComplexityPoint, InsightsYield, InsightsRejections, SubagentStats, LiveSubagents, WorkflowsData, CommandUsageData, FileChurnData, WorkspaceTasksData, InventoryData, VersionInfo, SourcesInfo, UsageSource, LiteLlmSpendData } from './types';
 import { StatCard } from './components/design-system/atoms/StatCard/StatCard';
 import { BlockGauge } from './components/design-system/organisms/BlockGauge/BlockGauge';
 import { UsageBarChart } from './components/design-system/organisms/UsageBarChart/UsageBarChart';
@@ -26,6 +26,7 @@ import { Section } from './components/design-system/molecules/Section/Section';
 import { SpendingLimits } from './components/design-system/molecules/SpendingLimits/SpendingLimits';
 import { ToggleGroup } from './components/design-system/atoms/ToggleGroup/ToggleGroup';
 import { LegendDot } from './components/design-system/atoms/LegendDot/LegendDot';
+import { LiteLlmDailyChart } from './components/design-system/organisms/LiteLlmDailyChart/LiteLlmDailyChart';
 import { ErrorBreakdown } from './components/design-system/organisms/ErrorBreakdown/ErrorBreakdown';
 import { LanguageBreakdown } from './components/design-system/organisms/LanguageBreakdown/LanguageBreakdown';
 import { BranchBreakdown } from './components/design-system/organisms/BranchBreakdown/BranchBreakdown';
@@ -135,6 +136,16 @@ export default function App() {
   const activity = usePolling<ActivityData>(withSrc('/api/activity'), 30000);
   const tools = usePolling<ToolsData>(withSrc('/api/tools?days=7'), 30000);
   const config = usePolling<ClaudeConfig>('/api/config', 60000);
+  // LiteLLM gateway: actual billed cost (month-to-date + per-day window) shown
+  // beside the local estimate. Gated on detection so Code-only / direct-Anthropic
+  // users poll nothing and see no change. The daily window follows the same
+  // weekDays toggle as the estimate chart.
+  const litellmAvailable = !!config.data?.litellm?.available;
+  const litellmHost = config.data?.litellm?.gatewayHost ?? '';
+  const litellm = usePolling<LiteLlmSpendData>(
+    litellmAvailable ? `/api/usage/litellm?days=${weekDays}` : '',
+    POLL,
+  );
   const sessions = usePolling<SessionMeta[]>(withSrc('/api/sessions'), 10000);
   const liveUsage = usePolling<LiveUsageData>('/api/usage/live', 15000);
   const heatmap = usePolling<HeatmapData>(withSrc('/api/heatmap?days=90'), 60000);
@@ -271,6 +282,9 @@ export default function App() {
 
   // Normalize to cost per day from whatever range is selected
   const costPerDay = (weekly.data?.totals.cost ?? 0) / weekDays;
+  // Actual billed spend from the LiteLLM gateway (null on error / not-yet-loaded →
+  // the card is simply hidden, so the dashboard degrades gracefully).
+  const litellmSpend = litellm.data && !('error' in litellm.data) ? litellm.data : null;
   const hasSpendingLimits =
     limits.dailyLimit != null || limits.weeklyLimit != null || limits.monthlyLimit != null;
 
@@ -466,6 +480,24 @@ export default function App() {
           {/* ── TRENDS TAB ── */}
           {activeTab === 'trends' && (
             <>
+              {/* Window selector — drives the cost stat cards, the estimate chart,
+                  and (when present) the LiteLLM actual-billed chart. */}
+              <div className="flex items-center justify-between">
+                <span className="text-xs uppercase tracking-wider text-zinc-500">Spending · last {weekDays} days</span>
+                <div className="flex overflow-hidden rounded-lg ring-1 ring-white/10">
+                  {[7, 14, 21, 28].map((d) => (
+                    <button
+                      key={d}
+                      onClick={() => setWeekDays(d)}
+                      className={`px-2.5 py-1 text-xs tabular-nums transition-colors ${
+                        weekDays === d ? 'bg-clay-500/20 text-clay-400' : 'text-zinc-500 hover:text-zinc-300'
+                      }`}
+                    >
+                      {d / 7}w
+                    </button>
+                  ))}
+                </div>
+              </div>
               {/* Cost stat cards */}
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-4">
                 {weekly.loading ? (
@@ -481,7 +513,11 @@ export default function App() {
                       label={`Est. equivalent cost · ${weekDays}d`}
                       value={usd(weekly.data?.totals.cost ?? 0)}
                       sub={topModel ? `top: ${shortModel(topModel.model)}` : undefined}
-                      help="What this usage would cost at Anthropic's pay-as-you-go API rates. Your subscription has no per-token bill — this is a reference figure only."
+                      help={
+                        litellmAvailable
+                          ? "Estimated from your local logs at Anthropic's public API rates — a reference figure. Compare it with “Actual billed” (your gateway's real charge): the two differ because the gateway also bills failed/retried requests, uses calendar-day windows, and reflects a more up-to-date snapshot."
+                          : "What this usage would cost at Anthropic's pay-as-you-go API rates. Your subscription has no per-token bill — this is a reference figure only."
+                      }
                     />
                     <StatCard
                       label={`Effective tokens · last ${weekDays} days`}
@@ -510,6 +546,63 @@ export default function App() {
                 )}
               </div>
 
+              {/* Actual billed (LiteLLM gateway): month-to-date + per-day window,
+                  side by side. Gated + degrades silently when the gateway errors. */}
+              {litellmAvailable && litellmSpend && (() => {
+                const daily = litellmSpend.daily;
+                const windowTotal = daily.reduce((s, d) => s + d.cost, 0);
+                const prev = litellmSpend.prevMonthToDate;
+                const monthDelta = prev > 0 ? Math.round(((litellmSpend.monthToDate - prev) / prev) * 100) : null;
+                return (
+                  <Section
+                    title="Actual billed"
+                    help="Real cost billed by your LiteLLM gateway, from its /user/daily/activity report. Month-to-date covers the 1st of the month → today; the daily view breaks out each calendar day in the selected window, including today. May exceed the estimate because the gateway also bills failed/retried requests."
+                    right={
+                      litellmHost ? (
+                        <span className="text-xs text-zinc-500">
+                          gateway <span className="font-semibold text-zinc-300">{litellmHost}</span>
+                        </span>
+                      ) : undefined
+                    }
+                  >
+                    <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
+                      {/* Month-to-date */}
+                      <div className="flex flex-col justify-center rounded-xl bg-emerald-500/[0.06] p-5 ring-1 ring-emerald-500/20">
+                        <div className="text-[11px] font-medium uppercase tracking-wider text-emerald-300/80">
+                          {litellmSpend.monthLabel} · month-to-date
+                        </div>
+                        <div className="mt-1.5 text-4xl font-bold tabular-nums text-emerald-400">
+                          {usd(litellmSpend.monthToDate)}
+                        </div>
+                        <div className="mt-1 text-sm text-zinc-400">
+                          {litellmSpend.monthRequests.toLocaleString()} requests since the 1st
+                        </div>
+                        {monthDelta !== null && (
+                          <div className="mt-1.5 text-xs text-zinc-500">
+                            <span className={monthDelta >= 0 ? 'text-red-400' : 'text-emerald-400'}>
+                              {monthDelta >= 0 ? '▲' : '▼'} {Math.abs(monthDelta)}%
+                            </span>{' '}
+                            vs {usd(prev)} in {litellmSpend.prevMonthLabel} (same point)
+                          </div>
+                        )}
+                      </div>
+                      {/* Daily breakdown over the selected window */}
+                      <div className="lg:col-span-2">
+                        <div className="mb-3 flex items-center justify-between">
+                          <span className="text-[11px] font-medium uppercase tracking-wider text-zinc-500">
+                            Last {weekDays} days
+                          </span>
+                          <span className="text-xs text-zinc-400">
+                            <span className="font-semibold text-zinc-200">{usd(windowTotal)}</span> total
+                          </span>
+                        </div>
+                        <LiteLlmDailyChart days={daily} />
+                      </div>
+                    </div>
+                  </Section>
+                );
+              })()}
+
               {/* Sources split (Code vs Cowork) — only under the All filter, where
                   the split is meaningful (a single-surface filter zeroes the other). */}
               {coworkAvailable && source === 'all' && weekly.data?.bySource && (() => {
@@ -524,7 +617,7 @@ export default function App() {
                     help="Split of effective tokens (and equivalent cost) between Claude Code (CLI) and Cowork (desktop local-agent mode) over the selected window."
                   >
                     <div className="flex items-center gap-4">
-                      <div className="flex flex-1 h-3 overflow-hidden rounded-full bg-ink-800 ring-1 ring-white/5">
+                      <div className="flex flex-1 h-3 overflow-hidden rounded-full bg-ink-800 ring-1 ring-white/10">
                         <div style={{ width: `${codePct}%`, backgroundColor: SOURCE_COLOR.code }} />
                         <div style={{ width: `${100 - codePct}%`, backgroundColor: SOURCE_COLOR.cowork }} />
                       </div>
@@ -550,7 +643,7 @@ export default function App() {
                 return (
                   <Section
                     title={`Last ${weekDays} days · daily ${dailyMetric} by model`}
-                    help="Daily tokens (or equivalent cost), stacked by model. The dotted segment past today is a projection from your recent daily average. Toggle tokens/cost and the window on the right."
+                    help="Daily tokens (or equivalent cost), stacked by model. The dotted segment past today is a projection from your recent daily average. Toggle tokens/cost on the right; change the window with the selector at the top."
                     aiSection="trends"
                     aiDisabled={aiDisabled}
                     aiLoading={ai.states.get('trends')?.loading}
@@ -591,21 +684,6 @@ export default function App() {
                               }`}
                             >
                               {m}
-                            </button>
-                          ))}
-                        </div>
-                        <div className="flex overflow-hidden rounded-lg ring-1 ring-white/10">
-                          {[7, 14, 21, 28].map((d) => (
-                            <button
-                              key={d}
-                              onClick={() => setWeekDays(d)}
-                              className={`px-2.5 py-1 text-xs tabular-nums transition-colors ${
-                                weekDays === d
-                                  ? 'bg-clay-500/20 text-clay-400'
-                                  : 'text-zinc-500 hover:text-zinc-300'
-                              }`}
-                            >
-                              {d / 7}w
                             </button>
                           ))}
                         </div>

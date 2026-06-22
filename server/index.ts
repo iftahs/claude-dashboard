@@ -7,7 +7,7 @@ import { promisify } from 'node:util';
 import express from 'express';
 import { getEvents } from './cache.ts';
 import { buildRecent, buildWeekly, buildModels, buildActivity, buildTools, buildHourlyHeatmap, buildProjectStats, filterSource, type SourceFilter } from './aggregate.ts';
-import { claudeDir, readConfig, readCredentials, readStatsSummary, readSessionMetas, fetchLiveUsage, fetchLiveProfile } from './scan.ts';
+import { claudeDir, readConfig, readCredentials, readStatsSummary, readSessionMetas, fetchLiveUsage, fetchLiveProfile, detectLitellm, fetchLiteLlmSpend } from './scan.ts';
 import { getInsights } from './insights-scan.ts';
 import {
   buildErrors, buildRetries, buildLanguages, buildBranches, buildMcp,
@@ -101,7 +101,10 @@ app.get('/api/config', async (_req, res) => {
       // Offline or expired token — keep the values read from the local file.
     }
 
-    const merged = { ...config, subscriptionType, rateLimitTier, authMode };
+    // LiteLLM gateway detection (pure env read) — gates the "Actual billed" cost UI.
+    const litellm = detectLitellm();
+
+    const merged = { ...config, subscriptionType, rateLimitTier, authMode, litellm };
     res.json(wrap(merged, Date.now()));
   } catch (e) {
     res.status(500).json({ error: String(e) });
@@ -288,6 +291,19 @@ app.get('/api/usage/live', async (_req, res) => {
   try {
     const liveUsage = await fetchLiveUsage();
     res.json(wrap(liveUsage, Date.now()));
+  } catch (e: any) {
+    res.json(wrap({ error: e.message || String(e) }, Date.now()));
+  }
+});
+
+// Actual billed cost from a LiteLLM gateway (when configured): month-to-date,
+// previous-month same-period total, and a per-day breakdown over the selected
+// window (days clamp matches /api/usage/weekly). Like /api/usage/live, failures
+// return wrap({ error }) at HTTP 200 so the frontend just hides the cards.
+app.get('/api/usage/litellm', async (req, res) => {
+  try {
+    const days = Math.max(7, Math.min(28, Number(req.query.days ?? 7)));
+    res.json(wrap(await fetchLiteLlmSpend(days), Date.now()));
   } catch (e: any) {
     res.json(wrap({ error: e.message || String(e) }, Date.now()));
   }
