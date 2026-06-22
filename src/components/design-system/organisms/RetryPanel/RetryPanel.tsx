@@ -30,11 +30,11 @@ export function RetryPanel({ data }: RetryPanelProps) {
 
       {/* Stats grid */}
       <div className="grid grid-cols-2 gap-3">
-        <div className="rounded-xl bg-ink-800/50 p-3 ring-1 ring-white/5">
+        <div className="rounded-xl bg-ink-800/50 p-3 ring-1 ring-white/10">
           <div className="text-xs text-zinc-500">Retried edits</div>
           <div className="mt-1 text-xl font-bold tabular-nums text-amber-400">{retried}</div>
         </div>
-        <div className="rounded-xl bg-ink-800/50 p-3 ring-1 ring-white/5">
+        <div className="rounded-xl bg-ink-800/50 p-3 ring-1 ring-white/10">
           <div className="text-xs text-zinc-500">Wasted tokens</div>
           <div className="mt-1 text-xl font-bold tabular-nums text-zinc-400">
             {compact(wastedTokens)}

@@ -39,7 +39,7 @@ export function TasksPanel({ data }: TasksPanelProps) {
             </div>
             <div className="space-y-1.5">
               {tasks.items.slice(0, 12).map((t) => (
-                <div key={t.id} className="flex items-center gap-2 rounded-lg bg-ink-800/50 px-2.5 py-1.5 text-xs ring-1 ring-white/5">
+                <div key={t.id} className="flex items-center gap-2 rounded-lg bg-ink-800/50 px-2.5 py-1.5 text-xs ring-1 ring-white/10">
                   <span className={`flex-none rounded-full px-1.5 py-0.5 text-[10px] ${statusClass(t.blocked ? 'blocked' : t.status)}`}>
                     {t.blocked ? 'blocked' : t.status}
                   </span>
@@ -62,7 +62,7 @@ export function TasksPanel({ data }: TasksPanelProps) {
         {plans.items.length > 0 ? (
           <div className="space-y-1.5">
             {plans.items.slice(0, 14).map((p) => (
-              <div key={p.name} className="flex items-center gap-2 rounded-lg bg-ink-800/50 px-2.5 py-1.5 text-xs ring-1 ring-white/5">
+              <div key={p.name} className="flex items-center gap-2 rounded-lg bg-ink-800/50 px-2.5 py-1.5 text-xs ring-1 ring-white/10">
                 <span className="min-w-0 flex-1 truncate text-zinc-300" title={p.title}>{p.title}</span>
                 <span className="flex-none tabular-nums text-zinc-600">{(p.sizeBytes / 1024).toFixed(0)}kb</span>
                 <span className="flex-none tabular-nums text-zinc-600">{p.ageDays === 0 ? 'today' : `${p.ageDays}d`}</span>

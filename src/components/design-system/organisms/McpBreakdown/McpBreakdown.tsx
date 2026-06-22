@@ -61,7 +61,7 @@ export function McpBreakdown({ data }: McpBreakdownProps) {
       {/* Per-server table: name · calls · errors, columns aligned */}
       {data.perServer.length > 0 && (
         <div>
-          <div className="mb-1.5 flex items-center gap-2 border-b border-white/5 pb-1 text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
+          <div className="mb-1.5 flex items-center gap-2 border-b border-white/10 pb-1 text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
             <span className="flex-1">MCP server</span>
             <span className="w-14 text-right">calls</span>
             <span className="w-14 text-right">errors</span>

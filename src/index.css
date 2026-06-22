@@ -18,7 +18,7 @@ body {
 
 @layer components {
   .card {
-    @apply rounded-2xl bg-ink-800/80 border border-white/5 shadow-xl shadow-black/30 backdrop-blur;
+    @apply rounded-2xl bg-ink-800/90 border border-white/10 shadow-xl shadow-black/30 backdrop-blur;
   }
   .pulse-dot {
     @apply inline-block h-2 w-2 rounded-full bg-emerald-400;
@@ -26,7 +26,7 @@ body {
     animation: pulse 2s infinite;
   }
   .skeleton {
-    @apply relative overflow-hidden bg-white/5;
+    @apply relative overflow-hidden bg-white/10;
   }
   .skeleton::after {
     content: '';
@@ -101,11 +101,11 @@ body {
   height: 6px;
 }
 ::-webkit-scrollbar-track {
-  background: #0c0c0f; /* bg-ink-900 */
+  background: #0a0a0d; /* bg-ink-900 */
   border-radius: 8px;
 }
 ::-webkit-scrollbar-thumb {
-  background: #26262f; /* bg-ink-600 */
+  background: #353541; /* bg-ink-600 */
   border-radius: 8px;
 }
 ::-webkit-scrollbar-thumb:hover {

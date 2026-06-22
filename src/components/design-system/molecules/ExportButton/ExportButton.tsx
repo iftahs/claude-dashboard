@@ -35,13 +35,13 @@ export function ExportButton({ label = 'Export', getData }: ExportButtonProps) {
           <div className="absolute right-0 top-8 z-20 min-w-[120px] rounded-xl border border-white/10 bg-ink-700 shadow-2xl py-1">
             <button
               onClick={() => handleExport('csv')}
-              className="w-full px-3 py-1.5 text-left text-xs text-zinc-300 hover:bg-white/5 transition-colors"
+              className="w-full px-3 py-1.5 text-left text-xs text-zinc-300 hover:bg-white/10 transition-colors"
             >
               📄 Export CSV
             </button>
             <button
               onClick={() => handleExport('json')}
-              className="w-full px-3 py-1.5 text-left text-xs text-zinc-300 hover:bg-white/5 transition-colors"
+              className="w-full px-3 py-1.5 text-left text-xs text-zinc-300 hover:bg-white/10 transition-colors"
             >
               {'{ }'} Export JSON
             </button>

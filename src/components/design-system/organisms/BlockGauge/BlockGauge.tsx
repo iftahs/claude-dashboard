@@ -219,7 +219,7 @@ export function BlockGauge({ block, liveUsage, isApi = false, costPerDay = 0, da
 
         {/* Burn rate row */}
         {burnRateStr && (
-          <div className="flex justify-between pt-1 mt-1 border-t border-white/5" style={{ color: burnColor }}>
+          <div className="flex justify-between pt-1 mt-1 border-t border-white/10" style={{ color: burnColor }}>
             <span className="text-zinc-500">Burn rate</span>
             <span className="tabular-nums font-semibold text-xs">
               {burnRateStr}

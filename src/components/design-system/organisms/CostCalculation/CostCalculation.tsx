@@ -44,7 +44,7 @@ export function CostCalculation() {
         <div className="lg:col-span-7 overflow-x-auto">
           <table className="w-full text-left text-xs border-collapse">
             <thead>
-              <tr className="border-b border-white/5 text-zinc-500 font-semibold uppercase tracking-wider">
+              <tr className="border-b border-white/10 text-zinc-500 font-semibold uppercase tracking-wider">
                 <th className="py-2.5">Model</th>
                 <th className="py-2.5 text-right">Input / 1M</th>
                 <th className="py-2.5 text-right">Output / 1M</th>
@@ -52,11 +52,11 @@ export function CostCalculation() {
                 <th className="py-2.5 text-right">Cache Read / 1M</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-white/5 text-zinc-300">
+            <tbody className="divide-y divide-white/10 text-zinc-300">
               {currentModels.map((model) => (
                 <tr
                   key={model.name}
-                  className={`hover:bg-white/5 transition-colors cursor-pointer ${
+                  className={`hover:bg-white/10 transition-colors cursor-pointer ${
                     selectedModel.name === model.name ? 'bg-clay-500/10 text-clay-400 font-medium' : ''
                   }`}
                   onClick={() => setSelectedModel(model)}
@@ -74,7 +74,7 @@ export function CostCalculation() {
                 legacyModels.map((model) => (
                   <tr
                     key={model.name}
-                    className={`hover:bg-white/5 transition-colors cursor-pointer ${
+                    className={`hover:bg-white/10 transition-colors cursor-pointer ${
                       selectedModel.name === model.name ? 'bg-clay-500/10 text-clay-400 font-medium' : ''
                     }`}
                     onClick={() => setSelectedModel(model)}
@@ -101,13 +101,13 @@ export function CostCalculation() {
             </button>
           </div>
 
-          <div className="mt-4 rounded-xl bg-ink-700/30 p-3 text-xs text-zinc-400 leading-relaxed border border-white/5">
+          <div className="mt-4 rounded-xl bg-ink-700/30 p-3 text-xs text-zinc-400 leading-relaxed border border-white/10">
             <span className="font-semibold text-zinc-300">💡 Prompt Caching Benefit:</span> Cache reads cost only <strong>10%</strong> of standard input price. Designing your prompts to reuse systemic instructions, codebase maps, or tool schemas leverages this pricing to achieve massive savings.
           </div>
         </div>
 
         {/* Right: Interactive Sandbox Calculator */}
-        <div className="lg:col-span-5 flex flex-col rounded-xl bg-ink-700/50 p-5 border border-white/5">
+        <div className="lg:col-span-5 flex flex-col rounded-xl bg-ink-700/50 p-5 border border-white/10">
           <div className="mb-4 flex items-center justify-between gap-4">
             <div>
               <span className="text-xs font-bold uppercase tracking-wider text-zinc-400">Interactive Cost Calculator</span>
@@ -233,14 +233,14 @@ export function CostCalculation() {
           </div>
 
           {/* Formula & Total */}
-          <div className="mt-5 pt-4 border-t border-white/5">
+          <div className="mt-5 pt-4 border-t border-white/10">
             <div className="flex items-center justify-between">
               <span className="text-xs font-semibold text-zinc-400">Calculated Cost</span>
               <span className="text-xl font-bold text-clay-400 tabular-nums">{usd(calculateCost())}</span>
             </div>
 
             {/* Visual Formula breakdown */}
-            <div className="mt-3 font-mono text-[10px] text-zinc-500 bg-ink-900/80 p-2.5 rounded border border-white/5 leading-relaxed overflow-x-auto whitespace-nowrap">
+            <div className="mt-3 font-mono text-[10px] text-zinc-500 bg-ink-900/80 p-2.5 rounded border border-white/10 leading-relaxed overflow-x-auto whitespace-nowrap">
               <div>
                 ({compact(inputTokens)} × ${selectedModel.input}/M) +
                 ({compact(outputTokens)} × ${selectedModel.output}/M) +
@@ -249,7 +249,7 @@ export function CostCalculation() {
                 ({compact(cacheWriteTokens)} × ${selectedModel.cacheWrite}/M) +
                 ({compact(cacheReadTokens)} × ${selectedModel.cacheRead}/M)
               </div>
-              <div className="mt-1 border-t border-white/5 pt-1 text-zinc-400">
+              <div className="mt-1 border-t border-white/10 pt-1 text-zinc-400">
                 = {usd(calculateCost())}
               </div>
             </div>

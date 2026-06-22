@@ -40,7 +40,7 @@ function ModelChip({ model }: { model: string }) {
 
 function WorkingBar() {
   return (
-    <div className="relative h-0.5 w-full overflow-hidden rounded-full bg-white/5">
+    <div className="relative h-0.5 w-full overflow-hidden rounded-full bg-white/10">
       <div
         className="absolute inset-y-0 w-1/3 rounded-full"
         style={{
@@ -183,7 +183,7 @@ function MainAgentCard({
   return (
     <div
       className={`card flex flex-col gap-2 p-4 border transition-all duration-500 ${
-        working ? 'border-clay-500/15' : 'border-white/5 opacity-60 saturate-50'
+        working ? 'border-clay-500/15' : 'border-white/10 opacity-60 saturate-50'
       }`}
       style={{ animation: 'agent-enter 0.3s ease-out both' }}
     >
@@ -239,7 +239,7 @@ function GroupLabel({ children }: { children: string }) {
 // in parallel right now. Pulses while anything is active.
 function CountChip({ count, label, pulse }: { count: number; label: string; pulse?: boolean }) {
   return (
-    <span className="inline-flex items-center gap-1.5 rounded-full bg-white/5 px-2.5 py-1 text-xs font-semibold tabular-nums text-zinc-300 ring-1 ring-white/10">
+    <span className="inline-flex items-center gap-1.5 rounded-full bg-white/10 px-2.5 py-1 text-xs font-semibold tabular-nums text-zinc-300 ring-1 ring-white/10">
       {pulse && <span className="pulse-dot flex-none" />}
       {count} {label}
     </span>

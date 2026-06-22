@@ -32,7 +32,7 @@ export function YieldPanel({ data }: YieldPanelProps) {
           <div className="mt-1 text-2xl font-bold tabular-nums text-emerald-400">{committed}</div>
           <div className="text-xs text-zinc-500">{compact(tokensCommitted)} tokens</div>
         </div>
-        <div className="rounded-xl bg-zinc-800/40 p-3 ring-1 ring-white/5">
+        <div className="rounded-xl bg-zinc-800/40 p-3 ring-1 ring-white/10">
           <div className="text-xs text-zinc-500">Uncommitted sessions</div>
           <div className="mt-1 text-2xl font-bold tabular-nums text-zinc-400">{uncommitted}</div>
           <div className="text-xs text-zinc-500">{compact(tokensUncommitted)} tokens</div>
