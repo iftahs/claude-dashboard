@@ -2,6 +2,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { LiveBadge } from './components/design-system/atoms/LiveBadge/LiveBadge';
 import { ToggleGroup } from './components/design-system/atoms/ToggleGroup/ToggleGroup';
 import { Sidebar } from './components/design-system/organisms/Sidebar/Sidebar';
+import { AgentTrafficSignal } from './components/design-system/organisms/AgentTrafficSignal/AgentTrafficSignal';
 import { LiveTab } from './components/tabs/LiveTab/LiveTab';
 import { AgentsTab } from './components/tabs/AgentsTab/AgentsTab';
 import { WorkflowsTab } from './components/tabs/WorkflowsTab/WorkflowsTab';
@@ -67,6 +68,7 @@ export default function App() {
       <main className="flex-1 overflow-y-auto">
         <div className="mx-auto max-w-6xl px-5 py-8">
           <header className="mb-6 flex items-center justify-end gap-4">
+            <AgentTrafficSignal />
             {coworkAvailable && (
               <div
                 className="flex items-center gap-2"
