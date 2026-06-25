@@ -284,6 +284,10 @@ export interface SubagentStats {
   delegationRate: number;
 }
 
+/** Traffic-light status: finished (green) · running (yellow) · waiting (red).
+ *  'waiting' is inferred (no explicit "awaiting permission" marker in the logs). */
+export type AgentTrafficStatus = 'finished' | 'running' | 'waiting';
+
 export interface LiveSubagent {
   key: string;
   parentKey: string;
@@ -295,6 +299,7 @@ export interface LiveSubagent {
   effectiveTokens: number;
   project: string;
   status: 'running';
+  traffic: AgentTrafficStatus;
 }
 
 export interface RecentlyCompletedSubagent {
@@ -321,12 +326,14 @@ export interface MainAgent {
   active: boolean;
   delegating: boolean;
   status: 'running';
+  traffic: AgentTrafficStatus;
 }
 
 export interface LiveSubagents {
   running: LiveSubagent[];
   recentlyCompleted: RecentlyCompletedSubagent[];
   mainAgents: MainAgent[];
+  counts: { running: number; waiting: number; finished: number };
 }
 
 // ── Dynamic workflows ────────────────────────────────────────────────────────

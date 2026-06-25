@@ -30,6 +30,12 @@ export function SettingsView({
   ];
   const detectedLabel = detectedMode === 'api' ? 'API · pay-as-you-go' : 'Subscription';
 
+  const agentAlertOptions: { value: Settings['agentAlert']; label: string }[] = [
+    { value: 'visual', label: 'Visual only' },
+    { value: 'notification', label: 'Notification' },
+    { value: 'sound', label: 'Notification + sound' },
+  ];
+
   const inputCls = 'w-full bg-transparent px-2 py-2 text-sm text-zinc-200 outline-none';
   const wrapCls =
     'flex items-center rounded-lg bg-ink-700 ring-1 ring-white/10 focus-within:ring-clay-500';
@@ -57,6 +63,22 @@ export function SettingsView({
             <span className="text-zinc-600"> · overridden</span>
           )}
         </p>
+      </section>
+
+      {/* ── Agent alerts ───────────────────────────────────────────── */}
+      <section className="mt-6 border-t border-white/10 pt-5">
+        <h4 className="mb-1 text-sm font-semibold text-zinc-300">Agent alerts</h4>
+        <p className="mb-3 text-xs text-zinc-500">
+          How to alert you when an agent turns <span className="text-red-400 font-medium">red</span> — waiting
+          for your confirmation or attention. The red badge always shows in the sidebar and Agents tab; this adds
+          a browser notification and/or a chime.
+        </p>
+        <ToggleGroup<Settings['agentAlert']>
+          options={agentAlertOptions}
+          value={settings.agentAlert}
+          onChange={(agentAlert) => onChangeSettings({ ...settings, agentAlert })}
+          grow
+        />
       </section>
 
       {/* ── Spending limits ────────────────────────────────────────── */}

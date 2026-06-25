@@ -4,6 +4,8 @@ import { useNotifications } from './useNotifications';
 import { useUpdateToast } from './useUpdateToast';
 import { useConfigMode } from './useConfigMode';
 import { useLiveData } from './useLiveData';
+import { useAgentTraffic } from './useAgentTraffic';
+import { useAgentAlerts } from './useAgentAlerts';
 
 /**
  * App-level side effects: anonymous analytics + the toast notifications that
@@ -11,10 +13,13 @@ import { useLiveData } from './useLiveData';
  * pay-as-you-go note). Kept out of the render tree so App stays a thin shell.
  */
 export function useDashboardNotifications(activeTab: string) {
-  const { configData, effectiveMode, isApi } = useConfigMode();
+  const { configData, effectiveMode, isApi, settings } = useConfigMode();
   const { liveUsage, version } = useLiveData();
   const { notify, dismiss } = useNotifications();
+  const { waiting } = useAgentTraffic();
   useUpdateToast(version.data);
+  // Alert (per Settings) when a new agent turns red / needs attention.
+  useAgentAlerts(waiting, settings.agentAlert);
 
   // ── Product analytics (anonymous, path-free events only — see lib/analytics) ──
   useEffect(() => {

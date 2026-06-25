@@ -13,6 +13,17 @@ import { join } from 'node:path';
 import { createInterface } from 'node:readline';
 import { claudeDir } from './scan.ts';
 
+/**
+ * Traffic-light status for an agent:
+ *  - 'finished' — task completed (the recentlyCompleted list);
+ *  - 'running'  — actively working;
+ *  - 'waiting'  — paused needing user attention. INFERRED, not explicit: the
+ *    JSONL has no "awaiting permission" marker, so we infer it from a tool_use
+ *    left unresolved while the transcript went quiet, or a last tool_result that
+ *    errored/was rejected. Biased toward 'running' when uncertain.
+ */
+export type AgentTrafficStatus = 'finished' | 'running' | 'waiting';
+
 export interface LiveSubagent {
   key: string;
   /** Parent session file path — links this subagent to its MainAgent.key. '' if orphaned. */
@@ -25,6 +36,7 @@ export interface LiveSubagent {
   effectiveTokens: number;
   project: string;
   status: 'running';
+  traffic: AgentTrafficStatus;
 }
 
 export interface RecentlyCompletedSubagent {
@@ -55,12 +67,15 @@ export interface MainAgent {
   /** True when the transcript is idle but the session still has running subagents. */
   delegating: boolean;
   status: 'running';
+  traffic: AgentTrafficStatus;
 }
 
 export interface LiveSubagentsData {
   running: LiveSubagent[];
   recentlyCompleted: RecentlyCompletedSubagent[];
   mainAgents: MainAgent[];
+  /** Traffic-light tallies for badges/alerts (finished = recentlyCompleted). */
+  counts: { running: number; waiting: number; finished: number };
 }
 
 // ---------------------------------------------------------------------------
@@ -150,6 +165,12 @@ interface MainInfo {
   firstTs: number;
   lastTs: number;
   hasAssistant: boolean;
+  /** ts of the most recent assistant tool_use (any tool) — for waiting inference. */
+  lastToolUseTs: number;
+  /** ts of the most recent tool_result resolving a tool_use. */
+  lastToolResultTs: number;
+  /** Whether that most recent tool_result errored or was rejected by the user. */
+  lastResultIsError: boolean;
 }
 
 async function parseFileForAgentSpawns(file: string): Promise<{
@@ -170,6 +191,9 @@ async function parseFileForAgentSpawns(file: string): Promise<{
     firstTs: Infinity,
     lastTs: 0,
     hasAssistant: false,
+    lastToolUseTs: 0,
+    lastToolResultTs: 0,
+    lastResultIsError: false,
   };
   // Same keep-max dedup rule as scan.ts — streaming writes duplicate usage rows.
   const usageByKey = new Map<string, number>();
@@ -220,15 +244,18 @@ async function parseFileForAgentSpawns(file: string): Promise<{
 
     if (obj.type === 'assistant' && Array.isArray(obj.message?.content)) {
       for (const block of obj.message.content) {
-        if (block?.type === 'tool_use' && (block.name === 'Agent' || block.name === 'Task')) {
-          spawns.push({
-            id: block.id ?? '',
-            description: (block.input?.description ?? '').slice(0, 200),
-            subagentType: block.input?.subagent_type ?? block.input?.agentType ?? 'agent',
-            model: block.input?.model ?? null,
-            promptPrefix: String(block.input?.prompt ?? '').slice(0, 150),
-            ts,
-          });
+        if (block?.type === 'tool_use') {
+          if (ts > main.lastToolUseTs) main.lastToolUseTs = ts;
+          if (block.name === 'Agent' || block.name === 'Task') {
+            spawns.push({
+              id: block.id ?? '',
+              description: (block.input?.description ?? '').slice(0, 200),
+              subagentType: block.input?.subagent_type ?? block.input?.agentType ?? 'agent',
+              model: block.input?.model ?? null,
+              promptPrefix: String(block.input?.prompt ?? '').slice(0, 150),
+              ts,
+            });
+          }
         }
       }
     }
@@ -261,6 +288,12 @@ async function parseFileForAgentSpawns(file: string): Promise<{
               agentId: agentIdMatch ? agentIdMatch[1] : null,
               isAsyncLaunch: /Async agent launched/i.test(resultText),
             });
+            // Track the latest tool_result for the parent's waiting heuristic.
+            const isErr = block.is_error === true || /reject|denied|doesn't want to proceed/i.test(resultText);
+            if (ts >= main.lastToolResultTs) {
+              main.lastToolResultTs = ts;
+              main.lastResultIsError = isErr;
+            }
           }
         }
       }
@@ -450,6 +483,7 @@ async function computeLiveSubagents(): Promise<LiveSubagentsData> {
         effectiveTokens: sc?.effectiveTokens ?? 0,
         project,
         status: 'running',
+        traffic: 'running',
       });
       childCount++;
       runningChildren++;
@@ -463,7 +497,18 @@ async function computeLiveSubagents(): Promise<LiveSubagentsData> {
     const MAIN_LINGER = 60_000;
     const sinceWrite = now - pf.mtime;
     const selfActive = sinceWrite < MAIN_ACTIVE;
-    if (parsed.main.hasAssistant && (sinceWrite < MAIN_LINGER || runningChildren > 0)) {
+    // Waiting inference (RED): the transcript went quiet with a tool_use left
+    // unresolved (likely a permission prompt), or its last tool_result errored —
+    // within the active window, and NOT while delegating (a pending Agent spawn
+    // whose subagent is still running is delegation, not waiting). Biased to
+    // 'running' otherwise; see AgentTrafficStatus.
+    const pendingTool = parsed.main.lastToolUseTs > parsed.main.lastToolResultTs;
+    const waitingLikely =
+      !selfActive &&
+      runningChildren === 0 &&
+      sinceWrite < ACTIVE_WINDOW &&
+      (pendingTool || parsed.main.lastResultIsError);
+    if (parsed.main.hasAssistant && (sinceWrite < MAIN_LINGER || runningChildren > 0 || waitingLikely)) {
       mainAgents.push({
         key: pf.path,
         title: parsed.main.title || project,
@@ -476,6 +521,7 @@ async function computeLiveSubagents(): Promise<LiveSubagentsData> {
         active: selfActive,
         delegating: !selfActive && runningChildren > 0,
         status: 'running',
+        traffic: waitingLikely ? 'waiting' : 'running',
       });
     }
   }
@@ -494,13 +540,22 @@ async function computeLiveSubagents(): Promise<LiveSubagentsData> {
       effectiveTokens: sc.effectiveTokens,
       project: projectNameFromPath(sc.projectPath),
       status: 'running',
+      traffic: 'running',
     });
   }
 
   running.sort((a, b) => a.startedAt - b.startedAt);
   recentlyCompleted.sort((a, b) => b.completedAt - a.completedAt);
   mainAgents.sort((a, b) => b.lastActivity - a.lastActivity);
-  return { running, recentlyCompleted: recentlyCompleted.slice(0, 25), mainAgents };
+  const completedList = recentlyCompleted.slice(0, 25);
+  const waiting = mainAgents.filter((m) => m.traffic === 'waiting').length;
+  const runningCount = running.length + mainAgents.filter((m) => m.traffic === 'running').length;
+  return {
+    running,
+    recentlyCompleted: completedList,
+    mainAgents,
+    counts: { running: runningCount, waiting, finished: completedList.length },
+  };
 }
 
 // ---------------------------------------------------------------------------

@@ -5,11 +5,14 @@ export interface Settings {
   // 'auto' follows the backend-detected authMode; the others force a mode in case
   // auto-detection is ever wrong (e.g. an unusual auth setup).
   modeOverride: 'auto' | 'subscription' | 'api';
+  // How to alert when an agent turns red (waiting for confirmation/attention):
+  // visual badge only, + browser notification, or + an audible chime.
+  agentAlert: 'visual' | 'notification' | 'sound';
 }
 
 const KEY = 'claude-dashboard-settings-v1';
 
-const DEFAULTS: Settings = { modeOverride: 'auto' };
+const DEFAULTS: Settings = { modeOverride: 'auto', agentAlert: 'notification' };
 
 function load(): Settings {
   try {

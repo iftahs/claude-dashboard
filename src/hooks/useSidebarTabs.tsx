@@ -3,6 +3,7 @@ import { SidebarBadge } from '@/components/design-system/atoms/SidebarBadge/Side
 import type { SidebarBadgeTone } from '@/components/design-system/atoms/SidebarBadge/types';
 import type { SidebarTab } from '@/components/design-system/organisms/Sidebar/types';
 import { useLiveMetrics } from './useLiveMetrics';
+import { useAgentTraffic } from './useAgentTraffic';
 
 interface TabDef {
   id: string;
@@ -26,22 +27,39 @@ function usageTone(pct: number): SidebarBadgeTone {
  */
 export function useSidebarTabs(tabs: TabDef[]): SidebarTab[] {
   const { runningAgentCount, liveWorkflowCount, fiveHourPct } = useLiveMetrics();
+  const { waiting: waitingAgentCount } = useAgentTraffic();
 
   return useMemo(
     () =>
       tabs.map((t): SidebarTab => {
-        if (t.id === 'agents' && runningAgentCount > 0) {
-          return {
-            ...t,
-            badge: (
-              <SidebarBadge
-                tone="clay"
-                pulse
-                label={runningAgentCount}
-                title={`${plural(runningAgentCount, 'agent')} running right now`}
-              />
-            ),
-          };
+        if (t.id === 'agents') {
+          // Red takes priority — surface "an agent needs you" from any tab.
+          if (waitingAgentCount > 0) {
+            return {
+              ...t,
+              badge: (
+                <SidebarBadge
+                  tone="danger"
+                  pulse
+                  label={waitingAgentCount}
+                  title={`${plural(waitingAgentCount, 'agent')} waiting for your attention`}
+                />
+              ),
+            };
+          }
+          if (runningAgentCount > 0) {
+            return {
+              ...t,
+              badge: (
+                <SidebarBadge
+                  tone="clay"
+                  pulse
+                  label={runningAgentCount}
+                  title={`${plural(runningAgentCount, 'agent')} running right now`}
+                />
+              ),
+            };
+          }
         }
         if (t.id === 'live' && fiveHourPct != null) {
           return {
@@ -70,6 +88,6 @@ export function useSidebarTabs(tabs: TabDef[]): SidebarTab[] {
         }
         return { ...t };
       }),
-    [tabs, runningAgentCount, liveWorkflowCount, fiveHourPct],
+    [tabs, runningAgentCount, waitingAgentCount, liveWorkflowCount, fiveHourPct],
   );
 }
