@@ -2,6 +2,7 @@ export interface LiteLlmDay {
   date: string;
   cost: number;
   requests: number;
+  successful: number;
   byModel: Record<string, number>;
 }
 
@@ -17,6 +18,7 @@ export interface LiteLlmDailyTooltipProps {
       label: string;
       cost: number;
       requests: number;
+      successful: number;
       byModel: Record<string, number>;
       isToday: boolean;
     };

@@ -38,7 +38,7 @@ function DailyTooltip({ active, payload }: LiteLlmDailyTooltipProps) {
         </div>
       )}
       <div className="mt-2 border-t border-white/10 pt-2 text-xs text-zinc-500">
-        {d.requests.toLocaleString()} requests
+        {d.successful.toLocaleString()} successful
       </div>
     </ChartTooltip>
   );
@@ -55,6 +55,7 @@ export function LiteLlmDailyChart({ days }: LiteLlmDailyChartProps) {
       full, // "Mon, Jun 22"
       cost: d.cost,
       requests: d.requests,
+      successful: d.successful,
       byModel: d.byModel,
       isToday: i === days.length - 1,
     };

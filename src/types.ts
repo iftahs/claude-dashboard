@@ -120,7 +120,7 @@ export interface LiteLlmSpend {
   prevMonthLabel: string;
   prevMonthToDate: number;
   lifetime: { user: number; key: number };
-  daily: { date: string; cost: number; requests: number; byModel: Record<string, number> }[];
+  daily: { date: string; cost: number; requests: number; successful: number; byModel: Record<string, number> }[];
 }
 export type LiteLlmSpendData = LiteLlmSpend | { error: string };
 

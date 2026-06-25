@@ -456,12 +456,12 @@ export interface LiteLlmSpend {
   prevMonthToDate: number;   // previous month, 1st → same day-of-month (same-period comparison)
   lifetime: { user: number; key: number }; // lifetime spend (user across all keys / this key)
   // `days` calendar days incl. today, oldest→newest, zero-filled. Per-day cost,
-  // request count, and per-model spend (for the hover breakdown).
-  daily: { date: string; cost: number; requests: number; byModel: Record<string, number> }[];
+  // request count, successful count, and per-model spend (for the hover breakdown).
+  daily: { date: string; cost: number; requests: number; successful: number; byModel: Record<string, number> }[];
 }
 
 interface LiteLlmBase {
-  byDate: Map<string, { cost: number; requests: number; byModel: Record<string, number> }>;
+  byDate: Map<string, { cost: number; requests: number; successful: number; byModel: Record<string, number> }>;
   today: Date;
   monthLabel: string;
   monthToDate: number;
@@ -532,18 +532,24 @@ async function fetchLiteLlmBase(): Promise<LiteLlmBase> {
   }
 
   // YYYY-MM-DD sorts lexicographically, so date-string range checks work directly.
-  const byDate = new Map<string, { cost: number; requests: number; byModel: Record<string, number> }>();
+  const byDate = new Map<string, { cost: number; requests: number; successful: number; byModel: Record<string, number> }>();
   let monthToDate = 0, monthRequests = 0, monthSuccessful = 0, monthFailed = 0, prevMonthToDate = 0;
   const monthTokens = { prompt: 0, completion: 0, cacheRead: 0, cacheCreate: 0 };
   for (const r of results) {
     const date = String(r?.date ?? '');
     if (!date) continue;
     const mx = r?.metrics ?? {};
-    const entry = byDate.get(date) ?? { cost: 0, requests: 0, byModel: {} };
+    const entry = byDate.get(date) ?? { cost: 0, requests: 0, successful: 0, byModel: {} };
     entry.cost += num(mx.spend);
     entry.requests += num(mx.api_requests);
+    entry.successful += num(mx.successful_requests);
+    // Per-model spend is nested under `.metrics.spend`; keys carry a provider prefix
+    // (e.g. "vertex_ai/claude-opus-4-8") which we strip and merge for display.
     const models = r?.breakdown?.models ?? {};
-    for (const [m, v] of Object.entries<any>(models)) entry.byModel[m] = (entry.byModel[m] ?? 0) + num(v?.spend);
+    for (const [m, v] of Object.entries<any>(models)) {
+      const name = m.includes('/') ? m.slice(m.lastIndexOf('/') + 1) : m;
+      entry.byModel[name] = (entry.byModel[name] ?? 0) + num(v?.metrics?.spend);
+    }
     byDate.set(date, entry);
 
     if (date >= monthStartYmd && date <= endYmd) {
@@ -615,7 +621,7 @@ export async function fetchLiteLlmSpend(days: number): Promise<LiteLlmSpend> {
   for (let i = days - 1; i >= 0; i--) {
     const ymd = localYmd(new Date(b.today.getFullYear(), b.today.getMonth(), b.today.getDate() - i));
     const e = b.byDate.get(ymd);
-    daily.push({ date: ymd, cost: e?.cost ?? 0, requests: e?.requests ?? 0, byModel: e?.byModel ?? {} });
+    daily.push({ date: ymd, cost: e?.cost ?? 0, requests: e?.requests ?? 0, successful: e?.successful ?? 0, byModel: e?.byModel ?? {} });
   }
   return {
     monthLabel: b.monthLabel,
