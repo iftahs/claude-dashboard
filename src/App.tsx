@@ -567,6 +567,12 @@ export default function App() {
                 const windowTotal = daily.reduce((s, d) => s + d.cost, 0);
                 const prev = litellmSpend.prevMonthToDate;
                 const monthDelta = prev > 0 ? Math.round(((litellmSpend.monthToDate - prev) / prev) * 100) : null;
+                const fail = litellmSpend.monthFailed;
+                const reqTotal = litellmSpend.monthSuccessful + fail;
+                const successPct = reqTotal > 0 ? (litellmSpend.monthSuccessful / reqTotal) * 100 : null;
+                const tok = litellmSpend.monthTokens;
+                const tokTotal = tok.prompt + tok.completion + tok.cacheRead + tok.cacheCreate;
+                const tokPct = (n: number) => (tokTotal > 0 ? `${(n / tokTotal) * 100}%` : '0%');
                 return (
                   <Section
                     title="Actual billed"
@@ -599,6 +605,19 @@ export default function App() {
                             vs {usd(prev)} in {litellmSpend.prevMonthLabel} (same point)
                           </div>
                         )}
+                        {successPct !== null && (
+                          <div className="mt-1.5 text-xs text-zinc-500">
+                            <span className={successPct >= 99 ? 'text-emerald-400' : successPct >= 95 ? 'text-amber-400' : 'text-red-400'}>
+                              {successPct.toFixed(1)}% success
+                            </span>
+                            {fail > 0 && <span className="text-zinc-600"> · {fail.toLocaleString()} failed</span>}
+                          </div>
+                        )}
+                        {litellmSpend.lifetime.user > 0 && (
+                          <div className="mt-1 text-xs text-zinc-600">
+                            lifetime · <span className="text-zinc-400">{usd(litellmSpend.lifetime.user)}</span>
+                          </div>
+                        )}
                       </div>
                       {/* Daily breakdown over the selected window */}
                       <div className="lg:col-span-2">
@@ -613,6 +632,28 @@ export default function App() {
                         <LiteLlmDailyChart days={daily} />
                       </div>
                     </div>
+                    {tokTotal > 0 && (
+                      <div className="mt-5 border-t border-white/10 pt-4">
+                        <div className="mb-2 flex items-center justify-between">
+                          <span className="text-[11px] font-medium uppercase tracking-wider text-zinc-500">
+                            Token mix · {litellmSpend.monthLabel}
+                          </span>
+                          <span className="text-xs text-zinc-400">{compact(tokTotal)} total</span>
+                        </div>
+                        <div className="flex h-2.5 overflow-hidden rounded-full bg-ink-800 ring-1 ring-white/10">
+                          <div style={{ width: tokPct(tok.prompt), backgroundColor: '#d97757' }} />
+                          <div style={{ width: tokPct(tok.completion), backgroundColor: '#6366f1' }} />
+                          <div style={{ width: tokPct(tok.cacheCreate), backgroundColor: '#f59e0b' }} />
+                          <div style={{ width: tokPct(tok.cacheRead), backgroundColor: '#10b981' }} />
+                        </div>
+                        <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1.5">
+                          <LegendDot color="#d97757" label={`Input · ${compact(tok.prompt)}`} size="sm" />
+                          <LegendDot color="#6366f1" label={`Output · ${compact(tok.completion)}`} size="sm" />
+                          <LegendDot color="#f59e0b" label={`Cache write · ${compact(tok.cacheCreate)}`} size="sm" />
+                          <LegendDot color="#10b981" label={`Cache read · ${compact(tok.cacheRead)}`} size="sm" />
+                        </div>
+                      </div>
+                    )}
                   </Section>
                 );
               })()}

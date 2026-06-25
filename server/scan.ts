@@ -449,8 +449,12 @@ export interface LiteLlmSpend {
   monthLabel: string;        // current month, e.g. "Jun 2026"
   monthToDate: number;       // total billed from the 1st → today
   monthRequests: number;
+  monthSuccessful: number;   // successful requests this month
+  monthFailed: number;       // failed requests this month
+  monthTokens: { prompt: number; completion: number; cacheRead: number; cacheCreate: number };
   prevMonthLabel: string;    // previous month, e.g. "May"
   prevMonthToDate: number;   // previous month, 1st → same day-of-month (same-period comparison)
+  lifetime: { user: number; key: number }; // lifetime spend (user across all keys / this key)
   // `days` calendar days incl. today, oldest→newest, zero-filled. Per-day cost,
   // request count, and per-model spend (for the hover breakdown).
   daily: { date: string; cost: number; requests: number; byModel: Record<string, number> }[];
@@ -462,6 +466,9 @@ interface LiteLlmBase {
   monthLabel: string;
   monthToDate: number;
   monthRequests: number;
+  monthSuccessful: number;
+  monthFailed: number;
+  monthTokens: { prompt: number; completion: number; cacheRead: number; cacheCreate: number };
   prevMonthLabel: string;
   prevMonthToDate: number;
 }
@@ -505,35 +512,51 @@ async function fetchLiteLlmBase(): Promise<LiteLlmBase> {
   if (cachedLiteLlmBase && cachedLiteLlmBase.key === cacheKey && Date.now() - cachedLiteLlmBase.fetchedAt < LITELLM_TTL)
     return cachedLiteLlmBase.data;
 
-  const url = `${base}/user/daily/activity?start_date=${startYmd}&end_date=${endYmd}`;
-  const res = await fetch(url, {
-    headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
-    signal: AbortSignal.timeout(15_000),
-  });
-  if (res.status === 401 || res.status === 403)
-    throw new Error('LiteLLM rejected the key for spend read (401/403) — the virtual key may lack spend-view permission.');
-  if (res.status === 404)
-    throw new Error('LiteLLM spend endpoint not found (404) — the gateway may not expose /user/daily/activity.');
-  if (!res.ok) throw new Error(`LiteLLM spend fetch failed: ${res.status} ${res.statusText}`);
-
-  const json: any = await res.json();
-  const byDate = new Map<string, { cost: number; requests: number; byModel: Record<string, number> }>();
-  for (const r of Array.isArray(json?.results) ? json.results : []) {
-    if (!r?.date) continue;
-    const date = String(r.date);
-    const entry = byDate.get(date) ?? { cost: 0, requests: 0, byModel: {} };
-    entry.cost += num(r?.metrics?.spend);
-    entry.requests += num(r?.metrics?.api_requests);
-    const models = r?.breakdown?.models ?? {};
-    for (const [m, v] of Object.entries<any>(models)) entry.byModel[m] = (entry.byModel[m] ?? 0) + num(v?.spend);
-    byDate.set(date, entry);
+  // /user/daily/activity is paginated (page_size default 50). Use a large page_size
+  // and follow has_more so month-to-date / daily aren't undercounted. (We don't pass
+  // `timezone`: this gateway validates it as an integer UTC offset, not a tz name, and
+  // the totals we sum are tz-independent — so day bucketing stays the gateway default.)
+  const headers = { Authorization: `Bearer ${token}`, Accept: 'application/json' };
+  const results: any[] = [];
+  for (let page = 1; page <= 20; page++) {
+    const url = `${base}/user/daily/activity?start_date=${startYmd}&end_date=${endYmd}&page=${page}&page_size=1000`;
+    const res = await fetch(url, { headers, signal: AbortSignal.timeout(15_000) });
+    if (page === 1 && (res.status === 401 || res.status === 403))
+      throw new Error('LiteLLM rejected the key for spend read (401/403) — the virtual key may lack spend-view permission.');
+    if (page === 1 && res.status === 404)
+      throw new Error('LiteLLM spend endpoint not found (404) — the gateway may not expose /user/daily/activity.');
+    if (!res.ok) throw new Error(`LiteLLM spend fetch failed: ${res.status} ${res.statusText}`);
+    const json: any = await res.json();
+    if (Array.isArray(json?.results)) results.push(...json.results);
+    if (!json?.metadata?.has_more) break;
   }
 
   // YYYY-MM-DD sorts lexicographically, so date-string range checks work directly.
-  let monthToDate = 0, monthRequests = 0, prevMonthToDate = 0;
-  for (const [date, m] of byDate) {
-    if (date >= monthStartYmd && date <= endYmd) { monthToDate += m.cost; monthRequests += m.requests; }
-    if (date >= startYmd && date <= prevEndYmd) prevMonthToDate += m.cost;
+  const byDate = new Map<string, { cost: number; requests: number; byModel: Record<string, number> }>();
+  let monthToDate = 0, monthRequests = 0, monthSuccessful = 0, monthFailed = 0, prevMonthToDate = 0;
+  const monthTokens = { prompt: 0, completion: 0, cacheRead: 0, cacheCreate: 0 };
+  for (const r of results) {
+    const date = String(r?.date ?? '');
+    if (!date) continue;
+    const mx = r?.metrics ?? {};
+    const entry = byDate.get(date) ?? { cost: 0, requests: 0, byModel: {} };
+    entry.cost += num(mx.spend);
+    entry.requests += num(mx.api_requests);
+    const models = r?.breakdown?.models ?? {};
+    for (const [m, v] of Object.entries<any>(models)) entry.byModel[m] = (entry.byModel[m] ?? 0) + num(v?.spend);
+    byDate.set(date, entry);
+
+    if (date >= monthStartYmd && date <= endYmd) {
+      monthToDate += num(mx.spend);
+      monthRequests += num(mx.api_requests);
+      monthSuccessful += num(mx.successful_requests);
+      monthFailed += num(mx.failed_requests);
+      monthTokens.prompt += num(mx.prompt_tokens);
+      monthTokens.completion += num(mx.completion_tokens);
+      monthTokens.cacheRead += num(mx.cache_read_input_tokens);
+      monthTokens.cacheCreate += num(mx.cache_creation_input_tokens);
+    }
+    if (date >= startYmd && date <= prevEndYmd) prevMonthToDate += num(mx.spend);
   }
 
   const data: LiteLlmBase = {
@@ -542,6 +565,9 @@ async function fetchLiteLlmBase(): Promise<LiteLlmBase> {
     monthLabel: `${MONTH_ABBR[monthStart.getMonth()]} ${monthStart.getFullYear()}`,
     monthToDate,
     monthRequests,
+    monthSuccessful,
+    monthFailed,
+    monthTokens,
     prevMonthLabel: MONTH_ABBR[prevMonthStart.getMonth()],
     prevMonthToDate,
   };
@@ -549,10 +575,42 @@ async function fetchLiteLlmBase(): Promise<LiteLlmBase> {
   return data;
 }
 
+const ACCOUNT_TTL = 30 * 60 * 1000; // 30 min — lifetime spend moves slowly
+let cachedLiteLlmAccount: { data: { user: number; key: number }; fetchedAt: number } | null = null;
+
+/**
+ * Lifetime spend from the self-scoped /user/info (the user, across all their keys)
+ * and /key/info (this key). Degrades to zeros on any error — never throws, so it
+ * can't break the spend response.
+ */
+async function fetchLiteLlmAccount(): Promise<{ user: number; key: number }> {
+  if (cachedLiteLlmAccount && Date.now() - cachedLiteLlmAccount.fetchedAt < ACCOUNT_TTL) return cachedLiteLlmAccount.data;
+  const base = litellmBaseUrl();
+  const token = litellmAuthToken();
+  if (!base || !token) return { user: 0, key: 0 };
+  const headers = { Authorization: `Bearer ${token}`, Accept: 'application/json' };
+  const get = async (path: string): Promise<any> => {
+    try {
+      const r = await fetch(`${base}${path}`, { headers, signal: AbortSignal.timeout(15_000) });
+      return r.ok ? await r.json() : null;
+    } catch {
+      return null;
+    }
+  };
+  const [u, k] = await Promise.all([get('/user/info'), get('/key/info')]);
+  const data = {
+    user: num(u?.user_info?.spend ?? u?.spend),
+    key: num(k?.info?.spend ?? k?.spend),
+  };
+  cachedLiteLlmAccount = { data, fetchedAt: Date.now() };
+  return data;
+}
+
 /** Actual billed spend: month-to-date, previous-month same-period total, and the
  *  last `days` calendar days (incl. today, zero-filled) with per-model breakdown. */
 export async function fetchLiteLlmSpend(days: number): Promise<LiteLlmSpend> {
   const b = await fetchLiteLlmBase();
+  const lifetime = await fetchLiteLlmAccount();
   const daily: LiteLlmSpend['daily'] = [];
   for (let i = days - 1; i >= 0; i--) {
     const ymd = localYmd(new Date(b.today.getFullYear(), b.today.getMonth(), b.today.getDate() - i));
@@ -563,8 +621,12 @@ export async function fetchLiteLlmSpend(days: number): Promise<LiteLlmSpend> {
     monthLabel: b.monthLabel,
     monthToDate: b.monthToDate,
     monthRequests: b.monthRequests,
+    monthSuccessful: b.monthSuccessful,
+    monthFailed: b.monthFailed,
+    monthTokens: b.monthTokens,
     prevMonthLabel: b.prevMonthLabel,
     prevMonthToDate: b.prevMonthToDate,
+    lifetime,
     daily,
   };
 }

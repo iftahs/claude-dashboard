@@ -114,8 +114,12 @@ export interface LiteLlmSpend {
   monthLabel: string;
   monthToDate: number;
   monthRequests: number;
+  monthSuccessful: number;
+  monthFailed: number;
+  monthTokens: { prompt: number; completion: number; cacheRead: number; cacheCreate: number };
   prevMonthLabel: string;
   prevMonthToDate: number;
+  lifetime: { user: number; key: number };
   daily: { date: string; cost: number; requests: number; byModel: Record<string, number> }[];
 }
 export type LiteLlmSpendData = LiteLlmSpend | { error: string };
