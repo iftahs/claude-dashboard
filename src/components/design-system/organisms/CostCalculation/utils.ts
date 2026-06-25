@@ -19,3 +19,21 @@ export const PRICING_DATA: ModelPrice[] = [
   { name: 'Claude 3 Opus (Legacy)', family: 'opus-legacy', input: 15, output: 75, cacheWrite: 18.75, cacheRead: 1.5 },
   { name: 'Claude 3 Haiku (Legacy)', family: 'haiku-legacy', input: 0.25, output: 1.25, cacheWrite: 0.3125, cacheRead: 0.03 },
 ];
+
+export interface TokenCounts {
+  input: number;
+  output: number;
+  cacheWrite: number;
+  cacheRead: number;
+}
+
+/** USD cost of a hypothetical request at the model's per-1M rates. */
+export function calcCost(model: ModelPrice, t: TokenCounts): number {
+  return (
+    (t.input * model.input +
+      t.output * model.output +
+      t.cacheWrite * model.cacheWrite +
+      t.cacheRead * model.cacheRead) /
+    1_000_000
+  );
+}
