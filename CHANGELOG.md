@@ -5,6 +5,18 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.10] - 2026-06-25
+
+### Added
+- Introduced a traffic-light status for agents, indicating their state (green for finished, yellow for running, red for needing attention).
+- Implemented browser notifications for agent status changes.
+
+### Changed
+- Improved aggregation performance by memoizing builder outputs, reducing the processing time during frequent polls.
+- Refactored the UI to separate business logic into hooks and components for better maintainability and readability.
+- Extracted reusable organisms from inlined IIFEs in the App component.
+- Introduced dedicated contexts to manage cross-cutting concerns more efficiently.
+
 ## [0.1.9] - 2026-06-21
 
 ### Fixed
@@ -115,6 +127,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Live-API fallback to the local logs when there is no active block
   (`resets_at = null`).
 
+[0.1.10]: https://github.com/iftahs/claude-dashboard/releases/tag/v0.1.10
 [0.1.9]: https://github.com/iftahs/claude-dashboard/releases/tag/v0.1.9
 [0.1.8]: https://github.com/iftahs/claude-dashboard/releases/tag/v0.1.8
 [0.1.7]: https://github.com/iftahs/claude-dashboard/releases/tag/v0.1.7
