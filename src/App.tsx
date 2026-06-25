@@ -3,8 +3,11 @@ import type { ReactNode } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { usePolling } from './hooks/usePolling';
 import { useLimits } from './hooks/useLimits';
-import { useSettings } from './hooks/useSettings';
-import type { ActivityData, ModelsData, RecentData, WeeklyData, ToolsData, ClaudeConfig, SessionMeta, LiveUsageData, HeatmapData, ProjectData, InsightsErrors, InsightsRetries, InsightsLanguages, InsightsBranches, InsightsMcp, ComplexityPoint, InsightsYield, InsightsRejections, SubagentStats, LiveSubagents, WorkflowsData, CommandUsageData, FileChurnData, WorkspaceTasksData, InventoryData, VersionInfo, SourcesInfo, UsageSource, LiteLlmSpendData } from './types';
+import { useSource, SOURCE_OPTIONS, type SourceFilter } from './hooks/useSource';
+import { useConfigMode } from './hooks/useConfigMode';
+import { useLiveData } from './hooks/useLiveData';
+import { useAiInsightCtx } from './hooks/useAiInsightContext';
+import type { ActivityData, ToolsData, SessionMeta, HeatmapData, ProjectData, InsightsErrors, InsightsRetries, InsightsLanguages, InsightsBranches, InsightsMcp, ComplexityPoint, InsightsYield, InsightsRejections, SubagentStats, CommandUsageData, FileChurnData, WorkspaceTasksData, InventoryData, UsageSource } from './types';
 import { StatCard } from './components/design-system/atoms/StatCard/StatCard';
 import { BlockGauge } from './components/design-system/organisms/BlockGauge/BlockGauge';
 import { UsageBarChart } from './components/design-system/organisms/UsageBarChart/UsageBarChart';
@@ -39,7 +42,6 @@ import { SubagentStatsPanel } from './components/design-system/organisms/Subagen
 import { AgentActivity } from './components/design-system/organisms/AgentActivity/AgentActivity';
 import { WorkflowsView } from './components/design-system/organisms/WorkflowsView/WorkflowsView';
 import { AiChat } from './components/design-system/organisms/AiChat/AiChat';
-import { AiInsightInline } from './components/design-system/molecules/AiInsightInline/AiInsightInline';
 import { CommandUsage } from './components/design-system/organisms/CommandUsage/CommandUsage';
 import { FileChurn } from './components/design-system/organisms/FileChurn/FileChurn';
 import { TasksPanel } from './components/design-system/organisms/TasksPanel/TasksPanel';
@@ -57,11 +59,6 @@ import { compact, usd, hourLabel, dayLabel, shortModel } from './lib/format';
 import { track, setUserContext, isOptedOut, setOptOut } from './lib/analytics';
 import { useNotifications } from './hooks/useNotifications';
 import { useUpdateToast } from './hooks/useUpdateToast';
-import { useAiStatus } from './hooks/useAiStatus';
-import { useAiInsight } from './hooks/useAiInsight';
-import { useAiConfig } from './hooks/useAiConfig';
-
-const POLL = 5000;
 
 type Tab = 'live' | 'agents' | 'workflows' | 'trends' | 'models' | 'insights' | 'workspace' | 'ai' | 'sessions' | 'settings';
 
@@ -88,14 +85,7 @@ const INSIGHT_DAY_OPTIONS: { value: InsightDays; label: string }[] = [
   { value: '30', label: '30d' },
 ];
 
-// Source filter (Code = Claude Code CLI, Cowork = desktop local-agent mode).
-// Only surfaced when the user actually has Cowork data on disk.
-type SourceFilter = 'all' | UsageSource;
-const SOURCE_OPTIONS: { value: SourceFilter; label: string }[] = [
-  { value: 'all', label: 'All' },
-  { value: 'code', label: 'Code' },
-  { value: 'cowork', label: 'Cowork' },
-];
+// Code vs Cowork series colors for the Trends "sources split" bar.
 const SOURCE_COLOR: Record<UsageSource, string> = { code: '#d97757', cowork: '#6366f1' };
 
 // Pill color for the Live Usage tab badge, scaled by 5-hour limit utilization.
@@ -110,61 +100,28 @@ export default function App() {
   const navigate = useNavigate();
   const seg = location.pathname.replace(/^\//, '');
   const activeTab: Tab = TABS.some((t) => t.id === seg) ? (seg as Tab) : 'live';
-  const [weekDays, setWeekDays] = useState(7);
-  const [recentHours, setRecentHours] = useState(12);
   const [dailyMetric, setDailyMetric] = useState<'tokens' | 'cost'>('tokens');
 
-  // Cowork detection — fetched first; gates every Cowork affordance below so that
-  // Code-only users get the original dashboard byte-for-byte.
-  const sourcesInfo = usePolling<SourcesInfo>('/api/sources', 60000);
-  const coworkAvailable = !!sourcesInfo.data?.cowork.available;
-  const [source, setSource] = useState<SourceFilter>('all');
-  // If Cowork data disappears (or never existed), never leave a stale scoped filter.
-  useEffect(() => {
-    if (!coworkAvailable && source !== 'all') setSource('all');
-  }, [coworkAvailable, source]);
-  // Append ?source= only when Cowork data exists and a surface is selected; otherwise
-  // the URL is identical to before this feature (no refetch churn, no behavior change).
-  const withSrc = (url: string) =>
-    coworkAvailable && source !== 'all'
-      ? url + (url.includes('?') ? '&' : '?') + `source=${source}`
-      : url;
+  // ── Shared state + cross-tab data (from context providers) ──
+  const { source, setSource, coworkAvailable, withSrc } = useSource();
+  const {
+    configData, configLoading, detectedMode, effectiveMode, isApi,
+    litellmAvailable, litellmHost, settings, setSettings,
+  } = useConfigMode();
+  const {
+    recentHours, setRecentHours, weekDays, setWeekDays,
+    recent, weekly, models, litellm, liveUsage, liveSubagents, workflows, version,
+  } = useLiveData();
+  const { ai, aiConfig, setAiConfig, aiStatus, aiDisabled, onAiInsight, aiInline } = useAiInsightCtx();
 
-  const recent = usePolling<RecentData>(withSrc(`/api/usage/recent?hours=${recentHours}`), POLL);
-  const weekly = usePolling<WeeklyData>(withSrc(`/api/usage/weekly?days=${weekDays}`), POLL);
-  const models = usePolling<ModelsData>(withSrc('/api/usage/models?days=7'), POLL);
+  // ── Source-scoped, single-tab polls (live here until their tab is extracted) ──
   const activity = usePolling<ActivityData>(withSrc('/api/activity'), 30000);
   const tools = usePolling<ToolsData>(withSrc('/api/tools?days=7'), 30000);
-  const config = usePolling<ClaudeConfig>('/api/config', 60000);
-  // LiteLLM gateway: actual billed cost (month-to-date + per-day window) shown
-  // beside the local estimate. Gated on detection so Code-only / direct-Anthropic
-  // users poll nothing and see no change. The daily window follows the same
-  // weekDays toggle as the estimate chart.
-  const litellmAvailable = !!config.data?.litellm?.available;
-  const litellmHost = config.data?.litellm?.gatewayHost ?? '';
-  const litellm = usePolling<LiteLlmSpendData>(
-    litellmAvailable ? `/api/usage/litellm?days=${weekDays}` : '',
-    POLL,
-  );
   const sessions = usePolling<SessionMeta[]>(withSrc('/api/sessions'), 10000);
-  const liveUsage = usePolling<LiveUsageData>('/api/usage/live', 15000);
   const heatmap = usePolling<HeatmapData>(withSrc('/api/heatmap?days=90'), 60000);
   const projectCosts = usePolling<ProjectData>(withSrc('/api/projects?days=90'), 30000);
-  const liveSubagents = usePolling<LiveSubagents>('/api/subagents/live', 4000);
-  const workflows = usePolling<WorkflowsData>('/api/workflows', 4000);
-  const version = usePolling<VersionInfo>('/api/version', 1_800_000);
   const [limits, setLimits] = useLimits();
-  const [settings, setSettings] = useSettings();
   const [analyticsOptOut, setAnalyticsOptOut] = useState(isOptedOut());
-
-  // Auth mode — auto-detected by the backend (presence of a Claude.ai OAuth token),
-  // with an optional manual override from the Settings modal. API / pay-as-you-go
-  // mode swaps the subscription-rate-limit framing for a cost view. Default to
-  // subscription until config loads so the UI never flashes API mode for subscribers.
-  const detectedMode: 'api' | 'subscription' = config.data?.authMode ?? 'subscription';
-  const effectiveMode =
-    settings.modeOverride === 'auto' ? detectedMode : settings.modeOverride;
-  const isApi = effectiveMode === 'api';
 
   // Insights tab state
   const [insightDays, setInsightDays] = useState<InsightDays>('7');
@@ -175,36 +132,12 @@ export default function App() {
     track('tab_viewed', { tab: activeTab });
   }, [activeTab]);
   useEffect(() => {
-    if (config.data) setUserContext({ plan: config.data.subscriptionType, usageMode: effectiveMode });
-  }, [config.data, effectiveMode]);
+    if (configData) setUserContext({ plan: configData.subscriptionType, usageMode: effectiveMode });
+  }, [configData, effectiveMode]);
 
   // ── Notifications (toasts replace the old inline banners) ──
   const { notify, dismiss } = useNotifications();
   useUpdateToast(version.data);
-
-  // ── AI Insights ──
-  const aiStatus = useAiStatus();
-  const [aiConfig, setAiConfig] = useAiConfig();
-  // Available if the user set a key in Settings, or the server has a fallback (CLI/token).
-  const aiDisabled = !aiConfig.apiKey && aiStatus.data?.available === 'none';
-  const ai = useAiInsight();
-  const onAiInsight = (section: string, data: unknown) => {
-    track('ai_insight_clicked', { section });
-    ai.run(section, data, aiConfig);
-  };
-  const aiInline = (section: string): ReactNode => {
-    const s = ai.states.get(section);
-    if (!s) return null;
-    return (
-      <AiInsightInline
-        text={s.text ?? undefined}
-        loading={s.loading}
-        error={s.error ?? undefined}
-        backend={s.backend}
-        onDismiss={() => ai.dismiss(section)}
-      />
-    );
-  };
 
   // Claude.ai offline / expired token (subscription mode only). Reactive: shows
   // while the live API reports an error, auto-clears when it recovers.
@@ -229,7 +162,7 @@ export default function App() {
   // Pay-as-you-go note — shown once per session when API mode is active.
   const apiNotified = useRef(false);
   useEffect(() => {
-    if (isApi && config.data && !apiNotified.current) {
+    if (isApi && configData && !apiNotified.current) {
       apiNotified.current = true;
       notify({
         id: 'api-mode',
@@ -240,7 +173,7 @@ export default function App() {
           "No Claude.ai subscription detected — dollar figures are estimated from local logs at Anthropic's API rates. Set spending caps in ⚙ Settings.",
       });
     }
-  }, [isApi, config.data, notify]);
+  }, [isApi, configData, notify]);
   const insightErrors = usePolling<InsightsErrors>(withSrc(`/api/insights/errors?days=${insightDaysNum}`), 60000);
   const insightRetries = usePolling<InsightsRetries>(withSrc(`/api/insights/retries?days=${insightDaysNum}`), 60000);
   const insightLanguages = usePolling<InsightsLanguages[]>(withSrc(`/api/insights/languages?days=${insightDaysNum}`), 60000);
@@ -381,10 +314,7 @@ export default function App() {
                 <ToggleGroup<SourceFilter>
                   options={SOURCE_OPTIONS}
                   value={source}
-                  onChange={(s) => {
-                    setSource(s);
-                    track('source_changed', { source: s });
-                  }}
+                  onChange={setSource}
                 />
               </div>
             )}
@@ -463,7 +393,7 @@ export default function App() {
               </div>
 
               {/* Subscription rate-limit bars — only meaningful with a plan. */}
-              {config.data && !isApi && (
+              {configData && !isApi && (
                 <PlanUsage block={block} weekly={weekly.data} liveUsage={liveUsage.data} />
               )}
 
@@ -1107,9 +1037,9 @@ export default function App() {
               {source !== 'cowork' && (
                 <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
                   <div className="lg:col-span-1 self-start">
-                    {config.data ? (
-                      <ConfigProfile config={config.data} isApi={isApi} />
-                    ) : config.loading ? (
+                    {configData ? (
+                      <ConfigProfile config={configData} isApi={isApi} />
+                    ) : configLoading ? (
                       <div className="card p-5">
                         <Skeleton className="h-[200px] w-full rounded-2xl" />
                       </div>
