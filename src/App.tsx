@@ -1,5 +1,4 @@
-import { useState, useMemo, useEffect, useRef } from 'react';
-import type { ReactNode } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { usePolling } from './hooks/usePolling';
 import { useLimits } from './hooks/useLimits';
@@ -7,6 +6,10 @@ import { useSource, SOURCE_OPTIONS, type SourceFilter } from './hooks/useSource'
 import { useConfigMode } from './hooks/useConfigMode';
 import { useLiveData } from './hooks/useLiveData';
 import { useAiInsightCtx } from './hooks/useAiInsightContext';
+import { useCostMetrics } from './hooks/useCostMetrics';
+import { useLiteLlmActual } from './hooks/useLiteLlmActual';
+import { useSessionPeriod } from './hooks/useSessionPeriod';
+import { useSidebarTabs } from './hooks/useSidebarTabs';
 import type { ActivityData, ToolsData, SessionMeta, HeatmapData, ProjectData, InsightsErrors, InsightsRetries, InsightsLanguages, InsightsBranches, InsightsMcp, ComplexityPoint, InsightsYield, InsightsRejections, SubagentStats, CommandUsageData, FileChurnData, WorkspaceTasksData, InventoryData, UsageSource } from './types';
 import { StatCard } from './components/design-system/atoms/StatCard/StatCard';
 import { BlockGauge } from './components/design-system/organisms/BlockGauge/BlockGauge';
@@ -88,13 +91,6 @@ const INSIGHT_DAY_OPTIONS: { value: InsightDays; label: string }[] = [
 // Code vs Cowork series colors for the Trends "sources split" bar.
 const SOURCE_COLOR: Record<UsageSource, string> = { code: '#d97757', cowork: '#6366f1' };
 
-// Pill color for the Live Usage tab badge, scaled by 5-hour limit utilization.
-function usagePillClasses(pct: number): string {
-  if (pct >= 80) return 'bg-red-500/15 text-red-300';
-  if (pct >= 50) return 'bg-amber-500/15 text-amber-300';
-  return 'bg-emerald-500/15 text-emerald-300';
-}
-
 export default function App() {
   const location = useLocation();
   const navigate = useNavigate();
@@ -110,7 +106,7 @@ export default function App() {
   } = useConfigMode();
   const {
     recentHours, setRecentHours, weekDays, setWeekDays,
-    recent, weekly, models, litellm, liveUsage, liveSubagents, workflows, version,
+    recent, weekly, models, liveUsage, liveSubagents, workflows, version,
   } = useLiveData();
   const { ai, aiConfig, setAiConfig, aiStatus, aiDisabled, onAiInsight, aiInline } = useAiInsightCtx();
 
@@ -196,105 +192,14 @@ export default function App() {
     (weekly.data?.totals.totalTokens ?? 0) === 0;
 
   const block = recent.data?.activeBlock ?? null;
-  // Live count of agents working in parallel right now: running subagents +
-  // main sessions that are actively working or delegating. Drives the Agents
-  // tab badge (visible from any tab) and the Agents section header chips.
-  const runningAgentCount =
-    (liveSubagents.data?.running.length ?? 0) +
-    (liveSubagents.data?.mainAgents.filter((m) => m.active || m.delegating).length ?? 0);
-  const liveWorkflowCount = workflows.data?.live.length ?? 0;
-  // Current 5-hour limit utilization (already 0–100) for the Live Usage tab badge.
-  // Only when the live API returned a value for an active block (no error).
-  const fiveHourPct =
-    liveUsage.data && !liveUsage.data.error && liveUsage.data.five_hour?.resets_at != null
-      ? Math.round(liveUsage.data.five_hour.utilization)
-      : null;
   const topModel = models.data?.models[0];
-  const weeklyEffective = weekly.data?.totals.effectiveTokens ?? 0;
-  const prevWeeklyEffective = weekly.data?.prevTotals.effectiveTokens ?? 0;
-
-  // Normalize to cost per day from whatever range is selected
-  const costPerDay = (weekly.data?.totals.cost ?? 0) / weekDays;
-  // Actual billed spend from the LiteLLM gateway (null on error / not-yet-loaded →
-  // the card is simply hidden, so the dashboard degrades gracefully).
-  const litellmSpend = litellm.data && !('error' in litellm.data) ? litellm.data : null;
-  // Real billed cost (today / last 7 days / month-to-date) for the Live-tab spend
-  // widgets, when a LiteLLM gateway is configured — so API SPENDING and the daily-cap
-  // ring reflect what the gateway actually bills instead of the local-logs estimate.
-  // Today = the most recent daily entry; week = the last 7 of the daily series.
-  const litellmActual = litellmAvailable && litellmSpend
-    ? {
-        today: litellmSpend.daily[litellmSpend.daily.length - 1]?.cost ?? 0,
-        week: litellmSpend.daily.slice(-7).reduce((s, d) => s + d.cost, 0),
-        month: litellmSpend.monthToDate,
-        note: litellmHost ? `actual · via ${litellmHost}` : 'actual billed',
-      }
-    : null;
+  const { weeklyEffective, prevWeeklyEffective, costPerDay, daysLeftInMonth, projectedMonthCost } =
+    useCostMetrics();
+  const { litellmSpend, litellmActual } = useLiteLlmActual();
   const hasSpendingLimits =
     limits.dailyLimit != null || limits.weeklyLimit != null || limits.monthlyLimit != null;
-
-  // F3: Projected month-end cost
-  const now = new Date();
-  const daysLeftInMonth =
-    new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate() - now.getDate();
-  const projectedMonthCost = costPerDay * (now.getDate() + daysLeftInMonth);
-
-  const totalPeriodDays = useMemo(() => {
-    if (!sessions.data || sessions.data.length === 0) return 0;
-    const timestamps = sessions.data
-      .map((s) => Date.parse(s.start_time))
-      .filter((t) => !isNaN(t));
-    if (timestamps.length === 0) return 0;
-    const oldest = Math.min(...timestamps);
-    const diffMs = Date.now() - oldest;
-    return Math.ceil(diffMs / (1000 * 60 * 60 * 24));
-  }, [sessions.data]);
-
-  const sidebarTabs = TABS.map((t): { id: string; icon: string; label: string; badge?: ReactNode } => {
-    const base = { id: t.id, icon: t.icon, label: t.label };
-    if (t.id === 'agents' && runningAgentCount > 0) {
-      return {
-        ...base,
-        badge: (
-          <span
-            className="inline-flex items-center gap-1 rounded-full bg-clay-500/20 px-1.5 py-0.5 text-[10px] font-bold tabular-nums text-clay-300"
-            title={`${runningAgentCount} agent${runningAgentCount === 1 ? '' : 's'} running right now`}
-          >
-            <span className="pulse-dot flex-none" />
-            {runningAgentCount}
-          </span>
-        ),
-      };
-    }
-    if (t.id === 'live' && fiveHourPct != null) {
-      return {
-        ...base,
-        badge: (
-          <span
-            className={`inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-bold tabular-nums ${usagePillClasses(fiveHourPct)}`}
-            title={`5-hour limit: ${fiveHourPct}% used`}
-          >
-            {fiveHourPct}%
-          </span>
-        ),
-      };
-    }
-    if (t.id === 'workflows' && liveWorkflowCount > 0) {
-      return {
-        ...base,
-        badge: (
-          <span
-            className="inline-flex items-center gap-1 rounded-full bg-clay-500/20 px-1.5 py-0.5 text-[10px] font-bold tabular-nums text-clay-300"
-            title={`${liveWorkflowCount} workflow${liveWorkflowCount === 1 ? '' : 's'} running right now`}
-          >
-            <span className="pulse-dot flex-none" />
-            {liveWorkflowCount}
-          </span>
-        ),
-      };
-    }
-    return base;
-  });
+  const totalPeriodDays = useSessionPeriod(sessions.data);
+  const sidebarTabs = useSidebarTabs(TABS);
 
   return (
     <div className="flex h-screen">
