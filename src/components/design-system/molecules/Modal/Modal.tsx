@@ -28,12 +28,12 @@ export function Modal({ open, onClose, title, children }: ModalProps) {
         style={{ animation: 'agent-enter 0.2s ease-out both' }}
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between gap-3 border-b border-white/5 px-5 py-3 flex-none">
+        <div className="flex items-center justify-between gap-3 border-b border-white/10 px-5 py-3 flex-none">
           <div className="min-w-0 flex-1">{title}</div>
           <button
             onClick={onClose}
             aria-label="Close"
-            className="flex-none rounded-lg px-2 py-1 text-zinc-500 hover:text-zinc-200 hover:bg-white/5 transition-colors text-sm"
+            className="flex-none rounded-lg px-2 py-1 text-zinc-500 hover:text-zinc-200 hover:bg-white/10 transition-colors text-sm"
           >
             ✕
           </button>

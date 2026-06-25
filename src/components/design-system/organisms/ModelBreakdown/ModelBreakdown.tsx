@@ -71,7 +71,7 @@ export function ModelBreakdown({ models }: ModelBreakdownProps) {
 
       {/* Cost efficiency bars */}
       {efficiencyData.length > 0 && (
-        <div className="space-y-2 pt-3 border-t border-white/5">
+        <div className="space-y-2 pt-3 border-t border-white/10">
           <div className="text-xs font-semibold uppercase tracking-wider text-zinc-500 mb-3">
             Cost per 1M effective tokens
           </div>

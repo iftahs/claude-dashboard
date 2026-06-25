@@ -89,7 +89,7 @@ export function SettingsView({
       </section>
 
       {/* ── Spending limits ────────────────────────────────────────── */}
-      <section className="border-t border-white/5 pt-5">
+      <section className="border-t border-white/10 pt-5">
         <h4 className="mb-1 text-sm font-semibold text-zinc-300">Spending limits</h4>
         <p className="mb-3 text-xs text-zinc-500">
           For pay-as-you-go usage — enter caps in USD to see gauges on the Live tab. Stored locally in
@@ -132,7 +132,7 @@ export function SettingsView({
       </section>
 
       {/* ── AI Insights ────────────────────────────────────────────── */}
-      <section className="mt-6 border-t border-white/5 pt-5">
+      <section className="mt-6 border-t border-white/10 pt-5">
         <h4 className="mb-1 text-sm font-semibold text-zinc-300">AI Insights</h4>
         <p className="mb-3 text-xs text-zinc-500">
           Powers the AI chat and the ✨ buttons. Choose a provider, model and paste an API key. The key is
@@ -218,7 +218,7 @@ export function SettingsView({
       </section>
 
       {/* ── Telemetry ──────────────────────────────────────────────── */}
-      <section className="mt-6 border-t border-white/5 pt-5">
+      <section className="mt-6 border-t border-white/10 pt-5">
         <h4 className="mb-1 text-sm font-semibold text-zinc-300">Telemetry</h4>
         <p className="mb-3 text-xs text-zinc-500">
           Your usage logs never leave your machine. The app sends only{' '}

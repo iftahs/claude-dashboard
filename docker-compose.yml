@@ -32,8 +32,19 @@ services:
       # CLI, so set ANTHROPIC_API_KEY in .env for a dedicated, un-throttled
       # backend. Unset → falls back to the Claude.ai OAuth token (works, but is
       # rate-limited → may 429). AI_MODEL is optional (default claude-opus-4-8).
+      # To route through a corporate LLM proxy (LiteLLM / gateway) instead, set
+      # ANTHROPIC_BASE_URL + ANTHROPIC_AUTH_TOKEN in .env (the token is sent as a
+      # bearer Authorization header). Host shell vars are NOT auto-passed, so they
+      # must be listed here. Set AI_MODEL if the proxy doesn't serve claude-opus-4-8.
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - ANTHROPIC_BASE_URL=${ANTHROPIC_BASE_URL:-}
+      - ANTHROPIC_AUTH_TOKEN=${ANTHROPIC_AUTH_TOKEN:-}
       - AI_MODEL=${AI_MODEL:-}
+      # OPTIONAL — when on a LiteLLM proxy, the dashboard shows the gateway's ACTUAL
+      # billed cost beside the estimate. By default it reuses ANTHROPIC_BASE_URL +
+      # ANTHROPIC_AUTH_TOKEN; set these only if the spend-read key/url differs.
+      - LITELLM_BASE_URL=${LITELLM_BASE_URL:-}
+      - LITELLM_API_KEY=${LITELLM_API_KEY:-}
       # Day buckets follow the container clock — pin it to your local timezone
       # (override TZ in .env if you are not in Asia/Jerusalem).
       - TZ=${TZ:-Asia/Jerusalem}

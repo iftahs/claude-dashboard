@@ -9,4 +9,7 @@ export interface BlockGaugeProps {
   costPerDay?: number;
   /** Daily USD cap from Settings, if configured. */
   dailyLimit?: number | null;
+  /** Real billed cost so far today (from a LiteLLM gateway). When set, the daily-cap
+   *  ring uses this instead of the estimated costPerDay. */
+  todayActualCost?: number | null;
 }

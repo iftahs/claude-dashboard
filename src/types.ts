@@ -109,6 +109,21 @@ export interface Envelope<T> {
   claudeDir: string;
 }
 
+/** Actual billed cost pulled from a LiteLLM gateway (mirrors server LiteLlmSpend). */
+export interface LiteLlmSpend {
+  monthLabel: string;
+  monthToDate: number;
+  monthRequests: number;
+  monthSuccessful: number;
+  monthFailed: number;
+  monthTokens: { prompt: number; completion: number; cacheRead: number; cacheCreate: number };
+  prevMonthLabel: string;
+  prevMonthToDate: number;
+  lifetime: { user: number; key: number };
+  daily: { date: string; cost: number; requests: number; successful: number; byModel: Record<string, number> }[];
+}
+export type LiteLlmSpendData = LiteLlmSpend | { error: string };
+
 export interface ClaudeConfig {
   effortLevel?: string;
   model?: string;
@@ -120,6 +135,7 @@ export interface ClaudeConfig {
   subscriptionType?: string | null;
   rateLimitTier?: string | null;
   authMode?: 'api' | 'subscription';
+  litellm?: { available: boolean; gatewayHost: string };
   enabledPlugins?: Record<string, boolean>;
   extraKnownMarketplaces?: Record<string, unknown>;
   permissions?: {

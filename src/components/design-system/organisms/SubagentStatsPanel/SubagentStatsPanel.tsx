@@ -39,11 +39,11 @@ export function SubagentStatsPanel({ data }: SubagentStatsPanelProps) {
 
       {/* Stats row */}
       <div className="grid grid-cols-2 gap-3">
-        <div className="rounded-xl bg-ink-800/50 p-3 ring-1 ring-white/5">
+        <div className="rounded-xl bg-ink-800/50 p-3 ring-1 ring-white/10">
           <div className="text-xs text-zinc-500">Total spawns</div>
           <div className="mt-1 text-xl font-bold tabular-nums text-zinc-200">{compact(spawns)}</div>
         </div>
-        <div className="rounded-xl bg-ink-800/50 p-3 ring-1 ring-white/5">
+        <div className="rounded-xl bg-ink-800/50 p-3 ring-1 ring-white/10">
           <div className="text-xs text-zinc-500">Avg per session</div>
           <div className="mt-1 text-xl font-bold tabular-nums text-zinc-200">
             {avgPerSession.toFixed(1)}

@@ -50,7 +50,7 @@ function TurnBlock({ turn }: { turn: SessionTranscriptTurn }) {
             {turn.tools.map((t, i) => (
               <span
                 key={i}
-                className="rounded-full bg-ink-700 border border-white/5 px-2 py-0.5 text-zinc-400"
+                className="rounded-full bg-ink-700 border border-white/10 px-2 py-0.5 text-zinc-400"
                 title={t.brief || t.name}
               >
                 {t.name}
@@ -125,7 +125,7 @@ function SearchStrip({
 
   if (loading) {
     return (
-      <div className="mb-3 rounded-xl bg-ink-700/40 border border-white/5 px-3 py-2 text-xs text-zinc-600">
+      <div className="mb-3 rounded-xl bg-ink-700/40 border border-white/10 px-3 py-2 text-xs text-zinc-600">
         Searching transcripts…
       </div>
     );
@@ -133,23 +133,23 @@ function SearchStrip({
 
   if (!results || results.length === 0) {
     return (
-      <div className="mb-3 rounded-xl bg-ink-700/40 border border-white/5 px-3 py-2 text-xs text-zinc-600">
+      <div className="mb-3 rounded-xl bg-ink-700/40 border border-white/10 px-3 py-2 text-xs text-zinc-600">
         No transcript matches for "{query}"
       </div>
     );
   }
 
   return (
-    <div className="mb-3 rounded-xl bg-ink-700/40 border border-white/5 overflow-hidden">
-      <div className="px-3 py-2 border-b border-white/5 text-xs font-semibold text-zinc-400">
+    <div className="mb-3 rounded-xl bg-ink-700/40 border border-white/10 overflow-hidden">
+      <div className="px-3 py-2 border-b border-white/10 text-xs font-semibold text-zinc-400">
         Found in {results.length} session transcript{results.length !== 1 ? 's' : ''}
       </div>
-      <div className="divide-y divide-white/5">
+      <div className="divide-y divide-white/10">
         {results.slice(0, 8).map((r) => (
           <button
             key={r.sessionId}
             onClick={() => onJump(r.sessionId)}
-            className="w-full text-left px-3 py-2 hover:bg-white/5 transition-colors flex flex-col gap-0.5"
+            className="w-full text-left px-3 py-2 hover:bg-white/10 transition-colors flex flex-col gap-0.5"
           >
             <div className="flex items-center gap-2 text-xs">
               <span className="font-semibold text-zinc-300 truncate">{r.project || 'unknown'}</span>
@@ -264,7 +264,7 @@ export function SessionHistoryTable({
       <div className="flex-1 overflow-x-auto">
         <table className="w-full text-left text-xs border-collapse">
           <thead>
-            <tr className="border-b border-white/5 text-zinc-500 font-semibold uppercase tracking-wider">
+            <tr className="border-b border-white/10 text-zinc-500 font-semibold uppercase tracking-wider">
               <th className="py-2.5">Start Time</th>
               <th className="py-2.5">Project</th>
               <th className="py-2.5">First Prompt</th>
@@ -272,7 +272,7 @@ export function SessionHistoryTable({
               <th className="py-2.5 text-right">Tokens</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-white/5 text-zinc-300">
+          <tbody className="divide-y divide-white/10 text-zinc-300">
             {paginatedSessions.length > 0 ? (
               paginatedSessions.map((s) => {
                 const projectName = s.source === 'cowork' ? 'Cowork' : getProjectName(s.project_path);
@@ -282,7 +282,7 @@ export function SessionHistoryTable({
                   <tr
                     key={s.session_id}
                     onClick={() => openSession(s)}
-                    className="hover:bg-white/5 transition-colors cursor-pointer"
+                    className="hover:bg-white/10 transition-colors cursor-pointer"
                   >
                     <td className="py-3 font-mono text-zinc-400 text-xs">
                       {formatDate(s.start_time)}
@@ -312,7 +312,7 @@ export function SessionHistoryTable({
       </div>
 
       {/* Pagination controls */}
-      <div className="mt-4 flex items-center justify-between border-t border-white/5 pt-3 flex-none text-xs text-zinc-500">
+      <div className="mt-4 flex items-center justify-between border-t border-white/10 pt-3 flex-none text-xs text-zinc-500">
         <span>
           Showing {(currentPage - 1) * itemsPerPage + 1} to{' '}
           {Math.min(currentPage * itemsPerPage, filteredSessions.length)} of{' '}
@@ -323,7 +323,7 @@ export function SessionHistoryTable({
           <button
             onClick={() => setCurrentPage((c) => Math.max(1, c - 1))}
             disabled={currentPage === 1}
-            className="rounded-lg px-2.5 py-1 bg-ink-700/50 border border-white/5 text-zinc-300 hover:text-zinc-100 disabled:opacity-30 disabled:hover:text-zinc-300 transition-opacity"
+            className="rounded-lg px-2.5 py-1 bg-ink-700/50 border border-white/10 text-zinc-300 hover:text-zinc-100 disabled:opacity-30 disabled:hover:text-zinc-300 transition-opacity"
           >
             Prev
           </button>
@@ -333,7 +333,7 @@ export function SessionHistoryTable({
           <button
             onClick={() => setCurrentPage((c) => Math.min(totalPages, c + 1))}
             disabled={currentPage === totalPages}
-            className="rounded-lg px-2.5 py-1 bg-ink-700/50 border border-white/5 text-zinc-300 hover:text-zinc-100 disabled:opacity-30 disabled:hover:text-zinc-300 transition-opacity"
+            className="rounded-lg px-2.5 py-1 bg-ink-700/50 border border-white/10 text-zinc-300 hover:text-zinc-100 disabled:opacity-30 disabled:hover:text-zinc-300 transition-opacity"
           >
             Next
           </button>
@@ -416,7 +416,7 @@ export function SessionHistoryTable({
                     {Object.entries(modalSession.tool_counts).map(([tool, count]) => (
                       <div
                         key={tool}
-                        className="rounded-lg bg-ink-800 border border-white/5 px-2.5 py-1 flex items-center gap-1.5"
+                        className="rounded-lg bg-ink-800 border border-white/10 px-2.5 py-1 flex items-center gap-1.5"
                       >
                         <span className="font-semibold text-clay-400 font-mono">{count}</span>
                         <span className="text-zinc-300 font-sans">{tool}</span>
@@ -430,7 +430,7 @@ export function SessionHistoryTable({
             </div>
 
             {/* Transcript — collapsed by default, fetched on first expand */}
-            <div className="mt-5 border-t border-white/5 pt-4">
+            <div className="mt-5 border-t border-white/10 pt-4">
               <button
                 onClick={() => setTranscriptOpen((v) => !v)}
                 className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-zinc-500 hover:text-zinc-300 transition-colors"

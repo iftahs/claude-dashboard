@@ -14,7 +14,7 @@ const SUGGESTIONS = [
 const BACKEND_NOTE: Record<string, string> = {
   cli: 'Answers come from your local Claude CLI (claude -p).',
   api: 'Answers come from the Claude.ai API using your local token.',
-  apikey: 'Answers come from the Anthropic API (ANTHROPIC_API_KEY).',
+  apikey: 'Answers come from the Anthropic Messages API (ANTHROPIC_AUTH_TOKEN/ANTHROPIC_BASE_URL or ANTHROPIC_API_KEY).',
   none: '',
 };
 
@@ -119,7 +119,7 @@ export function AiChat({ status, config, onChangeConfig, onAsked, onOpenSettings
                     ? 'whitespace-pre-line bg-clay-500/20 text-zinc-100'
                     : m.error
                       ? 'whitespace-pre-line bg-red-500/10 text-red-300 ring-1 ring-red-500/20'
-                      : 'bg-ink-800/70 text-zinc-300 ring-1 ring-white/5'
+                      : 'bg-ink-800/70 text-zinc-300 ring-1 ring-white/10'
                 }`}
               >
                 {m.role === 'assistant' && !m.error ? (

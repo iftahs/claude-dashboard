@@ -5,7 +5,7 @@ const faviconUrl = '/favicon.svg';
 /** Left navigation rail: brand + the scanned dir + vertical tab nav + footer credits. */
 export function Sidebar({ tabs, activeTab, onNavigate, claudeDir, version }: SidebarProps) {
   return (
-    <aside className="flex w-60 shrink-0 flex-col border-r border-white/5 bg-ink-900/60">
+    <aside className="flex w-60 shrink-0 flex-col border-r border-white/10 bg-ink-900/60">
       <div className="px-4 pb-4 pt-5">
         <div className="flex items-center gap-2.5">
           <img src={faviconUrl} alt="" className="h-7 w-7" />
@@ -40,7 +40,7 @@ export function Sidebar({ tabs, activeTab, onNavigate, claudeDir, version }: Sid
         ))}
       </nav>
 
-      <footer className="border-t border-white/5 px-4 py-3 text-[11px] text-zinc-600">
+      <footer className="border-t border-white/10 px-4 py-3 text-[11px] text-zinc-600">
         <p>
           Built by{' '}
           <a

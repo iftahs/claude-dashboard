@@ -398,3 +398,242 @@ export async function fetchLiveProfile(): Promise<any> {
   return data;
 }
 
+// ── LiteLLM gateway: actual billed cost ──────────────────────────────────────
+// When Claude Code runs through a LiteLLM proxy, the gateway tracks the *real*
+// per-request cost. The dashboard surfaces it next to the local estimate. Reuses
+// the same ANTHROPIC_BASE_URL / ANTHROPIC_AUTH_TOKEN the AI feature uses, with
+// optional dedicated LITELLM_BASE_URL / LITELLM_API_KEY overrides (for a key that
+// has spend-view permission, when the chat key doesn't).
+
+/** Strip a trailing slash and/or a trailing /v1 (same normalization as ai.ts). */
+function normalizeBaseUrl(raw: string): string {
+  return raw.trim().replace(/\/+$/, '').replace(/\/v1$/, '');
+}
+
+/** LiteLLM gateway base URL — LITELLM_BASE_URL, else ANTHROPIC_BASE_URL. '' if neither. */
+function litellmBaseUrl(): string {
+  const raw = process.env.LITELLM_BASE_URL || process.env.ANTHROPIC_BASE_URL || '';
+  return raw ? normalizeBaseUrl(raw) : '';
+}
+
+/** Virtual-key bearer for the gateway — LITELLM_API_KEY, else ANTHROPIC_AUTH_TOKEN. */
+function litellmAuthToken(): string {
+  return (process.env.LITELLM_API_KEY || process.env.ANTHROPIC_AUTH_TOKEN || '').trim();
+}
+
+/** Anthropic's own hosts — a base URL pointing here is NOT a third-party gateway. */
+function isAnthropicHost(host: string): boolean {
+  return /(^|\.)anthropic\.com$/i.test(host) || /(^|\.)claude\.ai$/i.test(host);
+}
+
+/**
+ * Detect whether a LiteLLM (or compatible) gateway is configured: a non-Anthropic
+ * base URL host plus an auth token. Pure env read (no network) — safe to call from
+ * /api/config. The frontend gates all LiteLLM UI on `available`.
+ */
+export function detectLitellm(): { available: boolean; gatewayHost: string } {
+  const base = litellmBaseUrl();
+  const token = litellmAuthToken();
+  if (!base || !token) return { available: false, gatewayHost: '' };
+  let host = '';
+  try {
+    host = new URL(base).host;
+  } catch {
+    return { available: false, gatewayHost: '' };
+  }
+  if (!host || isAnthropicHost(host)) return { available: false, gatewayHost: '' };
+  return { available: true, gatewayHost: host };
+}
+
+export interface LiteLlmSpend {
+  monthLabel: string;        // current month, e.g. "Jun 2026"
+  monthToDate: number;       // total billed from the 1st → today
+  monthRequests: number;
+  monthSuccessful: number;   // successful requests this month
+  monthFailed: number;       // failed requests this month
+  monthTokens: { prompt: number; completion: number; cacheRead: number; cacheCreate: number };
+  prevMonthLabel: string;    // previous month, e.g. "May"
+  prevMonthToDate: number;   // previous month, 1st → same day-of-month (same-period comparison)
+  lifetime: { user: number; key: number }; // lifetime spend (user across all keys / this key)
+  // `days` calendar days incl. today, oldest→newest, zero-filled. Per-day cost,
+  // request count, successful count, and per-model spend (for the hover breakdown).
+  daily: { date: string; cost: number; requests: number; successful: number; byModel: Record<string, number> }[];
+}
+
+interface LiteLlmBase {
+  byDate: Map<string, { cost: number; requests: number; successful: number; byModel: Record<string, number> }>;
+  today: Date;
+  monthLabel: string;
+  monthToDate: number;
+  monthRequests: number;
+  monthSuccessful: number;
+  monthFailed: number;
+  monthTokens: { prompt: number; completion: number; cacheRead: number; cacheCreate: number };
+  prevMonthLabel: string;
+  prevMonthToDate: number;
+}
+
+const LITELLM_TTL = 5 * 60 * 1000; // 5 min — billing data moves slowly
+let cachedLiteLlmBase: { key: string; data: LiteLlmBase; fetchedAt: number } | null = null;
+const MONTH_ABBR = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+/** Local YYYY-MM-DD (matches the app's local-tz day bucketing). */
+function localYmd(d: Date): string {
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${d.getFullYear()}-${m}-${day}`;
+}
+
+/**
+ * One self-scoped /user/daily/activity fetch covering previous-month-start → today
+ * (enough for month-to-date, the previous-month same-period total, and any daily
+ * window up to 28 days). Cached 5 min by date range — independent of the requested
+ * `days`, so switching the window reuses the cache. Throws distinct messages so the
+ * route can degrade gracefully (no permission / not a LiteLLM gateway / outage).
+ */
+async function fetchLiteLlmBase(): Promise<LiteLlmBase> {
+  const base = litellmBaseUrl();
+  const token = litellmAuthToken();
+  if (!base || !token) throw new Error('LiteLLM gateway not configured');
+
+  const today = new Date();
+  const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
+  const prevMonthStart = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+  const prevMonthLastDay = new Date(today.getFullYear(), today.getMonth(), 0).getDate();
+  // Same day-of-month in the previous month, clamped to its last day, for a
+  // fair "same point in the month" comparison.
+  const prevMonthEnd = new Date(today.getFullYear(), today.getMonth() - 1, Math.min(today.getDate(), prevMonthLastDay));
+  const startYmd = localYmd(prevMonthStart);
+  const endYmd = localYmd(today);
+  const monthStartYmd = localYmd(monthStart);
+  const prevEndYmd = localYmd(prevMonthEnd);
+
+  const cacheKey = `${startYmd}|${endYmd}`;
+  if (cachedLiteLlmBase && cachedLiteLlmBase.key === cacheKey && Date.now() - cachedLiteLlmBase.fetchedAt < LITELLM_TTL)
+    return cachedLiteLlmBase.data;
+
+  // /user/daily/activity is paginated (page_size default 50). Use a large page_size
+  // and follow has_more so month-to-date / daily aren't undercounted. (We don't pass
+  // `timezone`: this gateway validates it as an integer UTC offset, not a tz name, and
+  // the totals we sum are tz-independent — so day bucketing stays the gateway default.)
+  const headers = { Authorization: `Bearer ${token}`, Accept: 'application/json' };
+  const results: any[] = [];
+  for (let page = 1; page <= 20; page++) {
+    const url = `${base}/user/daily/activity?start_date=${startYmd}&end_date=${endYmd}&page=${page}&page_size=1000`;
+    const res = await fetch(url, { headers, signal: AbortSignal.timeout(15_000) });
+    if (page === 1 && (res.status === 401 || res.status === 403))
+      throw new Error('LiteLLM rejected the key for spend read (401/403) — the virtual key may lack spend-view permission.');
+    if (page === 1 && res.status === 404)
+      throw new Error('LiteLLM spend endpoint not found (404) — the gateway may not expose /user/daily/activity.');
+    if (!res.ok) throw new Error(`LiteLLM spend fetch failed: ${res.status} ${res.statusText}`);
+    const json: any = await res.json();
+    if (Array.isArray(json?.results)) results.push(...json.results);
+    if (!json?.metadata?.has_more) break;
+  }
+
+  // YYYY-MM-DD sorts lexicographically, so date-string range checks work directly.
+  const byDate = new Map<string, { cost: number; requests: number; successful: number; byModel: Record<string, number> }>();
+  let monthToDate = 0, monthRequests = 0, monthSuccessful = 0, monthFailed = 0, prevMonthToDate = 0;
+  const monthTokens = { prompt: 0, completion: 0, cacheRead: 0, cacheCreate: 0 };
+  for (const r of results) {
+    const date = String(r?.date ?? '');
+    if (!date) continue;
+    const mx = r?.metrics ?? {};
+    const entry = byDate.get(date) ?? { cost: 0, requests: 0, successful: 0, byModel: {} };
+    entry.cost += num(mx.spend);
+    entry.requests += num(mx.api_requests);
+    entry.successful += num(mx.successful_requests);
+    // Per-model spend is nested under `.metrics.spend`; keys carry a provider prefix
+    // (e.g. "vertex_ai/claude-opus-4-8") which we strip and merge for display.
+    const models = r?.breakdown?.models ?? {};
+    for (const [m, v] of Object.entries<any>(models)) {
+      const name = m.includes('/') ? m.slice(m.lastIndexOf('/') + 1) : m;
+      entry.byModel[name] = (entry.byModel[name] ?? 0) + num(v?.metrics?.spend);
+    }
+    byDate.set(date, entry);
+
+    if (date >= monthStartYmd && date <= endYmd) {
+      monthToDate += num(mx.spend);
+      monthRequests += num(mx.api_requests);
+      monthSuccessful += num(mx.successful_requests);
+      monthFailed += num(mx.failed_requests);
+      monthTokens.prompt += num(mx.prompt_tokens);
+      monthTokens.completion += num(mx.completion_tokens);
+      monthTokens.cacheRead += num(mx.cache_read_input_tokens);
+      monthTokens.cacheCreate += num(mx.cache_creation_input_tokens);
+    }
+    if (date >= startYmd && date <= prevEndYmd) prevMonthToDate += num(mx.spend);
+  }
+
+  const data: LiteLlmBase = {
+    byDate,
+    today,
+    monthLabel: `${MONTH_ABBR[monthStart.getMonth()]} ${monthStart.getFullYear()}`,
+    monthToDate,
+    monthRequests,
+    monthSuccessful,
+    monthFailed,
+    monthTokens,
+    prevMonthLabel: MONTH_ABBR[prevMonthStart.getMonth()],
+    prevMonthToDate,
+  };
+  cachedLiteLlmBase = { key: cacheKey, data, fetchedAt: Date.now() };
+  return data;
+}
+
+const ACCOUNT_TTL = 30 * 60 * 1000; // 30 min — lifetime spend moves slowly
+let cachedLiteLlmAccount: { data: { user: number; key: number }; fetchedAt: number } | null = null;
+
+/**
+ * Lifetime spend from the self-scoped /user/info (the user, across all their keys)
+ * and /key/info (this key). Degrades to zeros on any error — never throws, so it
+ * can't break the spend response.
+ */
+async function fetchLiteLlmAccount(): Promise<{ user: number; key: number }> {
+  if (cachedLiteLlmAccount && Date.now() - cachedLiteLlmAccount.fetchedAt < ACCOUNT_TTL) return cachedLiteLlmAccount.data;
+  const base = litellmBaseUrl();
+  const token = litellmAuthToken();
+  if (!base || !token) return { user: 0, key: 0 };
+  const headers = { Authorization: `Bearer ${token}`, Accept: 'application/json' };
+  const get = async (path: string): Promise<any> => {
+    try {
+      const r = await fetch(`${base}${path}`, { headers, signal: AbortSignal.timeout(15_000) });
+      return r.ok ? await r.json() : null;
+    } catch {
+      return null;
+    }
+  };
+  const [u, k] = await Promise.all([get('/user/info'), get('/key/info')]);
+  const data = {
+    user: num(u?.user_info?.spend ?? u?.spend),
+    key: num(k?.info?.spend ?? k?.spend),
+  };
+  cachedLiteLlmAccount = { data, fetchedAt: Date.now() };
+  return data;
+}
+
+/** Actual billed spend: month-to-date, previous-month same-period total, and the
+ *  last `days` calendar days (incl. today, zero-filled) with per-model breakdown. */
+export async function fetchLiteLlmSpend(days: number): Promise<LiteLlmSpend> {
+  const b = await fetchLiteLlmBase();
+  const lifetime = await fetchLiteLlmAccount();
+  const daily: LiteLlmSpend['daily'] = [];
+  for (let i = days - 1; i >= 0; i--) {
+    const ymd = localYmd(new Date(b.today.getFullYear(), b.today.getMonth(), b.today.getDate() - i));
+    const e = b.byDate.get(ymd);
+    daily.push({ date: ymd, cost: e?.cost ?? 0, requests: e?.requests ?? 0, successful: e?.successful ?? 0, byModel: e?.byModel ?? {} });
+  }
+  return {
+    monthLabel: b.monthLabel,
+    monthToDate: b.monthToDate,
+    monthRequests: b.monthRequests,
+    monthSuccessful: b.monthSuccessful,
+    monthFailed: b.monthFailed,
+    monthTokens: b.monthTokens,
+    prevMonthLabel: b.prevMonthLabel,
+    prevMonthToDate: b.prevMonthToDate,
+    lifetime,
+    daily,
+  };
+}
+

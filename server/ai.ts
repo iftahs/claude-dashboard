@@ -46,6 +46,26 @@ const MAX_OUTPUT_TOKENS = 1024;
 const CLI_PROBE_TTL = 5 * 60_000;
 const ANTHROPIC_VERSION = '2023-06-01';
 
+// Honor Claude Code's own proxy/gateway env vars so AI Insights works against a
+// corporate LiteLLM/gateway. ANTHROPIC_BASE_URL = proxy origin; ANTHROPIC_AUTH_TOKEN
+// = its bearer token (sent as Authorization, matching Claude Code). Falls back to
+// api.anthropic.com + x-api-key (ANTHROPIC_API_KEY) when unset.
+function anthropicBaseUrl(): string {
+  const raw = (process.env.ANTHROPIC_BASE_URL || 'https://api.anthropic.com').trim();
+  return raw.replace(/\/+$/, '').replace(/\/v1$/, ''); // tolerate trailing slash and/or /v1
+}
+function messagesUrl(): string {
+  return `${anthropicBaseUrl()}/v1/messages`;
+}
+/** Server-env credential for the Messages backend; proxy auth token wins over api key. */
+function envApiHeaders(): Record<string, string> | null {
+  const token = (process.env.ANTHROPIC_AUTH_TOKEN || '').trim();
+  if (token) return { authorization: `Bearer ${token}` };
+  const key = (process.env.ANTHROPIC_API_KEY || '').trim();
+  if (key) return { 'x-api-key': key };
+  return null;
+}
+
 let cliProbe: { ok: boolean; at: number } | null = null;
 
 // On Windows the `claude` command is a .cmd/.ps1 shim, which execFile cannot
@@ -75,7 +95,7 @@ export async function claudeCliAvailable(): Promise<boolean> {
 
 /** Decide which backend will serve a call right now. */
 export async function resolveBackend(): Promise<AiStatus> {
-  if (process.env.ANTHROPIC_API_KEY) return { available: 'apikey', model: DEFAULT_MODEL };
+  if (envApiHeaders()) return { available: 'apikey', model: DEFAULT_MODEL };
   if (await claudeCliAvailable()) return { available: 'cli', model: DEFAULT_MODEL };
   const creds = await readCredentials();
   const token = creds?.claudeAiOauth?.accessToken;
@@ -83,7 +103,7 @@ export async function resolveBackend(): Promise<AiStatus> {
   if (token && !(expiresAt && Date.now() >= expiresAt)) return { available: 'api', model: DEFAULT_MODEL };
   if (token && expiresAt && Date.now() >= expiresAt)
     return { available: 'none', model: DEFAULT_MODEL, reason: 'OAuth token expired — run any Claude Code command to refresh it.' };
-  return { available: 'none', model: DEFAULT_MODEL, reason: 'No Claude CLI and no Claude.ai token found. Install Claude Code or set ANTHROPIC_API_KEY.' };
+  return { available: 'none', model: DEFAULT_MODEL, reason: 'No Claude CLI and no Claude.ai token found. Install Claude Code, or set ANTHROPIC_AUTH_TOKEN (+ ANTHROPIC_BASE_URL for a proxy) or ANTHROPIC_API_KEY.' };
 }
 
 export async function runAi(
@@ -134,7 +154,7 @@ function runViaCli(input: AiCallInput, model: string): Promise<string> {
 // ── Anthropic Messages API (shared) ───────────────────────────────────────────
 
 async function callMessages(headers: Record<string, string>, input: AiCallInput, model: string): Promise<string> {
-  const res = await fetch('https://api.anthropic.com/v1/messages', {
+  const res = await fetch(messagesUrl(), {
     method: 'POST',
     headers: { ...headers, 'content-type': 'application/json', 'anthropic-version': ANTHROPIC_VERSION },
     body: JSON.stringify({
@@ -147,7 +167,7 @@ async function callMessages(headers: Record<string, string>, input: AiCallInput,
   });
   if (res.status === 401 || res.status === 403)
     throw new AiTokenRejectedError(`Anthropic API rejected the credential (${res.status}).`);
-  if (!res.ok) throw new AiCallError(`Anthropic API error ${res.status} ${res.statusText}`);
+  if (!res.ok) throw new AiCallError(`Anthropic API error ${res.status} ${res.statusText} (model "${model}" via ${anthropicBaseUrl()})`);
   const data: any = await res.json();
   const text = Array.isArray(data?.content)
     ? data.content.filter((b: any) => b?.type === 'text').map((b: any) => b.text).join('').trim()
@@ -157,7 +177,7 @@ async function callMessages(headers: Record<string, string>, input: AiCallInput,
 }
 
 function runViaApiKey(input: AiCallInput, model: string): Promise<string> {
-  return callMessages({ 'x-api-key': process.env.ANTHROPIC_API_KEY as string }, input, model);
+  return callMessages(envApiHeaders()!, input, model);
 }
 
 // ── OpenAI ─────────────────────────────────────────────────────────────────
@@ -258,7 +278,7 @@ async function callMessagesStream(
   model: string,
   onDelta: (t: string) => void,
 ): Promise<void> {
-  const res = await fetch('https://api.anthropic.com/v1/messages', {
+  const res = await fetch(messagesUrl(), {
     method: 'POST',
     headers: { ...headers, 'content-type': 'application/json', 'anthropic-version': ANTHROPIC_VERSION },
     body: JSON.stringify({
@@ -272,7 +292,7 @@ async function callMessagesStream(
   });
   if (res.status === 401 || res.status === 403)
     throw new AiTokenRejectedError(`Anthropic API rejected the credential (${res.status}).`);
-  if (!res.ok) throw new AiCallError(`Anthropic API error ${res.status} ${res.statusText}`);
+  if (!res.ok) throw new AiCallError(`Anthropic API error ${res.status} ${res.statusText} (model "${model}" via ${anthropicBaseUrl()})`);
   await pumpSSE(res, (j) => {
     if (j?.type === 'content_block_delta' && j.delta?.type === 'text_delta' && j.delta.text) onDelta(j.delta.text);
   });
@@ -390,7 +410,7 @@ export async function runAiStream(
   const model = input.model || status.model;
   if (status.available === 'apikey') {
     h.onStart('apikey');
-    await callMessagesStream({ 'x-api-key': process.env.ANTHROPIC_API_KEY as string }, input, model, h.onDelta);
+    await callMessagesStream(envApiHeaders()!, input, model, h.onDelta);
     return 'apikey';
   }
   if (status.available === 'cli') {

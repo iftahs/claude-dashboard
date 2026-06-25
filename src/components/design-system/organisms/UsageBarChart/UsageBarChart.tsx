@@ -41,7 +41,7 @@ function CustomTooltip({ active, payload, label, metric = 'tokens' }: CustomTool
           ))}
         </div>
         {metric !== 'cost' && bucketCost !== undefined && (
-          <div className="mt-2 border-t border-white/5 pt-2 flex items-center justify-between text-xs">
+          <div className="mt-2 border-t border-white/10 pt-2 flex items-center justify-between text-xs">
             <span className="text-zinc-500 font-medium">Est. Cost</span>
             <span className="font-bold text-clay-400">{usd(bucketCost)}</span>
           </div>

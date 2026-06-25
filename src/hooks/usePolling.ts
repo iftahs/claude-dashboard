@@ -34,6 +34,12 @@ export function usePolling<T>(url: string, intervalMs = 5000): State<T> & { last
 
   useEffect(() => {
     alive.current = true;
+    // An empty URL means "disabled" (e.g. a feature-gated poll): make no request,
+    // settle to an idle/empty state, and skip the interval entirely.
+    if (!url) {
+      setState({ data: null, computedAt: null, claudeDir: null, error: null, loading: false });
+      return;
+    }
     // On URL change (source/range filter switch): if we already have a cached
     // response for this exact URL, show it immediately (no skeleton) and revalidate
     // in the background. Otherwise clear to a skeleton until the first response lands.

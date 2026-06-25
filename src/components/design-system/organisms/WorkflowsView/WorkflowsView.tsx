@@ -62,7 +62,7 @@ function GroupLabel({ children }: { children: string }) {
 
 function CountChip({ count, label, pulse }: { count: number; label: string; pulse?: boolean }) {
   return (
-    <span className="inline-flex items-center gap-1.5 rounded-full bg-white/5 px-2.5 py-1 text-xs font-semibold tabular-nums text-zinc-300 ring-1 ring-white/10">
+    <span className="inline-flex items-center gap-1.5 rounded-full bg-white/10 px-2.5 py-1 text-xs font-semibold tabular-nums text-zinc-300 ring-1 ring-white/10">
       {pulse && <span className="pulse-dot flex-none" />}
       {count} {label}
     </span>
@@ -225,7 +225,7 @@ function WorkflowTui({ run, hideHeader }: { run: WorkflowRun; hideHeader?: boole
                   {sel.total === 0 ? 'Not started yet.' : 'No agents in this phase.'}
                 </p>
               ) : (
-                <div className="flex flex-col divide-y divide-white/5">
+                <div className="flex flex-col divide-y divide-white/10">
                   {sel.agents.map((a) => (
                     <AgentTuiRow key={a.agentId} agent={a} />
                   ))}
@@ -296,19 +296,19 @@ function RecentWorkflowRow({ run }: WorkflowCardProps) {
       {run.resultStats && (
         <div className="flex flex-wrap gap-1.5">
           {Object.entries(run.resultStats).map(([k, v]) => (
-            <span key={k} className="rounded-md bg-ink-800/60 px-1.5 py-0.5 text-[10px] text-zinc-400 ring-1 ring-white/5">
+            <span key={k} className="rounded-md bg-ink-800/60 px-1.5 py-0.5 text-[10px] text-zinc-400 ring-1 ring-white/10">
               {humanize(k)}: <span className="text-zinc-300">{String(v)}</span>
             </span>
           ))}
         </div>
       )}
       {open && hasDetail && (
-        <div className="mt-1 flex flex-col gap-2 border-t border-white/5 pt-2">
+        <div className="mt-1 flex flex-col gap-2 border-t border-white/10 pt-2">
           {run.agents.length > 0 && <WorkflowTui run={run} hideHeader />}
           {run.logsTail && run.logsTail.length > 0 && (
             <div className="flex flex-col gap-1">
               <GroupLabel>Log</GroupLabel>
-              <div className="rounded-lg bg-ink-900/60 px-2.5 py-1.5 font-mono text-[11px] leading-relaxed text-zinc-500 ring-1 ring-white/5">
+              <div className="rounded-lg bg-ink-900/60 px-2.5 py-1.5 font-mono text-[11px] leading-relaxed text-zinc-500 ring-1 ring-white/10">
                 {run.logsTail.map((l, i) => (
                   <div key={i} className="truncate" title={l}>{l}</div>
                 ))}
