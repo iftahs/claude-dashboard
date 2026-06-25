@@ -562,3 +562,8 @@ export async function getInsights(): Promise<{ insights: InsightsData; computedA
 
   return { insights: cachedInsights!, computedAt: cachedInsightsAt };
 }
+
+/** Insights fingerprint — validity token for memoizing insight builder outputs. */
+export function insightsFingerprint(): number {
+  return cachedInsightsFp;
+}

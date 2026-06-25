@@ -5,10 +5,11 @@ import { createInterface } from 'node:readline';
 import { exec } from 'node:child_process';
 import { promisify } from 'node:util';
 import express from 'express';
-import { getEvents } from './cache.ts';
+import { getEvents, eventsFingerprint } from './cache.ts';
 import { buildRecent, buildWeekly, buildModels, buildActivity, buildTools, buildHourlyHeatmap, buildProjectStats, filterSource, type SourceFilter } from './aggregate.ts';
 import { claudeDir, readConfig, readCredentials, readStatsSummary, readSessionMetas, fetchLiveUsage, fetchLiveProfile, detectLitellm, fetchLiteLlmSpend } from './scan.ts';
-import { getInsights } from './insights-scan.ts';
+import { getInsights, insightsFingerprint } from './insights-scan.ts';
+import { memoBuilder } from './builder-cache.ts';
 import {
   buildErrors, buildRetries, buildLanguages, buildBranches, buildMcp,
   buildComplexity, buildYield, buildRejections, buildSubagentStats, buildFileChurn, scopeInsights,
@@ -314,8 +315,11 @@ app.get('/api/usage/recent', async (req, res) => {
   try {
     const hours = Math.max(1, Math.min(72, Number(req.query.hours ?? 12)));
     const { events, computedAt } = await getEvents();
-    const scoped = filterSource(events, parseSource(req.query.source));
-    res.json(wrap(buildRecent(scoped, Date.now(), hours), computedAt));
+    const source = parseSource(req.query.source);
+    const data = memoBuilder('recent', [hours, source], eventsFingerprint(), () =>
+      buildRecent(filterSource(events, source), computedAt, hours),
+    );
+    res.json(wrap(data, computedAt));
   } catch (e) {
     res.status(500).json({ error: String(e) });
   }
@@ -325,8 +329,11 @@ app.get('/api/usage/weekly', async (req, res) => {
   try {
     const days = Math.max(7, Math.min(28, Number(req.query.days ?? 7)));
     const { events, computedAt } = await getEvents();
-    const scoped = filterSource(events, parseSource(req.query.source));
-    res.json(wrap(buildWeekly(scoped, Date.now(), days), computedAt));
+    const source = parseSource(req.query.source);
+    const data = memoBuilder('weekly', [days, source], eventsFingerprint(), () =>
+      buildWeekly(filterSource(events, source), computedAt, days),
+    );
+    res.json(wrap(data, computedAt));
   } catch (e) {
     res.status(500).json({ error: String(e) });
   }
@@ -336,8 +343,11 @@ app.get('/api/usage/models', async (req, res) => {
   try {
     const days = Math.max(1, Math.min(31, Number(req.query.days ?? 7)));
     const { events, computedAt } = await getEvents();
-    const scoped = filterSource(events, parseSource(req.query.source));
-    res.json(wrap(buildModels(scoped, Date.now(), days), computedAt));
+    const source = parseSource(req.query.source);
+    const data = memoBuilder('models', [days, source], eventsFingerprint(), () =>
+      buildModels(filterSource(events, source), computedAt, days),
+    );
+    res.json(wrap(data, computedAt));
   } catch (e) {
     res.status(500).json({ error: String(e) });
   }
@@ -347,9 +357,14 @@ app.get('/api/activity', async (req, res) => {
   try {
     const days = Math.max(7, Math.min(180, Number(req.query.days ?? 126)));
     const { events, computedAt } = await getEvents();
-    const scoped = filterSource(events, parseSource(req.query.source));
+    const source = parseSource(req.query.source);
     const stats = await readStatsSummary();
-    res.json(wrap(buildActivity(scoped, Date.now(), days, stats), computedAt));
+    // stats-cache is only a fallback for days with no live data and is itself
+    // stale, so keying on the events fingerprint is sufficient.
+    const data = memoBuilder('activity', [days, source], eventsFingerprint(), () =>
+      buildActivity(filterSource(events, source), computedAt, days, stats),
+    );
+    res.json(wrap(data, computedAt));
   } catch (e) {
     res.status(500).json({ error: String(e) });
   }
@@ -359,8 +374,11 @@ app.get('/api/tools', async (req, res) => {
   try {
     const days = Math.max(1, Math.min(31, Number(req.query.days ?? 7)));
     const { events, computedAt } = await getEvents();
-    const scoped = filterSource(events, parseSource(req.query.source));
-    res.json(wrap(buildTools(scoped, Date.now(), days), computedAt));
+    const source = parseSource(req.query.source);
+    const data = memoBuilder('tools', [days, source], eventsFingerprint(), () =>
+      buildTools(filterSource(events, source), computedAt, days),
+    );
+    res.json(wrap(data, computedAt));
   } catch (e) {
     res.status(500).json({ error: String(e) });
   }
@@ -370,8 +388,11 @@ app.get('/api/heatmap', async (req, res) => {
   try {
     const days = Math.max(7, Math.min(365, Number(req.query.days ?? 90)));
     const { events, computedAt } = await getEvents();
-    const scoped = filterSource(events, parseSource(req.query.source));
-    res.json(wrap(buildHourlyHeatmap(scoped, Date.now(), days), computedAt));
+    const source = parseSource(req.query.source);
+    const data = memoBuilder('heatmap', [days, source], eventsFingerprint(), () =>
+      buildHourlyHeatmap(filterSource(events, source), computedAt, days),
+    );
+    res.json(wrap(data, computedAt));
   } catch (e) {
     res.status(500).json({ error: String(e) });
   }
@@ -383,8 +404,11 @@ app.get('/api/projects', async (req, res) => {
     const { events, computedAt } = await getEvents();
     // buildProjectStats already drops cowork; the source filter keeps behavior
     // consistent when the UI explicitly scopes to one surface.
-    const scoped = filterSource(events, parseSource(req.query.source));
-    res.json(wrap(buildProjectStats(scoped, Date.now(), days), computedAt));
+    const source = parseSource(req.query.source);
+    const data = memoBuilder('projects', [days, source], eventsFingerprint(), () =>
+      buildProjectStats(filterSource(events, source), computedAt, days),
+    );
+    res.json(wrap(data, computedAt));
   } catch (e) {
     res.status(500).json({ error: String(e) });
   }
@@ -402,8 +426,11 @@ app.get('/api/insights/errors', async (req, res) => {
   try {
     const days = clampDays(req.query.days);
     const { insights, computedAt } = await getInsights();
-    const scoped = scopeInsights(insights, parseSource(req.query.source));
-    res.json(wrap(buildErrors(scoped, days), computedAt));
+    const source = parseSource(req.query.source);
+    const data = memoBuilder('errors', [days, source], insightsFingerprint(), () =>
+      buildErrors(scopeInsights(insights, source), days),
+    );
+    res.json(wrap(data, computedAt));
   } catch (e) {
     res.status(500).json({ error: String(e) });
   }
@@ -413,8 +440,11 @@ app.get('/api/insights/retries', async (req, res) => {
   try {
     const days = clampDays(req.query.days);
     const { insights, computedAt } = await getInsights();
-    const scoped = scopeInsights(insights, parseSource(req.query.source));
-    res.json(wrap(buildRetries(scoped, days), computedAt));
+    const source = parseSource(req.query.source);
+    const data = memoBuilder('retries', [days, source], insightsFingerprint(), () =>
+      buildRetries(scopeInsights(insights, source), days),
+    );
+    res.json(wrap(data, computedAt));
   } catch (e) {
     res.status(500).json({ error: String(e) });
   }
@@ -424,8 +454,11 @@ app.get('/api/insights/languages', async (req, res) => {
   try {
     const days = clampDays(req.query.days);
     const { insights, computedAt } = await getInsights();
-    const scoped = scopeInsights(insights, parseSource(req.query.source));
-    res.json(wrap(buildLanguages(scoped, days), computedAt));
+    const source = parseSource(req.query.source);
+    const data = memoBuilder('languages', [days, source], insightsFingerprint(), () =>
+      buildLanguages(scopeInsights(insights, source), days),
+    );
+    res.json(wrap(data, computedAt));
   } catch (e) {
     res.status(500).json({ error: String(e) });
   }
@@ -435,8 +468,11 @@ app.get('/api/insights/branches', async (req, res) => {
   try {
     const days = clampDays(req.query.days);
     const { insights, computedAt } = await getInsights();
-    const scoped = scopeInsights(insights, parseSource(req.query.source));
-    res.json(wrap(buildBranches(scoped, days), computedAt));
+    const source = parseSource(req.query.source);
+    const data = memoBuilder('branches', [days, source], insightsFingerprint(), () =>
+      buildBranches(scopeInsights(insights, source), days),
+    );
+    res.json(wrap(data, computedAt));
   } catch (e) {
     res.status(500).json({ error: String(e) });
   }
@@ -446,8 +482,11 @@ app.get('/api/insights/mcp', async (req, res) => {
   try {
     const days = clampDays(req.query.days);
     const { insights, computedAt } = await getInsights();
-    const scoped = scopeInsights(insights, parseSource(req.query.source));
-    res.json(wrap(buildMcp(scoped, days), computedAt));
+    const source = parseSource(req.query.source);
+    const data = memoBuilder('mcp', [days, source], insightsFingerprint(), () =>
+      buildMcp(scopeInsights(insights, source), days),
+    );
+    res.json(wrap(data, computedAt));
   } catch (e) {
     res.status(500).json({ error: String(e) });
   }
@@ -457,8 +496,11 @@ app.get('/api/insights/complexity', async (req, res) => {
   try {
     const days = clampDays(req.query.days);
     const { insights, computedAt } = await getInsights();
-    const scoped = scopeInsights(insights, parseSource(req.query.source));
-    res.json(wrap(buildComplexity(scoped, days), computedAt));
+    const source = parseSource(req.query.source);
+    const data = memoBuilder('complexity', [days, source], insightsFingerprint(), () =>
+      buildComplexity(scopeInsights(insights, source), days),
+    );
+    res.json(wrap(data, computedAt));
   } catch (e) {
     res.status(500).json({ error: String(e) });
   }
@@ -468,8 +510,11 @@ app.get('/api/insights/yield', async (req, res) => {
   try {
     const days = clampDays(req.query.days);
     const { insights, computedAt } = await getInsights();
-    const scoped = scopeInsights(insights, parseSource(req.query.source));
-    res.json(wrap(buildYield(scoped, days), computedAt));
+    const source = parseSource(req.query.source);
+    const data = memoBuilder('yield', [days, source], insightsFingerprint(), () =>
+      buildYield(scopeInsights(insights, source), days),
+    );
+    res.json(wrap(data, computedAt));
   } catch (e) {
     res.status(500).json({ error: String(e) });
   }
@@ -479,8 +524,11 @@ app.get('/api/insights/rejections', async (req, res) => {
   try {
     const days = clampDays(req.query.days);
     const { insights, computedAt } = await getInsights();
-    const scoped = scopeInsights(insights, parseSource(req.query.source));
-    res.json(wrap(buildRejections(scoped, days), computedAt));
+    const source = parseSource(req.query.source);
+    const data = memoBuilder('rejections', [days, source], insightsFingerprint(), () =>
+      buildRejections(scopeInsights(insights, source), days),
+    );
+    res.json(wrap(data, computedAt));
   } catch (e) {
     res.status(500).json({ error: String(e) });
   }
@@ -490,8 +538,11 @@ app.get('/api/insights/subagents', async (req, res) => {
   try {
     const days = clampDays(req.query.days);
     const { insights, computedAt } = await getInsights();
-    const scoped = scopeInsights(insights, parseSource(req.query.source));
-    res.json(wrap(buildSubagentStats(scoped, days), computedAt));
+    const source = parseSource(req.query.source);
+    const data = memoBuilder('subagents', [days, source], insightsFingerprint(), () =>
+      buildSubagentStats(scopeInsights(insights, source), days),
+    );
+    res.json(wrap(data, computedAt));
   } catch (e) {
     res.status(500).json({ error: String(e) });
   }
@@ -502,8 +553,11 @@ app.get('/api/insights/churn', async (req, res) => {
   try {
     const days = clampDays(req.query.days);
     const { insights, computedAt } = await getInsights();
-    const scoped = scopeInsights(insights, parseSource(req.query.source));
-    res.json(wrap(buildFileChurn(scoped, days), computedAt));
+    const source = parseSource(req.query.source);
+    const data = memoBuilder('churn', [days, source], insightsFingerprint(), () =>
+      buildFileChurn(scopeInsights(insights, source), days),
+    );
+    res.json(wrap(data, computedAt));
   } catch (e) {
     res.status(500).json({ error: String(e) });
   }
