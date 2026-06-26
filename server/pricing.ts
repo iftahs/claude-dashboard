@@ -46,3 +46,14 @@ export function estimateCost(
     1_000_000
   );
 }
+
+/**
+ * A single blended $/Mtok rate for a model, used ONLY where the input/output split
+ * is unavailable (workflow journals store one combined "effective" token count).
+ * Approximates a typical agent mix as ~70% input-class / ~30% output tokens — a
+ * rough equivalent-API estimate, not a real bill.
+ */
+export function blendedRatePerMillion(model: string): number {
+  const p = priceFor(model);
+  return 0.7 * p.input + 0.3 * p.output;
+}

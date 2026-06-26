@@ -381,6 +381,21 @@ export interface WorkflowsData {
   recent: WorkflowRun[];
 }
 
+/** All-time aggregate over every final workflow journal on disk (`/api/workflows/stats`). */
+export interface WorkflowStats {
+  totalRuns: number;
+  completed: number;
+  failed: number;
+  successRate: number; // 0..1
+  totalTokens: number;
+  totalAgents: number;
+  avgDurationMs: number;
+  topModel: string;
+  estCostUsd: number; // rough blended equivalent-API estimate
+  totalToolCalls: number;
+  busiestDay: { day: number; count: number } | null; // day = local-midnight ms
+}
+
 // ── AI Insights ──────────────────────────────────────────────────────────────
 
 export type AiProvider = 'claude' | 'openai' | 'gemini';

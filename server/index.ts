@@ -17,7 +17,7 @@ import {
 import { getCommandUsage } from './history.ts';
 import { getWorkspaceTasks, getInventory } from './workspace.ts';
 import { getLiveSubagents } from './subagents-live.ts';
-import { getWorkflows } from './workflows.ts';
+import { getWorkflows, getWorkflowStats } from './workflows.ts';
 import { runAi, runAiStream, resolveBackend, AiUnavailableError, AiTokenRejectedError, AiCallError, type AiCreds } from './ai.ts';
 import { buildAiContext, buildChatUserMessage, CHAT_SYSTEM, buildSectionUserMessage, SECTION_SYSTEM, SUGGEST_SYSTEM, buildSuggestMessage, type ChatTurn } from './ai-context.ts';
 import { getVersionInfo, isDocker } from './version.ts';
@@ -586,6 +586,16 @@ app.get('/api/subagents/live', async (_req, res) => {
 app.get('/api/workflows', async (_req, res) => {
   try {
     const data = await getWorkflows();
+    res.json(wrap(data, Date.now()));
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+// All-time aggregate over every final workflow journal on disk.
+app.get('/api/workflows/stats', async (_req, res) => {
+  try {
+    const data = await getWorkflowStats();
     res.json(wrap(data, Date.now()));
   } catch (e) {
     res.status(500).json({ error: String(e) });

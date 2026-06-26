@@ -8,14 +8,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.1.11] - 2026-06-26
 
 ### Added
-- Introduced animated live-tab badges for improved visual feedback.
-- Implemented count-up animation and flash-on-increase effects for live badges.
-- Added hooks for count-up functionality and flashing on increase.
-- Integrated animated badges into the header for enhanced user awareness.
+- Group recent workflow runs by date with headers for Today, Yesterday, and earlier periods.
+- Display all-time stats in a compact 3x3 grid above the recent runs.
+- Expand the recent workflows window from 7 days to 90 days and increase the run cap from 20 to 200.
+- Implement an API endpoint to retrieve all-time workflow statistics.
+- Add a rough single-rate cost estimate based on blended token rates.
+- Introduce animated live-tab badges with count-up and flash-on-increase effects.
+- Add count-up and flash-on-increase hooks; integrate the animated badges into the header.
 
 ### Changed
-- Updated polling interval for live subagents to improve responsiveness.
-- Refined handling of agent/task delegations in pending tool status to reduce false positives.
+- Refine handling of agent/task delegations in the pending-tool status to reduce false "waiting" positives.
+- Speed up the live-subagents poll (4s → 2.5s) for snappier live feedback.
+- Memoize internal workflow-summary parsing for cheaper repeated scans.
 
 ## [0.1.10] - 2026-06-25
 
