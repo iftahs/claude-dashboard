@@ -5,6 +5,20 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.11] - 2026-06-26
+
+### Added
+- Group recent runs by date with headers for Today, Yesterday, and earlier periods.
+- Display all-time stats in a compact 3x3 grid above the recent runs.
+- Introduce an all-time stats strip for quick summary insights.
+- Expand the recent workflows window from 7 days to 90 days and increase run cap from 20 to 200.
+- Implement an API endpoint to retrieve workflow statistics.
+- Create a function for rough single-rate cost estimates based on blended token rates.
+
+### Changed
+- Improve the live data polling mechanism for more timely updates.
+- Enhance internal functions for summarizing workflow statuses.
+
 ## [0.1.10] - 2026-06-25
 
 ### Added
@@ -127,6 +141,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Live-API fallback to the local logs when there is no active block
   (`resets_at = null`).
 
+[0.1.11]: https://github.com/iftahs/claude-dashboard/releases/tag/v0.1.11
 [0.1.10]: https://github.com/iftahs/claude-dashboard/releases/tag/v0.1.10
 [0.1.9]: https://github.com/iftahs/claude-dashboard/releases/tag/v0.1.9
 [0.1.8]: https://github.com/iftahs/claude-dashboard/releases/tag/v0.1.8
