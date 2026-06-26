@@ -5,19 +5,28 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.12] - 2026-06-26
+
+### Fixed
+- Stop false "needs attention" alerts on delegating/idle agents for a more accurate status display.
+- Track last tool use to prevent misreading delegation as waiting when it’s not. 
+- Ensure that only genuine user rejections trigger an error state, reducing unnecessary alerts.
+
 ## [0.1.11] - 2026-06-26
 
 ### Added
-- Group recent runs by date with headers for Today, Yesterday, and earlier periods.
+- Group recent workflow runs by date with headers for Today, Yesterday, and earlier periods.
 - Display all-time stats in a compact 3x3 grid above the recent runs.
-- Introduce an all-time stats strip for quick summary insights.
-- Expand the recent workflows window from 7 days to 90 days and increase run cap from 20 to 200.
-- Implement an API endpoint to retrieve workflow statistics.
-- Create a function for rough single-rate cost estimates based on blended token rates.
+- Expand the recent workflows window from 7 days to 90 days and increase the run cap from 20 to 200.
+- Implement an API endpoint to retrieve all-time workflow statistics.
+- Add a rough single-rate cost estimate based on blended token rates.
 
 ### Changed
-- Improve the live data polling mechanism for more timely updates.
-- Enhance internal functions for summarizing workflow statuses.
+- Memoize internal workflow-summary parsing for cheaper repeated scans.
+
+### Fixed
+- Eliminate false "needs attention" alerts for delegating and idle agents.
+- Trigger the error state only on user rejection, not on benign failed tool uses, reducing unnecessary alerts.
 
 ## [0.1.10] - 2026-06-25
 
@@ -141,6 +150,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Live-API fallback to the local logs when there is no active block
   (`resets_at = null`).
 
+[0.1.12]: https://github.com/iftahs/claude-dashboard/releases/tag/v0.1.12
 [0.1.11]: https://github.com/iftahs/claude-dashboard/releases/tag/v0.1.11
 [0.1.10]: https://github.com/iftahs/claude-dashboard/releases/tag/v0.1.10
 [0.1.9]: https://github.com/iftahs/claude-dashboard/releases/tag/v0.1.9
