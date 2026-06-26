@@ -12,6 +12,7 @@ import type {
   LiveUsageData,
   LiveSubagents,
   WorkflowsData,
+  WorkflowStats,
   VersionInfo,
 } from '../types';
 
@@ -31,6 +32,7 @@ interface LiveDataCtx {
   liveUsage: PollState<LiveUsageData>;
   liveSubagents: PollState<LiveSubagents>;
   workflows: PollState<WorkflowsData>;
+  workflowStats: PollState<WorkflowStats>;
   version: PollState<VersionInfo>;
 }
 
@@ -58,6 +60,7 @@ export function LiveDataProvider({ children }: { children: ReactNode }) {
   const liveUsage = usePolling<LiveUsageData>('/api/usage/live', 15000);
   const liveSubagents = usePolling<LiveSubagents>('/api/subagents/live', 4000);
   const workflows = usePolling<WorkflowsData>('/api/workflows', 4000);
+  const workflowStats = usePolling<WorkflowStats>('/api/workflows/stats', 30000);
   const version = usePolling<VersionInfo>('/api/version', 1_800_000);
 
   const value = useMemo<LiveDataCtx>(
@@ -73,9 +76,10 @@ export function LiveDataProvider({ children }: { children: ReactNode }) {
       liveUsage,
       liveSubagents,
       workflows,
+      workflowStats,
       version,
     }),
-    [recentHours, weekDays, recent, weekly, models, litellm, liveUsage, liveSubagents, workflows, version],
+    [recentHours, weekDays, recent, weekly, models, litellm, liveUsage, liveSubagents, workflows, workflowStats, version],
   );
 
   return <LiveDataContext.Provider value={value}>{children}</LiveDataContext.Provider>;

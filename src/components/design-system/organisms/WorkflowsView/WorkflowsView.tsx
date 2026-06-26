@@ -1,11 +1,14 @@
 import { useEffect, useState } from 'react';
 import { Section } from '@/components/design-system/molecules/Section/Section';
-import { compact } from '@/lib/format';
+import { InfoTip } from '@/components/design-system/atoms/InfoTip/InfoTip';
+import { Skeleton } from '@/components/design-system/atoms/Skeleton/Skeleton';
+import type { StatCardProps } from '@/components/design-system/atoms/StatCard/types';
+import { compact, usd, shortModel, dayLabel } from '@/lib/format';
 import { modelColor } from '@/lib/palette';
 import { elapsedSec, formatElapsed, displayModel } from '@/components/design-system/organisms/AgentActivity/utils';
-import type { WorkflowAgentInfo, WorkflowRun } from '@/types';
+import type { WorkflowAgentInfo, WorkflowRun, WorkflowStats } from '@/types';
 import type { WorkflowsViewProps, WorkflowCardProps } from './types';
-import { buildPhaseGroups, defaultActivePhaseIndex, doneAgentCount, agentMetrics } from './utils';
+import { buildPhaseGroups, defaultActivePhaseIndex, doneAgentCount, agentMetrics, groupRunsByDate } from './utils';
 import type { PhaseGroup } from './utils';
 
 /** "sourcesFetched" / "after_synthesis" → "Sources fetched" / "After synthesis". */
@@ -321,9 +324,86 @@ function RecentWorkflowRow({ run }: WorkflowCardProps) {
   );
 }
 
+/** Compact stat tile (denser than the shared StatCard atom). */
+function StatTile({ label, value, sub, accent, help }: StatCardProps) {
+  return (
+    <div className="card p-3">
+      <div className="flex items-center gap-1 text-[10px] font-medium uppercase tracking-wider text-zinc-500">
+        {label}
+        {help && <InfoTip text={help} />}
+      </div>
+      <div
+        className="mt-1 text-lg font-bold leading-tight tabular-nums"
+        style={accent ? { color: accent } : undefined}
+      >
+        {value}
+      </div>
+      {sub && <div className="mt-0.5 text-[11px] text-zinc-400">{sub}</div>}
+    </div>
+  );
+}
+
+/** All-time summary tiles above the live/recent lists. */
+function StatsGrid({ stats, loading }: { stats?: WorkflowStats | null; loading: boolean }) {
+  if (loading && !stats) {
+    return (
+      <div className="grid grid-cols-3 gap-2 sm:grid-cols-3">
+        {Array.from({ length: 9 }).map((_, i) => (
+          <div key={i} className="card p-3">
+            <Skeleton className="h-2.5 w-16 rounded" />
+            <Skeleton className="mt-2 h-5 w-12 rounded" />
+          </div>
+        ))}
+      </div>
+    );
+  }
+  if (!stats || stats.totalRuns === 0) return null;
+
+  const dash = '—';
+  const tiles: StatCardProps[] = [
+    { label: 'Runs', value: compact(stats.totalRuns) },
+    {
+      label: 'Success rate',
+      value: stats.completed + stats.failed > 0 ? `${Math.round(stats.successRate * 100)}%` : dash,
+      accent: '#34d399',
+      sub: `${stats.completed} ok · ${stats.failed} failed`,
+    },
+    { label: 'Total tokens', value: compact(stats.totalTokens) },
+    { label: 'Agents spawned', value: compact(stats.totalAgents) },
+    {
+      label: 'Avg duration',
+      value: stats.avgDurationMs > 0 ? formatElapsed(Math.round(stats.avgDurationMs / 1000)) : dash,
+    },
+    {
+      label: 'Top model',
+      value: stats.topModel && stats.topModel !== 'inherit' ? shortModel(stats.topModel) : dash,
+    },
+    {
+      label: 'Est. cost',
+      value: stats.estCostUsd > 0 ? `~${usd(stats.estCostUsd)}` : dash,
+      accent: '#fbbf24',
+      help: 'Rough equivalent-API estimate. Workflow journals store only combined effective tokens (no input/output split), so this is a blended approximation — not a real bill.',
+    },
+    { label: 'Tool calls', value: compact(stats.totalToolCalls) },
+    {
+      label: 'Busiest day',
+      value: stats.busiestDay ? dayLabel(stats.busiestDay.day) : dash,
+      sub: stats.busiestDay ? `${stats.busiestDay.count} run${stats.busiestDay.count === 1 ? '' : 's'}` : undefined,
+    },
+  ];
+
+  return (
+    <div className="grid grid-cols-3 gap-2 sm:grid-cols-3">
+      {tiles.map((t) => (
+        <StatTile key={t.label} {...t} />
+      ))}
+    </div>
+  );
+}
+
 // ── Organism ────────────────────────────────────────────────────────────────
 
-export function WorkflowsView({ data, loading }: WorkflowsViewProps) {
+export function WorkflowsView({ data, loading, stats, statsLoading }: WorkflowsViewProps) {
   const live = data?.live ?? [];
   const recent = data?.recent ?? [];
   const hasAny = live.length > 0 || recent.length > 0;
@@ -331,39 +411,43 @@ export function WorkflowsView({ data, loading }: WorkflowsViewProps) {
   return (
     <Section
       title="Workflows · live & recent"
-      help="Dynamic workflow runs (the Workflow orchestration tool). Live runs show their phases and per-phase agents, tokens and elapsed time; recent runs list completed runs with their stats. Mirrors what /workflows shows in Claude Code."
+      help="Dynamic workflow runs (the Workflow orchestration tool). Live runs show their phases and per-phase agents, tokens and elapsed time; recent runs list completed runs grouped by date. The stat strip aggregates every workflow run on disk. Mirrors what /workflows shows in Claude Code."
       right={live.length > 0 ? <CountChip count={live.length} label="running" pulse /> : undefined}
     >
-      {loading && !data ? (
-        <div className="h-10 flex items-center text-xs text-zinc-600">Loading…</div>
-      ) : hasAny ? (
-        <div className="flex flex-col gap-4">
-          {live.length > 0 && (
-            <div className="flex flex-col gap-4">
-              <GroupLabel>Live</GroupLabel>
-              {live.map((r) => (
-                <WorkflowTui key={r.runId} run={r} />
+      <div className="flex flex-col gap-4">
+        <StatsGrid stats={stats} loading={statsLoading ?? false} />
+        {loading && !data ? (
+          <div className="h-10 flex items-center text-xs text-zinc-600">Loading…</div>
+        ) : hasAny ? (
+          <div className="flex flex-col gap-4">
+            {live.length > 0 && (
+              <div className="flex flex-col gap-4">
+                <GroupLabel>Live</GroupLabel>
+                {live.map((r) => (
+                  <WorkflowTui key={r.runId} run={r} />
+                ))}
+              </div>
+            )}
+            {recent.length > 0 &&
+              groupRunsByDate(recent).map((bucket) => (
+                <div key={bucket.label} className="flex flex-col gap-2">
+                  <GroupLabel>{bucket.label}</GroupLabel>
+                  {bucket.runs.map((r) => (
+                    <RecentWorkflowRow key={r.runId} run={r} />
+                  ))}
+                </div>
               ))}
-            </div>
-          )}
-          {recent.length > 0 && (
-            <div className="flex flex-col gap-2">
-              <GroupLabel>Recent</GroupLabel>
-              {recent.map((r) => (
-                <RecentWorkflowRow key={r.runId} run={r} />
-              ))}
-            </div>
-          )}
-        </div>
-      ) : (
-        <div className="flex flex-col items-center gap-1 py-8 text-center text-sm text-zinc-600">
-          <span className="text-2xl">🔀</span>
-          <p>No workflows yet.</p>
-          <p className="text-xs text-zinc-700">
-            Run one in Claude Code (e.g. a deep-research or multi-agent workflow) and it will appear here.
-          </p>
-        </div>
-      )}
+          </div>
+        ) : (
+          <div className="flex flex-col items-center gap-1 py-8 text-center text-sm text-zinc-600">
+            <span className="text-2xl">🔀</span>
+            <p>No workflows yet.</p>
+            <p className="text-xs text-zinc-700">
+              Run one in Claude Code (e.g. a deep-research or multi-agent workflow) and it will appear here.
+            </p>
+          </div>
+        )}
+      </div>
     </Section>
   );
 }
