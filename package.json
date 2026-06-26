@@ -1,7 +1,7 @@
 {
   "name": "claude-dashboard",
   "private": false,
-  "version": "0.1.12",
+  "version": "0.1.13",
   "type": "module",
   "description": "Beautiful local dashboard for Claude Code usage — 5-hour blocks, weekly trends, model breakdown, tool usage and an activity heatmap, read straight from your ~/.claude logs.",
   "license": "MIT",
@@ -31,6 +31,7 @@
     "@posthog/react": "^1.10.2",
     "class-variance-authority": "^0.7.1",
     "express": "^4.21.2",
+    "framer-motion": "^12.40.0",
     "posthog-js": "^1.390.2",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",

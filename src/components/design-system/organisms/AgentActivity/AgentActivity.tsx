@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { motion, AnimatePresence, MotionConfig } from 'framer-motion';
 import { Section } from '@/components/design-system/molecules/Section/Section';
 import { TrafficLight } from '@/components/design-system/atoms/TrafficLight/TrafficLight';
 import { InfoTip } from '@/components/design-system/atoms/InfoTip/InfoTip';
@@ -7,6 +8,12 @@ import { modelColor } from '@/lib/palette';
 import type { AgentTrafficStatus } from '@/types';
 import type { AgentActivityProps } from './types';
 import { elapsedSec, formatElapsed, displayModel } from './utils';
+import { useCountUp } from '@/hooks/useCountUp';
+import { useFlashOnIncrease } from '@/hooks/useFlashOnIncrease';
+
+// Shared spring for enter / exit / layout reflow. `as const` keeps `type` a
+// literal so framer-motion's Transition type accepts it under strict TS.
+const spring = { type: 'spring', stiffness: 500, damping: 40 } as const;
 
 // ── Ticking elapsed label ──────────────────────────────────────────────────
 
@@ -72,10 +79,16 @@ function RunningCard({
   effectiveTokens: number;
   traffic: AgentTrafficStatus;
 }) {
+  const tokens = useCountUp(effectiveTokens);
+  const flash = useFlashOnIncrease(effectiveTokens);
   return (
-    <div
-      className="card flex flex-col gap-2 p-4"
-      style={{ animation: 'agent-enter 0.3s ease-out both' }}
+    <motion.div
+      layout
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, scale: 0.96 }}
+      transition={spring}
+      className={`card flex flex-col gap-2 p-4 ${flash ? 'agent-flash' : ''}`}
     >
       {/* Top row: status dot + name */}
       <div className="flex items-center gap-2 min-w-0">
@@ -101,11 +114,11 @@ function RunningCard({
         <ModelChip model={model} />
         {effectiveTokens > 0 && (
           <span className="text-xs text-zinc-500 tabular-nums">
-            {compact(effectiveTokens)} tok
+            {compact(tokens)} tok
           </span>
         )}
       </div>
-    </div>
+    </motion.div>
   );
 }
 
@@ -126,12 +139,16 @@ function CompletedRow({
 }) {
   const ago = formatElapsed(elapsedSec(completedAt));
   return (
-    <div
+    <motion.div
+      layout
+      initial={{ opacity: 0, y: 4 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, height: 0, marginBottom: 0 }}
+      transition={spring}
       className="flex items-center gap-2 rounded-xl px-3 py-2 text-xs"
       style={{
         backgroundColor: 'rgba(16,185,129,0.04)',
         border: '1px solid rgba(16,185,129,0.1)',
-        animation: 'agent-enter 0.3s ease-out both',
       }}
     >
       <span className="text-emerald-500 flex-none">✓</span>
@@ -147,7 +164,7 @@ function CompletedRow({
         done
       </span>
       <span className="text-zinc-600 font-mono flex-none">{ago} ago</span>
-    </div>
+    </motion.div>
   );
 }
 
@@ -189,6 +206,12 @@ function MainAgentCard({
   // delegating to running subagents, or idle.
   const waiting = traffic === 'waiting';
   const working = active || delegating;
+  const tokens = useCountUp(effectiveTokens);
+  // Both hooks must run every render — `||` would short-circuit the second
+  // (conditional hook call → React error #300). Call, then combine.
+  const flashTokens = useFlashOnIncrease(effectiveTokens);
+  const flashActivity = useFlashOnIncrease(lastActivity);
+  const flash = flashTokens || flashActivity;
   const cardClass = waiting
     ? 'border-red-500/40 ring-1 ring-red-500/20'
     : working
@@ -196,8 +219,9 @@ function MainAgentCard({
     : 'border-white/10 opacity-60 saturate-50';
   return (
     <div
-      className={`card flex flex-col gap-2 p-4 border transition-all duration-500 ${cardClass}`}
-      style={{ animation: 'agent-enter 0.3s ease-out both' }}
+      className={`card flex flex-col gap-2 p-4 border transition-all duration-500 ${cardClass} ${
+        flash ? 'agent-flash' : ''
+      }`}
     >
       <div className="flex items-center gap-2 min-w-0">
         {waiting || working ? (
@@ -237,7 +261,7 @@ function MainAgentCard({
       <div className="flex items-center justify-between gap-2 flex-wrap">
         <ModelChip model={model} />
         {effectiveTokens > 0 && (
-          <span className="text-xs text-zinc-500 tabular-nums">{compact(effectiveTokens)} tok</span>
+          <span className="text-xs text-zinc-500 tabular-nums">{compact(tokens)} tok</span>
         )}
       </div>
     </div>
@@ -310,99 +334,119 @@ export function AgentActivity({ data, loading }: AgentActivityProps) {
       {loading && !data ? (
         <div className="h-10 flex items-center text-xs text-zinc-600">Loading…</div>
       ) : hasActivity ? (
-        <div className="flex flex-col gap-4">
-          {/* Main Claude Code sessions, each with its subagents nested beneath */}
-          {mains.length > 0 && <GroupLabel>Main sessions</GroupLabel>}
-          {mains.map((m) => {
-            const kids = running.filter((r) => r.parentKey === m.key);
-            const done = completed.filter((c) => c.parentKey === m.key);
-            return (
-              <div key={m.key} className="flex flex-col gap-2">
-                <MainAgentCard
-                  title={m.title}
-                  project={m.project}
-                  gitBranch={m.gitBranch}
-                  model={m.model}
-                  lastActivity={m.lastActivity}
-                  effectiveTokens={m.effectiveTokens}
-                  active={m.active}
-                  delegating={m.delegating}
-                  traffic={m.traffic}
-                />
-                {(kids.length > 0 || done.length > 0) && (
-                  <div className="ml-3 flex flex-col gap-2 border-l border-white/10 pl-3 sm:ml-4 sm:pl-4">
-                    <GroupLabel>Subagents</GroupLabel>
-                    {kids.length > 0 && (
-                      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                        {kids.map((agent) => (
-                          <RunningCard
-                            key={agent.key}
-                            name={agent.name}
-                            description={agent.description}
-                            model={agent.model}
-                            startedAt={agent.startedAt}
-                            effectiveTokens={agent.effectiveTokens}
-                            traffic={agent.traffic}
-                          />
-                        ))}
+        <MotionConfig reducedMotion="user">
+          <div className="flex flex-col gap-4">
+            {/* Main Claude Code sessions, each with its subagents nested beneath */}
+            {mains.length > 0 && <GroupLabel>Main sessions</GroupLabel>}
+            <AnimatePresence initial={false}>
+              {mains.map((m) => {
+                const kids = running.filter((r) => r.parentKey === m.key);
+                const done = completed.filter((c) => c.parentKey === m.key);
+                return (
+                  <motion.div
+                    key={m.key}
+                    layout
+                    initial={{ opacity: 0, y: 8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, scale: 0.97 }}
+                    transition={spring}
+                    className="flex flex-col gap-2"
+                  >
+                    <MainAgentCard
+                      title={m.title}
+                      project={m.project}
+                      gitBranch={m.gitBranch}
+                      model={m.model}
+                      lastActivity={m.lastActivity}
+                      effectiveTokens={m.effectiveTokens}
+                      active={m.active}
+                      delegating={m.delegating}
+                      traffic={m.traffic}
+                    />
+                    {(kids.length > 0 || done.length > 0) && (
+                      <div className="ml-3 flex flex-col gap-2 border-l border-white/10 pl-3 sm:ml-4 sm:pl-4">
+                        <GroupLabel>Subagents</GroupLabel>
+                        {kids.length > 0 && (
+                          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                            <AnimatePresence initial={false}>
+                              {kids.map((agent) => (
+                                <RunningCard
+                                  key={agent.key}
+                                  name={agent.name}
+                                  description={agent.description}
+                                  model={agent.model}
+                                  startedAt={agent.startedAt}
+                                  effectiveTokens={agent.effectiveTokens}
+                                  traffic={agent.traffic}
+                                />
+                              ))}
+                            </AnimatePresence>
+                          </div>
+                        )}
+                        {done.length > 0 && (
+                          <div className="flex flex-col gap-1.5">
+                            <AnimatePresence initial={false}>
+                              {done.map((c) => (
+                                <CompletedRow
+                                  key={c.key}
+                                  name={c.name}
+                                  description={c.description}
+                                  model={c.model}
+                                  completedAt={c.completedAt}
+                                  effectiveTokens={c.effectiveTokens}
+                                />
+                              ))}
+                            </AnimatePresence>
+                          </div>
+                        )}
                       </div>
                     )}
-                    {done.length > 0 && (
-                      <div className="flex flex-col gap-1.5">
-                        {done.map((c) => (
-                          <CompletedRow
-                            key={c.key}
-                            name={c.name}
-                            description={c.description}
-                            model={c.model}
-                            completedAt={c.completedAt}
-                            effectiveTokens={c.effectiveTokens}
-                          />
-                        ))}
-                      </div>
-                    )}
+                  </motion.div>
+                );
+              })}
+            </AnimatePresence>
+
+            {/* Subagents whose parent session isn't shown */}
+            {(orphanRunning.length > 0 || orphanCompleted.length > 0) && (
+              <div className="flex flex-col gap-2">
+                <GroupLabel>{mains.length > 0 ? 'Other subagents' : 'Subagents'}</GroupLabel>
+                {orphanRunning.length > 0 && (
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                    <AnimatePresence initial={false}>
+                      {orphanRunning.map((agent) => (
+                        <RunningCard
+                          key={agent.key}
+                          name={agent.name}
+                          description={agent.description}
+                          model={agent.model}
+                          startedAt={agent.startedAt}
+                          effectiveTokens={agent.effectiveTokens}
+                          traffic={agent.traffic}
+                        />
+                      ))}
+                    </AnimatePresence>
+                  </div>
+                )}
+                {orphanCompleted.length > 0 && (
+                  <div className="flex flex-col gap-1.5">
+                    <AnimatePresence initial={false}>
+                      {orphanCompleted.map((c) => (
+                        <CompletedRow
+                          key={c.key}
+                          name={c.name}
+                          description={c.description}
+                          model={c.model}
+                          completedAt={c.completedAt}
+                          effectiveTokens={c.effectiveTokens}
+                        />
+                      ))}
+                    </AnimatePresence>
                   </div>
                 )}
               </div>
-            );
-          })}
-
-          {/* Subagents whose parent session isn't shown */}
-          {(orphanRunning.length > 0 || orphanCompleted.length > 0) && (
-            <div className="flex flex-col gap-2">
-              <GroupLabel>{mains.length > 0 ? 'Other subagents' : 'Subagents'}</GroupLabel>
-              {orphanRunning.length > 0 && (
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
-                  {orphanRunning.map((agent) => (
-                    <RunningCard
-                      key={agent.key}
-                      name={agent.name}
-                      description={agent.description}
-                      model={agent.model}
-                      startedAt={agent.startedAt}
-                      effectiveTokens={agent.effectiveTokens}
-                      traffic={agent.traffic}
-                    />
-                  ))}
-                </div>
-              )}
-              {orphanCompleted.length > 0 && (
-                <div className="flex flex-col gap-1.5">
-                  {orphanCompleted.map((c) => (
-                    <CompletedRow
-                      key={c.key}
-                      name={c.name}
-                      description={c.description}
-                      model={c.model}
-                      completedAt={c.completedAt}
-                      effectiveTokens={c.effectiveTokens}
-                    />
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-        </div>
+            )}
+          </div>
+        </MotionConfig>
       ) : (
         <div className="flex items-center gap-2 py-1 text-xs text-zinc-600">
           <span className="inline-block h-1.5 w-1.5 rounded-full bg-zinc-700 flex-none" />

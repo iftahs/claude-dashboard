@@ -35,6 +35,10 @@ body {
     transform: translateX(-100%);
     animation: shimmer 1.5s infinite;
   }
+  /* One-shot highlight when an agent card makes progress (tokens/activity rise). */
+  .agent-flash {
+    animation: agent-flash 0.8s ease-out both;
+  }
 }
 
 @keyframes shimmer {
@@ -81,6 +85,28 @@ body {
   }
   100% {
     opacity: 0.3;
+  }
+}
+
+@keyframes agent-flash {
+  0% {
+    box-shadow: 0 0 0 1px rgba(217, 119, 87, 0);
+    background-color: rgba(217, 119, 87, 0);
+  }
+  15% {
+    box-shadow: 0 0 0 1px rgba(217, 119, 87, 0.35);
+    background-color: rgba(217, 119, 87, 0.1);
+  }
+  100% {
+    box-shadow: 0 0 0 1px rgba(217, 119, 87, 0);
+    background-color: rgba(217, 119, 87, 0);
+  }
+}
+
+/* Respect reduced-motion: drop the flash highlight (keep live pulse/sweep). */
+@media (prefers-reduced-motion: reduce) {
+  .agent-flash {
+    animation: none;
   }
 }
 

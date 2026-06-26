@@ -58,7 +58,7 @@ export function LiveDataProvider({ children }: { children: ReactNode }) {
     POLL,
   );
   const liveUsage = usePolling<LiveUsageData>('/api/usage/live', 15000);
-  const liveSubagents = usePolling<LiveSubagents>('/api/subagents/live', 4000);
+  const liveSubagents = usePolling<LiveSubagents>('/api/subagents/live', 2500);
   const workflows = usePolling<WorkflowsData>('/api/workflows', 4000);
   const workflowStats = usePolling<WorkflowStats>('/api/workflows/stats', 30000);
   const version = usePolling<VersionInfo>('/api/version', 1_800_000);

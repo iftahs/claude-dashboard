@@ -78,7 +78,7 @@ export default function App() {
                 <ToggleGroup<SourceFilter> options={SOURCE_OPTIONS} value={source} onChange={setSource} />
               </div>
             )}
-            <LiveBadge computedAt={recent.computedAt} error={error} />
+            <LiveBadge error={error} />
           </header>
 
           {activeTab === 'settings' ? (
