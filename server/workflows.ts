@@ -20,6 +20,7 @@ import { readdir, stat, readFile } from 'node:fs/promises';
 import { basename, join } from 'node:path';
 import { createInterface } from 'node:readline';
 import { claudeDir } from './scan.ts';
+import { blendedRatePerMillion } from './pricing.ts';
 
 // ── Public shapes (mirror src/types.ts) ──────────────────────────────────────
 
@@ -66,11 +67,27 @@ export interface WorkflowsData {
   recent: WorkflowRun[];
 }
 
+/** All-time aggregate over every final workflow journal on disk. */
+export interface WorkflowStats {
+  totalRuns: number;
+  completed: number;
+  failed: number;
+  successRate: number; // 0..1, completed / (completed + failed)
+  totalTokens: number;
+  totalAgents: number;
+  avgDurationMs: number;
+  topModel: string;
+  estCostUsd: number; // rough blended equivalent-API estimate
+  totalToolCalls: number;
+  busiestDay: { day: number; count: number } | null; // day = local-midnight ms
+}
+
 // ── Tunables ─────────────────────────────────────────────────────────────────
 
 const LIVE_WINDOW = 90_000; // run touched in last 90s → live
-const RECENT_WINDOW = 7 * 24 * 3_600_000; // completed runs surfaced for 7 days
-const MAX_RECENT = 20;
+const RECENT_WINDOW = 90 * 24 * 3_600_000; // completed runs surfaced for 90 days
+const MAX_RECENT = 200;
+const STATS_TTL = 30_000; // all-time stats move slowly; don't recompute on the 4s list poll
 const MAX_JOURNAL = 8 * 1024 * 1024; // skip absurd final journals (the `script` field is large)
 const MAX_AGENT_FILE = 50 * 1024 * 1024;
 const LIVE_AGENT_PARSE = 24; // parse at most N newest agent transcripts per live run
@@ -412,7 +429,20 @@ function extractStats(result: any): Record<string, number | string> | undefined 
   return n > 0 ? out : undefined;
 }
 
+// Final journals are write-once, so a full parse can be memoized by (path, mtime).
+// This keeps the wider 90-day / 200-run scan cheap on the 4s poll: only *new*
+// journals are re-parsed; everything else returns from cache.
+const runCache = new Map<string, { mtime: number; run: WorkflowRun | null }>();
+
 async function parseFinalJournal(j: DiscoveredJournal): Promise<WorkflowRun | null> {
+  const cached = runCache.get(j.path);
+  if (cached && cached.mtime === j.mtime) return cached.run;
+  const run = await parseFinalJournalUncached(j);
+  runCache.set(j.path, { mtime: j.mtime, run });
+  return run;
+}
+
+async function parseFinalJournalUncached(j: DiscoveredJournal): Promise<WorkflowRun | null> {
   const project = projectNameFromPath(projectPathFromFile(j.path));
   if (j.size > MAX_JOURNAL) {
     return {
@@ -517,7 +547,7 @@ async function computeWorkflows(): Promise<WorkflowsData> {
     const probe = await probeRunDir(d.dir);
     const final = journalByRunId.get(d.runId);
     const newest = Math.max(probe.dirMtime, probe.journalMtime, probe.newestAgentMtime);
-    const isLive = now - newest < LIVE_WINDOW && (!final || (await peekStatus(final)) !== 'completed');
+    const isLive = now - newest < LIVE_WINDOW && (!final || (await peekSummary(final)).status !== 'completed');
     if (isLive) {
       live.push(await buildLiveRun(d, probe));
       liveRunIds.add(d.runId);
@@ -542,22 +572,127 @@ async function computeWorkflows(): Promise<WorkflowsData> {
   return { live, recent };
 }
 
-// Cheap status peek for the liveness gate without a full parse.
-const statusCache = new Map<string, { status: string; mtime: number }>();
-async function peekStatus(j: DiscoveredJournal): Promise<string> {
-  const cached = statusCache.get(j.path);
-  if (cached && cached.mtime === j.mtime) return cached.status;
-  let status = 'unknown';
+// Scalar summary of a final journal — feeds both the liveness gate (status) and
+// the all-time stats aggregate. Memoized by (path, mtime); journals are write-once
+// so the cache is effectively permanent after first warm-up.
+interface JournalSummary {
+  status: 'completed' | 'failed' | 'unknown';
+  startedAt: number;
+  durationMs: number;
+  tokens: number;
+  toolCalls: number;
+  agentCount: number;
+  defaultModel: string;
+}
+
+const summaryCache = new Map<string, { mtime: number; summary: JournalSummary }>();
+
+async function peekSummary(j: DiscoveredJournal): Promise<JournalSummary> {
+  const cached = summaryCache.get(j.path);
+  if (cached && cached.mtime === j.mtime) return cached.summary;
+  let summary: JournalSummary = {
+    status: 'unknown',
+    startedAt: j.mtime,
+    durationMs: 0,
+    tokens: 0,
+    toolCalls: 0,
+    agentCount: 0,
+    defaultModel: 'inherit',
+  };
   try {
     if (j.size <= MAX_JOURNAL) {
       const o = JSON.parse(await readFile(j.path, 'utf8'));
-      status = typeof o.status === 'string' ? o.status : 'unknown';
+      const wp: any[] = Array.isArray(o.workflowProgress) ? o.workflowProgress : [];
+      const agentEntries = wp.filter((x) => x?.type === 'workflow_agent');
+      const lastActivity = Date.parse(o.timestamp) || j.mtime;
+      summary = {
+        status: o.status === 'completed' ? 'completed' : o.status ? 'failed' : 'unknown',
+        startedAt: num(o.startTime) || lastActivity,
+        durationMs: num(o.durationMs),
+        tokens: num(o.totalTokens) > 0 ? num(o.totalTokens) : agentEntries.reduce((s, a) => s + num(a.tokens), 0),
+        toolCalls: num(o.totalToolCalls) || agentEntries.reduce((s, a) => s + num(a.toolCalls), 0),
+        agentCount: num(o.agentCount) || agentEntries.length,
+        defaultModel: String(o.defaultModel || 'inherit'),
+      };
     }
   } catch {
     /* ignore */
   }
-  statusCache.set(j.path, { status, mtime: j.mtime });
-  return status;
+  summaryCache.set(j.path, { mtime: j.mtime, summary });
+  return summary;
+}
+
+function startOfDay(ts: number): number {
+  if (!ts) return 0;
+  const d = new Date(ts);
+  d.setHours(0, 0, 0, 0);
+  return d.getTime();
+}
+
+async function computeWorkflowStats(): Promise<WorkflowStats> {
+  const { journals } = await discover();
+  const summaries = await Promise.all(journals.map((j) => peekSummary(j)));
+
+  let completed = 0;
+  let failed = 0;
+  let totalTokens = 0;
+  let totalAgents = 0;
+  let totalToolCalls = 0;
+  let durSum = 0;
+  let durCount = 0;
+  let estCostUsd = 0;
+  const modelFreq = new Map<string, number>();
+  const dayFreq = new Map<number, number>();
+
+  for (const s of summaries) {
+    if (s.status === 'completed') completed++;
+    else if (s.status === 'failed') failed++;
+    totalTokens += s.tokens;
+    totalAgents += s.agentCount;
+    totalToolCalls += s.toolCalls;
+    if (s.durationMs > 0) {
+      durSum += s.durationMs;
+      durCount++;
+    }
+    estCostUsd += (s.tokens / 1_000_000) * blendedRatePerMillion(s.defaultModel);
+    if (s.defaultModel && s.defaultModel !== 'inherit') {
+      modelFreq.set(s.defaultModel, (modelFreq.get(s.defaultModel) ?? 0) + 1);
+    }
+    const day = startOfDay(s.startedAt);
+    if (day > 0) dayFreq.set(day, (dayFreq.get(day) ?? 0) + 1);
+  }
+
+  let topModel = 'inherit';
+  let topFreq = 0;
+  for (const [m, f] of modelFreq) if (f > topFreq) ((topFreq = f), (topModel = m));
+
+  let busiestDay: { day: number; count: number } | null = null;
+  for (const [day, count] of dayFreq) if (!busiestDay || count > busiestDay.count) busiestDay = { day, count };
+
+  return {
+    totalRuns: journals.length,
+    completed,
+    failed,
+    successRate: completed + failed > 0 ? completed / (completed + failed) : 0,
+    totalTokens,
+    totalAgents,
+    avgDurationMs: durCount > 0 ? Math.round(durSum / durCount) : 0,
+    topModel,
+    estCostUsd,
+    totalToolCalls,
+    busiestDay,
+  };
+}
+
+let statsCached: WorkflowStats | null = null;
+let statsCachedAt = 0;
+
+export async function getWorkflowStats(): Promise<WorkflowStats> {
+  const now = Date.now();
+  if (statsCached && now - statsCachedAt < STATS_TTL) return statsCached;
+  statsCached = await computeWorkflowStats();
+  statsCachedAt = now;
+  return statsCached;
 }
 
 let cached: WorkflowsData | null = null;

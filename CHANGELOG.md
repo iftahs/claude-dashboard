@@ -7,9 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.1.11] - 2026-06-26
 
+### Added
+- Group recent workflow runs by date with headers for Today, Yesterday, and earlier periods.
+- Display all-time stats in a compact 3x3 grid above the recent runs.
+- Expand the recent workflows window from 7 days to 90 days and increase the run cap from 20 to 200.
+- Implement an API endpoint to retrieve all-time workflow statistics.
+- Add a rough single-rate cost estimate based on blended token rates.
+
+### Changed
+- Memoize internal workflow-summary parsing for cheaper repeated scans.
+
 ### Fixed
 - Eliminate false "needs attention" alerts for delegating and idle agents.
-- Adjust error handling to trigger only on user rejection, reducing unnecessary alerts for failed tool uses.
+- Trigger the error state only on user rejection, not on benign failed tool uses, reducing unnecessary alerts.
 
 ## [0.1.10] - 2026-06-25
 

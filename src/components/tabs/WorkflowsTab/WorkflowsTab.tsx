@@ -2,6 +2,13 @@ import { WorkflowsView } from '@/components/design-system/organisms/WorkflowsVie
 import { useLiveData } from '@/hooks/useLiveData';
 
 export function WorkflowsTab() {
-  const { workflows } = useLiveData();
-  return <WorkflowsView data={workflows.data} loading={workflows.loading} />;
+  const { workflows, workflowStats } = useLiveData();
+  return (
+    <WorkflowsView
+      data={workflows.data}
+      loading={workflows.loading}
+      stats={workflowStats.data}
+      statsLoading={workflowStats.loading}
+    />
+  );
 }
