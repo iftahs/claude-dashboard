@@ -9,6 +9,9 @@ interface State<T> {
   loading: boolean;
 }
 
+/** Full return shape of usePolling — exported so contexts can type a poll slot. */
+export type PollState<T> = State<T> & { lastFetch: number };
+
 interface Cached {
   data: unknown;
   computedAt: number | null;
@@ -22,7 +25,7 @@ interface Cached {
 // refresh the data. Keys are a finite set of API URLs, so the map stays small.
 const cache = new Map<string, Cached>();
 
-export function usePolling<T>(url: string, intervalMs = 5000): State<T> & { lastFetch: number } {
+export function usePolling<T>(url: string, intervalMs = 5000): PollState<T> {
   const [state, setState] = useState<State<T>>(() => {
     const hit = cache.get(url);
     return hit

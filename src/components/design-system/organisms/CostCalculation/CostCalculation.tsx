@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { usd, compact } from '@/lib/format';
 import { InfoTip } from '@/components/design-system/atoms/InfoTip/InfoTip';
 import type { ModelPrice } from './types';
-import { PRICING_DATA } from './utils';
+import { PRICING_DATA, calcCost } from './utils';
 
 export function CostCalculation() {
   const [selectedModel, setSelectedModel] = useState<ModelPrice>(PRICING_DATA[0]);
@@ -12,15 +12,13 @@ export function CostCalculation() {
   const [cacheWriteTokens, setCacheWriteTokens] = useState(50_000);
   const [cacheReadTokens, setCacheReadTokens] = useState(200_000);
 
-  const calculateCost = () => {
-    return (
-      (inputTokens * selectedModel.input +
-        outputTokens * selectedModel.output +
-        cacheWriteTokens * selectedModel.cacheWrite +
-        cacheReadTokens * selectedModel.cacheRead) /
-      1_000_000
-    );
-  };
+  const calculateCost = () =>
+    calcCost(selectedModel, {
+      input: inputTokens,
+      output: outputTokens,
+      cacheWrite: cacheWriteTokens,
+      cacheRead: cacheReadTokens,
+    });
 
   const currentModels = PRICING_DATA.filter((m) => m.popular);
   const legacyModels = PRICING_DATA.filter((m) => !m.popular);

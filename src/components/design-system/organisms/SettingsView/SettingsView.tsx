@@ -1,7 +1,6 @@
-import { useState } from 'react';
 import { ToggleGroup } from '@/components/design-system/atoms/ToggleGroup/ToggleGroup';
-import { parseDollar, fmt } from '@/components/design-system/molecules/LimitsPanel/utils';
 import { PROVIDER_LABELS, PROVIDER_MODELS } from '@/hooks/useAiConfig';
+import { useSettingsForm } from '@/hooks/useSettingsForm';
 import type { Settings } from '@/hooks/useSettings';
 import type { AiProvider } from '@/types';
 import type { SettingsViewProps } from './types';
@@ -18,24 +17,11 @@ export function SettingsView({
   aiConfig,
   onChangeAiConfig,
 }: SettingsViewProps) {
-  const [dailyVal, setDailyVal] = useState(fmt(limits.dailyLimit));
-  const [weeklyVal, setWeeklyVal] = useState(fmt(limits.weeklyLimit));
-  const [monthlyVal, setMonthlyVal] = useState(fmt(limits.monthlyLimit));
-  const [aiKey, setAiKey] = useState(aiConfig.apiKey);
-  const [showKey, setShowKey] = useState(false);
-
-  const providers = Object.keys(PROVIDER_LABELS) as AiProvider[];
-
-  function changeProvider(provider: AiProvider) {
-    // Reset the model to the new provider's first option AND clear the saved key:
-    // keys are provider-specific, so carrying one over would send the wrong
-    // credential to the new provider's API (e.g. an Anthropic key to OpenAI).
-    setAiKey('');
-    onChangeAiConfig({ ...aiConfig, provider, model: PROVIDER_MODELS[provider][0], apiKey: '' });
-  }
-  function saveAiKey() {
-    onChangeAiConfig({ ...aiConfig, apiKey: aiKey.trim() });
-  }
+  const {
+    dailyVal, setDailyVal, weeklyVal, setWeeklyVal, monthlyVal, setMonthlyVal,
+    aiKey, setAiKey, showKey, setShowKey, providers,
+    changeProvider, saveAiKey, clearAiKey, saveLimits, clearLimits,
+  } = useSettingsForm({ limits, onChangeLimits, aiConfig, onChangeAiConfig });
 
   const modeOptions: { value: Settings['modeOverride']; label: string }[] = [
     { value: 'auto', label: 'Auto' },
@@ -44,20 +30,11 @@ export function SettingsView({
   ];
   const detectedLabel = detectedMode === 'api' ? 'API · pay-as-you-go' : 'Subscription';
 
-  function saveLimits() {
-    onChangeLimits({
-      dailyLimit: parseDollar(dailyVal),
-      weeklyLimit: parseDollar(weeklyVal),
-      monthlyLimit: parseDollar(monthlyVal),
-    });
-  }
-
-  function clearLimits() {
-    onChangeLimits({ dailyLimit: null, weeklyLimit: null, monthlyLimit: null });
-    setDailyVal('');
-    setWeeklyVal('');
-    setMonthlyVal('');
-  }
+  const agentAlertOptions: { value: Settings['agentAlert']; label: string }[] = [
+    { value: 'visual', label: 'Visual only' },
+    { value: 'notification', label: 'Notification' },
+    { value: 'sound', label: 'Notification + sound' },
+  ];
 
   const inputCls = 'w-full bg-transparent px-2 py-2 text-sm text-zinc-200 outline-none';
   const wrapCls =
@@ -86,6 +63,22 @@ export function SettingsView({
             <span className="text-zinc-600"> · overridden</span>
           )}
         </p>
+      </section>
+
+      {/* ── Agent alerts ───────────────────────────────────────────── */}
+      <section className="mt-6 border-t border-white/10 pt-5">
+        <h4 className="mb-1 text-sm font-semibold text-zinc-300">Agent alerts</h4>
+        <p className="mb-3 text-xs text-zinc-500">
+          How to alert you when an agent turns <span className="text-red-400 font-medium">red</span> — waiting
+          for your confirmation or attention. The red badge always shows in the sidebar and Agents tab; this adds
+          a browser notification and/or a chime.
+        </p>
+        <ToggleGroup<Settings['agentAlert']>
+          options={agentAlertOptions}
+          value={settings.agentAlert}
+          onChange={(agentAlert) => onChangeSettings({ ...settings, agentAlert })}
+          grow
+        />
       </section>
 
       {/* ── Spending limits ────────────────────────────────────────── */}
@@ -198,10 +191,7 @@ export function SettingsView({
           <div className="flex gap-3">
             {aiConfig.apiKey && (
               <button
-                onClick={() => {
-                  setAiKey('');
-                  onChangeAiConfig({ ...aiConfig, apiKey: '' });
-                }}
+                onClick={clearAiKey}
                 className="rounded-lg px-3 py-1.5 text-xs text-zinc-400 hover:text-zinc-200"
               >
                 clear

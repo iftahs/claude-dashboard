@@ -1,7 +1,10 @@
 import { useEffect, useState } from 'react';
 import { Section } from '@/components/design-system/molecules/Section/Section';
+import { TrafficLight } from '@/components/design-system/atoms/TrafficLight/TrafficLight';
+import { InfoTip } from '@/components/design-system/atoms/InfoTip/InfoTip';
 import { compact } from '@/lib/format';
 import { modelColor } from '@/lib/palette';
+import type { AgentTrafficStatus } from '@/types';
 import type { AgentActivityProps } from './types';
 import { elapsedSec, formatElapsed, displayModel } from './utils';
 
@@ -60,12 +63,14 @@ function RunningCard({
   model,
   startedAt,
   effectiveTokens,
+  traffic,
 }: {
   name: string;
   description: string;
   model: string;
   startedAt: number;
   effectiveTokens: number;
+  traffic: AgentTrafficStatus;
 }) {
   return (
     <div
@@ -74,7 +79,7 @@ function RunningCard({
     >
       {/* Top row: status dot + name */}
       <div className="flex items-center gap-2 min-w-0">
-        <span className="pulse-dot flex-none" />
+        <TrafficLight status={traffic} />
         <span className="font-semibold text-zinc-100 text-sm truncate flex-1" title={name}>
           {name || 'agent'}
         </span>
@@ -168,6 +173,7 @@ function MainAgentCard({
   effectiveTokens,
   active,
   delegating,
+  traffic,
 }: {
   title: string;
   project: string;
@@ -177,19 +183,25 @@ function MainAgentCard({
   effectiveTokens: number;
   active: boolean;
   delegating: boolean;
+  traffic: AgentTrafficStatus;
 }) {
-  // Three states: working on its own transcript, delegating to running subagents, or idle.
+  // Four states: waiting on the user (red), working on its own transcript,
+  // delegating to running subagents, or idle.
+  const waiting = traffic === 'waiting';
   const working = active || delegating;
+  const cardClass = waiting
+    ? 'border-red-500/40 ring-1 ring-red-500/20'
+    : working
+    ? 'border-clay-500/15'
+    : 'border-white/10 opacity-60 saturate-50';
   return (
     <div
-      className={`card flex flex-col gap-2 p-4 border transition-all duration-500 ${
-        working ? 'border-clay-500/15' : 'border-white/10 opacity-60 saturate-50'
-      }`}
+      className={`card flex flex-col gap-2 p-4 border transition-all duration-500 ${cardClass}`}
       style={{ animation: 'agent-enter 0.3s ease-out both' }}
     >
       <div className="flex items-center gap-2 min-w-0">
-        {working ? (
-          <span className="pulse-dot flex-none" />
+        {waiting || working ? (
+          <TrafficLight status={traffic} />
         ) : (
           <span className="h-1.5 w-1.5 rounded-full bg-zinc-600 flex-none" />
         )}
@@ -197,12 +209,17 @@ function MainAgentCard({
         <span className="font-semibold text-zinc-100 text-sm truncate flex-1" title={title}>
           {title}
         </span>
-        {delegating && (
+        {waiting && (
+          <span className="flex-none rounded-full bg-red-500/15 text-red-300 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider">
+            Needs attention
+          </span>
+        )}
+        {!waiting && delegating && (
           <span className="flex-none rounded-full bg-indigo-500/10 text-indigo-300 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider">
             Delegating
           </span>
         )}
-        {!working && (
+        {!waiting && !working && (
           <span className="flex-none rounded-full bg-zinc-700/40 text-zinc-400 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider">
             Not Active
           </span>
@@ -260,14 +277,22 @@ export function AgentActivity({ data, loading }: AgentActivityProps) {
 
   const runningSubagents = running.length;
   const activeMains = mains.filter((m) => m.active || m.delegating).length;
+  const waitingCount = data?.counts.waiting ?? mains.filter((m) => m.traffic === 'waiting').length;
 
   return (
     <Section
       title="Agents · live activity"
       help="Live view of agents working right now: main agents, their running subagents (Task/Agent spawns), and recently finished ones — refreshed every few seconds from active session logs. Empty when nothing is running."
       right={
-        runningSubagents > 0 || activeMains > 0 ? (
+        runningSubagents > 0 || activeMains > 0 || waitingCount > 0 ? (
           <div className="flex items-center gap-2">
+            {waitingCount > 0 && (
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-red-500/15 px-2.5 py-1 text-xs font-semibold tabular-nums text-red-300 ring-1 ring-red-500/30">
+                <TrafficLight status="waiting" />
+                {waitingCount} waiting
+                <InfoTip text="An agent paused with an unresolved tool call (likely an awaiting-permission prompt) or hit an error/rejection. This is inferred — the logs have no explicit 'waiting for confirmation' marker — so it may occasionally over- or under-count." />
+              </span>
+            )}
             {runningSubagents > 0 && (
               <CountChip
                 count={runningSubagents}
@@ -302,6 +327,7 @@ export function AgentActivity({ data, loading }: AgentActivityProps) {
                   effectiveTokens={m.effectiveTokens}
                   active={m.active}
                   delegating={m.delegating}
+                  traffic={m.traffic}
                 />
                 {(kids.length > 0 || done.length > 0) && (
                   <div className="ml-3 flex flex-col gap-2 border-l border-white/10 pl-3 sm:ml-4 sm:pl-4">
@@ -316,6 +342,7 @@ export function AgentActivity({ data, loading }: AgentActivityProps) {
                             model={agent.model}
                             startedAt={agent.startedAt}
                             effectiveTokens={agent.effectiveTokens}
+                            traffic={agent.traffic}
                           />
                         ))}
                       </div>
@@ -354,6 +381,7 @@ export function AgentActivity({ data, loading }: AgentActivityProps) {
                       model={agent.model}
                       startedAt={agent.startedAt}
                       effectiveTokens={agent.effectiveTokens}
+                      traffic={agent.traffic}
                     />
                   ))}
                 </div>

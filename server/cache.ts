@@ -37,3 +37,12 @@ export async function getEvents(): Promise<{ events: UsageEvent[]; computedAt: n
   }
   return { events: cached, computedAt: cachedAt };
 }
+
+/**
+ * The current events fingerprint (newest jsonl mtime). Changes only when the
+ * scanned files change — used as the validity token for builder-output memoization
+ * (see builder-cache.ts). Reuses what getEvents() already computed; never rescans.
+ */
+export function eventsFingerprint(): number {
+  return cachedFingerprint;
+}
