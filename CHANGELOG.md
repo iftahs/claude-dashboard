@@ -16,23 +16,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - Optimized the live-subagents polling interval from 4 seconds to 2.5 seconds for a snappier experience.
-- Modified the pendingTool heuristic to exclude Agent/Task delegations from needing attention unless there's a user rejection.
 
 ## [0.1.11] - 2026-06-26
 
 ### Added
-- Group recent workflow runs by date with headers for Today, Yesterday, and earlier periods.
+- Group recent runs by date with headers for Today, Yesterday, and earlier periods.
 - Display all-time stats in a compact 3x3 grid above the recent runs.
-- Expand the recent workflows window from 7 days to 90 days and increase the run cap from 20 to 200.
-- Implement an API endpoint to retrieve all-time workflow statistics.
-- Add a rough single-rate cost estimate based on blended token rates.
-- Introduce animated live-tab badges with count-up and flash-on-increase effects.
-- Add count-up and flash-on-increase hooks; integrate the animated badges into the header.
+- Introduce an all-time stats strip for quick summary insights.
+- Expand the recent workflows window from 7 days to 90 days and increase run cap from 20 to 200.
+- Implement an API endpoint to retrieve workflow statistics.
+- Create a function for rough single-rate cost estimates based on blended token rates.
 
 ### Changed
-- Refine handling of agent/task delegations in the pending-tool status to reduce false "waiting" positives.
-- Speed up the live-subagents poll (4s → 2.5s) for snappier live feedback.
-- Memoize internal workflow-summary parsing for cheaper repeated scans.
+- Improve the live data polling mechanism for more timely updates.
+- Enhance internal functions for summarizing workflow statuses.
 
 ## [0.1.10] - 2026-06-25
 

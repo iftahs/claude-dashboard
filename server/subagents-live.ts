@@ -167,9 +167,6 @@ interface MainInfo {
   hasAssistant: boolean;
   /** ts of the most recent assistant tool_use (any tool) — for waiting inference. */
   lastToolUseTs: number;
-  /** ts of the most recent NON-delegation tool_use (excludes Agent/Task spawns).
-   *  Drives pendingTool so a dangling delegation is never read as a permission prompt. */
-  lastNonDelegationToolUseTs: number;
   /** ts of the most recent tool_result resolving a tool_use. */
   lastToolResultTs: number;
   /** Whether that most recent tool_result errored or was rejected by the user. */
@@ -195,7 +192,6 @@ async function parseFileForAgentSpawns(file: string): Promise<{
     lastTs: 0,
     hasAssistant: false,
     lastToolUseTs: 0,
-    lastNonDelegationToolUseTs: 0,
     lastToolResultTs: 0,
     lastResultIsError: false,
   };
@@ -259,10 +255,6 @@ async function parseFileForAgentSpawns(file: string): Promise<{
               promptPrefix: String(block.input?.prompt ?? '').slice(0, 150),
               ts,
             });
-          } else {
-            // Non-delegation tools only: a dangling Agent/Task spawn is delegation
-            // (its result arrives when the child finishes), not a permission prompt.
-            if (ts > main.lastNonDelegationToolUseTs) main.lastNonDelegationToolUseTs = ts;
           }
         }
       }
@@ -297,10 +289,7 @@ async function parseFileForAgentSpawns(file: string): Promise<{
               isAsyncLaunch: /Async agent launched/i.test(resultText),
             });
             // Track the latest tool_result for the parent's waiting heuristic.
-            // Only a user rejection counts toward "waiting" (red) — a benign tool
-            // failure (non-zero bash exit, empty grep, missing file) is not "needs
-            // attention"; the agent gets the error and keeps going.
-            const isErr = /reject|denied|doesn't want to proceed/i.test(resultText);
+            const isErr = block.is_error === true || /reject|denied|doesn't want to proceed/i.test(resultText);
             if (ts >= main.lastToolResultTs) {
               main.lastToolResultTs = ts;
               main.lastResultIsError = isErr;
@@ -513,7 +502,7 @@ async function computeLiveSubagents(): Promise<LiveSubagentsData> {
     // within the active window, and NOT while delegating (a pending Agent spawn
     // whose subagent is still running is delegation, not waiting). Biased to
     // 'running' otherwise; see AgentTrafficStatus.
-    const pendingTool = parsed.main.lastNonDelegationToolUseTs > parsed.main.lastToolResultTs;
+    const pendingTool = parsed.main.lastToolUseTs > parsed.main.lastToolResultTs;
     const waitingLikely =
       !selfActive &&
       runningChildren === 0 &&
