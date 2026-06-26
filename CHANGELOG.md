@@ -5,6 +5,19 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.12] - 2026-06-26
+
+### Added
+- Introduced animated live-tab badges for improved visibility.
+- Added count-up animation and flash-on-increase for badges via framer-motion.
+- Implemented new hooks: useCountUp and useFlashOnIncrease for better animation control.
+- Enhanced AgentActivity by integrating animated badges in the header.
+- Included framer-motion dependency for animation capabilities.
+
+### Changed
+- Optimized the live-subagents polling interval from 4 seconds to 2.5 seconds for a snappier experience.
+- Modified the pendingTool heuristic to exclude Agent/Task delegations from needing attention unless there's a user rejection.
+
 ## [0.1.11] - 2026-06-26
 
 ### Added
@@ -143,6 +156,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Live-API fallback to the local logs when there is no active block
   (`resets_at = null`).
 
+[0.1.12]: https://github.com/iftahs/claude-dashboard/releases/tag/v0.1.12
 [0.1.11]: https://github.com/iftahs/claude-dashboard/releases/tag/v0.1.11
 [0.1.10]: https://github.com/iftahs/claude-dashboard/releases/tag/v0.1.10
 [0.1.9]: https://github.com/iftahs/claude-dashboard/releases/tag/v0.1.9
