@@ -2,6 +2,55 @@ import type { WorkflowAgentInfo, WorkflowRun } from '@/types';
 import { compact } from '@/lib/format';
 import { formatElapsed } from '@/components/design-system/organisms/AgentActivity/utils';
 
+/** A relative-date bucket of recent runs, newest-first. */
+export interface DateBucket {
+  label: string;
+  runs: WorkflowRun[];
+}
+
+/**
+ * Bucket finished runs by `startedAt` into relative date groups:
+ * Today / Yesterday / Earlier this week / Earlier this month / "<Month YYYY>".
+ * Fixed labels come first in that order; older month buckets follow newest-first.
+ * Empty buckets are dropped. Week starts Monday (local time).
+ */
+export function groupRunsByDate(runs: WorkflowRun[]): DateBucket[] {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const startToday = today.getTime();
+  const startYesterday = startToday - 86_400_000;
+  const mondayOffset = (today.getDay() + 6) % 7; // 0 = Monday
+  const startWeek = startToday - mondayOffset * 86_400_000;
+  const startMonth = new Date(today.getFullYear(), today.getMonth(), 1).getTime();
+
+  const labelOf = (ts: number): string => {
+    if (ts >= startToday) return 'Today';
+    if (ts >= startYesterday) return 'Yesterday';
+    if (ts >= startWeek) return 'Earlier this week';
+    if (ts >= startMonth) return 'Earlier this month';
+    return new Date(ts).toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+  };
+
+  const byLabel = new Map<string, WorkflowRun[]>();
+  for (const r of [...runs].sort((a, b) => b.startedAt - a.startedAt)) {
+    const label = labelOf(r.startedAt);
+    const arr = byLabel.get(label);
+    if (arr) arr.push(r);
+    else byLabel.set(label, [r]);
+  }
+
+  const buckets: DateBucket[] = [];
+  for (const l of ['Today', 'Yesterday', 'Earlier this week', 'Earlier this month']) {
+    const arr = byLabel.get(l);
+    if (arr) {
+      buckets.push({ label: l, runs: arr });
+      byLabel.delete(l);
+    }
+  }
+  for (const [label, arr] of byLabel) buckets.push({ label, runs: arr }); // month labels, newest-first
+  return buckets;
+}
+
 /** One phase plus the agents the backend has actually seen for it. */
 export interface PhaseGroup {
   title: string;
