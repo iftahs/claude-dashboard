@@ -2,12 +2,13 @@ import { useEffect, useState } from 'react';
 import { ProgressBar } from '@/components/design-system/atoms/ProgressBar/ProgressBar';
 import { InfoTip } from '@/components/design-system/atoms/InfoTip/InfoTip';
 import { formatRemainingHours, formatRemainingDays, blockBarColor } from './utils';
+import { nextWeekReset } from '@/lib/week';
 import type { PlanUsageProps } from './types';
 
 const DEFAULT_BLOCK_LIMIT = 6000000; // 6.0M effective tokens
 const DEFAULT_WEEKLY_LIMIT = 35000000; // 35M effective tokens
 
-export function PlanUsage({ block, weekly, liveUsage }: PlanUsageProps) {
+export function PlanUsage({ block, weekly, liveUsage, weekStart }: PlanUsageProps) {
   const [, forceUpdate] = useState(0);
 
   useEffect(() => {
@@ -39,7 +40,10 @@ export function PlanUsage({ block, weekly, liveUsage }: PlanUsageProps) {
 
   const liveWeeklyResetsAt = hasLive ? Date.parse(liveUsage.seven_day.resets_at) : null;
   const noActiveWeekly = hasLive && liveUsage.seven_day.resets_at == null;
-  const weeklyResetsAt = liveWeeklyResetsAt && !isNaN(liveWeeklyResetsAt) ? liveWeeklyResetsAt : (weekly?.weeklyResetsAt ?? (now + 5 * 24 * 3600_000));
+  // Live Anthropic reset wins; otherwise fall back to the user's configured week start.
+  const weeklyResetsAt = liveWeeklyResetsAt && !isNaN(liveWeeklyResetsAt)
+    ? liveWeeklyResetsAt
+    : nextWeekReset(now, weekStart);
   const weeklyRemainingMs = Math.max(0, weeklyResetsAt - now);
   const weeklyResetStr = noActiveWeekly ? 'on next msg' : formatRemainingDays(weeklyRemainingMs);
 

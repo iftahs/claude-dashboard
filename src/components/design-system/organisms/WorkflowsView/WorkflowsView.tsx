@@ -5,6 +5,7 @@ import { Skeleton } from '@/components/design-system/atoms/Skeleton/Skeleton';
 import type { StatCardProps } from '@/components/design-system/atoms/StatCard/types';
 import { compact, usd, shortModel, dayLabel } from '@/lib/format';
 import { modelColor } from '@/lib/palette';
+import { useConfigMode } from '@/hooks/useConfigMode';
 import { elapsedSec, formatElapsed, displayModel } from '@/components/design-system/organisms/AgentActivity/utils';
 import type { WorkflowAgentInfo, WorkflowRun, WorkflowStats } from '@/types';
 import type { WorkflowsViewProps, WorkflowCardProps } from './types';
@@ -404,6 +405,7 @@ function StatsGrid({ stats, loading }: { stats?: WorkflowStats | null; loading: 
 // ── Organism ────────────────────────────────────────────────────────────────
 
 export function WorkflowsView({ data, loading, stats, statsLoading }: WorkflowsViewProps) {
+  const { weekStart } = useConfigMode();
   const live = data?.live ?? [];
   const recent = data?.recent ?? [];
   const hasAny = live.length > 0 || recent.length > 0;
@@ -429,7 +431,7 @@ export function WorkflowsView({ data, loading, stats, statsLoading }: WorkflowsV
               </div>
             )}
             {recent.length > 0 &&
-              groupRunsByDate(recent).map((bucket) => (
+              groupRunsByDate(recent, weekStart).map((bucket) => (
                 <div key={bucket.label} className="flex flex-col gap-2">
                   <GroupLabel>{bucket.label}</GroupLabel>
                   {bucket.runs.map((r) => (

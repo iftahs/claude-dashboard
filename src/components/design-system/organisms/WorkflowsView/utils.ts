@@ -1,4 +1,5 @@
 import type { WorkflowAgentInfo, WorkflowRun } from '@/types';
+import type { WeekStart } from '@/lib/week';
 import { compact } from '@/lib/format';
 import { formatElapsed } from '@/components/design-system/organisms/AgentActivity/utils';
 
@@ -12,15 +13,15 @@ export interface DateBucket {
  * Bucket finished runs by `startedAt` into relative date groups:
  * Today / Yesterday / Earlier this week / Earlier this month / "<Month YYYY>".
  * Fixed labels come first in that order; older month buckets follow newest-first.
- * Empty buckets are dropped. Week starts Monday (local time).
+ * Empty buckets are dropped. Week start follows the user's preference (local time).
  */
-export function groupRunsByDate(runs: WorkflowRun[]): DateBucket[] {
+export function groupRunsByDate(runs: WorkflowRun[], weekStart: WeekStart): DateBucket[] {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const startToday = today.getTime();
   const startYesterday = startToday - 86_400_000;
-  const mondayOffset = (today.getDay() + 6) % 7; // 0 = Monday
-  const startWeek = startToday - mondayOffset * 86_400_000;
+  const weekOffset = weekStart === 'sunday' ? today.getDay() : (today.getDay() + 6) % 7;
+  const startWeek = startToday - weekOffset * 86_400_000;
   const startMonth = new Date(today.getFullYear(), today.getMonth(), 1).getTime();
 
   const labelOf = (ts: number): string => {

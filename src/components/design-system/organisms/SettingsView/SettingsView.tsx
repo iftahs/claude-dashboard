@@ -1,6 +1,7 @@
 import { ToggleGroup } from '@/components/design-system/atoms/ToggleGroup/ToggleGroup';
 import { PROVIDER_LABELS, PROVIDER_MODELS } from '@/hooks/useAiConfig';
 import { useSettingsForm } from '@/hooks/useSettingsForm';
+import { localeDefaultWeekStart } from '@/lib/week';
 import type { Settings } from '@/hooks/useSettings';
 import type { AiProvider } from '@/types';
 import type { SettingsViewProps } from './types';
@@ -35,6 +36,14 @@ export function SettingsView({
     { value: 'notification', label: 'Notification' },
     { value: 'sound', label: 'Notification + sound' },
   ];
+
+  const weekStartOptions: { value: Settings['weekStartDay']; label: string }[] = [
+    { value: 'auto', label: 'Auto' },
+    { value: 'sunday', label: 'Sunday' },
+    { value: 'monday', label: 'Monday' },
+  ];
+  const localeWeekStart = localeDefaultWeekStart();
+  const localeWeekStartLabel = localeWeekStart === 'sunday' ? 'Sunday' : 'Monday';
 
   const inputCls = 'w-full bg-transparent px-2 py-2 text-sm text-zinc-200 outline-none';
   const wrapCls =
@@ -79,6 +88,26 @@ export function SettingsView({
           onChange={(agentAlert) => onChangeSettings({ ...settings, agentAlert })}
           grow
         />
+      </section>
+
+      {/* ── Week start ─────────────────────────────────────────────── */}
+      <section className="mt-6 border-t border-white/10 pt-5">
+        <h4 className="mb-1 text-sm font-semibold text-zinc-300">Week start</h4>
+        <p className="mb-3 text-xs text-zinc-500">
+          First day of the week for the weekly spending window and reset countdown (and the
+          activity heatmap). Auto follows your browser locale.
+        </p>
+        <ToggleGroup<Settings['weekStartDay']>
+          options={weekStartOptions}
+          value={settings.weekStartDay}
+          onChange={(weekStartDay) => onChangeSettings({ ...settings, weekStartDay })}
+          grow
+        />
+        {settings.weekStartDay === 'auto' && (
+          <p className="mt-2 text-xs text-zinc-500">
+            Locale default: <span className="font-medium text-zinc-300">{localeWeekStartLabel}</span>
+          </p>
+        )}
       </section>
 
       {/* ── Spending limits ────────────────────────────────────────── */}

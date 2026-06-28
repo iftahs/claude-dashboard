@@ -3,6 +3,8 @@ import type { ReactNode } from 'react';
 import { usePolling } from './usePolling';
 import { useSettings } from './useSettings';
 import type { Settings } from './useSettings';
+import { localeDefaultWeekStart } from '../lib/week';
+import type { WeekStart } from '../lib/week';
 import type { ClaudeConfig } from '../types';
 
 type AuthMode = 'api' | 'subscription';
@@ -17,6 +19,8 @@ interface ConfigModeCtx {
   isApi: boolean;
   litellmAvailable: boolean;
   litellmHost: string;
+  /** First day of the week, resolved from settings ('auto' → browser locale). */
+  weekStart: WeekStart;
   settings: Settings;
   setSettings: (s: Settings) => void;
 }
@@ -43,6 +47,7 @@ export function ConfigModeProvider({ children }: { children: ReactNode }) {
       isApi: effectiveMode === 'api',
       litellmAvailable: !!config.data?.litellm?.available,
       litellmHost: config.data?.litellm?.gatewayHost ?? '',
+      weekStart: settings.weekStartDay === 'auto' ? localeDefaultWeekStart() : settings.weekStartDay,
       settings,
       setSettings,
     };

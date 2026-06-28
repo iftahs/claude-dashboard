@@ -5,6 +5,7 @@ import { PlanUsage } from '@/components/design-system/molecules/PlanUsage/PlanUs
 import { SpendingLimits } from '@/components/design-system/molecules/SpendingLimits/SpendingLimits';
 import { GaugeSkeleton, ChartSkeleton } from '@/components/design-system/atoms/Skeleton/Skeleton';
 import { hourLabel } from '@/lib/format';
+import { sumCostThisWeek } from '@/lib/week';
 import { useLiveData } from '@/hooks/useLiveData';
 import { useConfigMode } from '@/hooks/useConfigMode';
 import { useCostMetrics } from '@/hooks/useCostMetrics';
@@ -13,7 +14,7 @@ import type { LiveTabProps } from './types';
 
 export function LiveTab({ limits }: LiveTabProps) {
   const { recent, weekly, liveUsage, recentHours, setRecentHours } = useLiveData();
-  const { configData, isApi } = useConfigMode();
+  const { configData, isApi, weekStart } = useConfigMode();
   const { costPerDay } = useCostMetrics();
   const { litellmActual } = useLiteLlmActual();
 
@@ -71,7 +72,7 @@ export function LiveTab({ limits }: LiveTabProps) {
 
       {/* Subscription rate-limit bars — only meaningful with a plan. */}
       {configData && !isApi && (
-        <PlanUsage block={block} weekly={weekly.data} liveUsage={liveUsage.data} />
+        <PlanUsage block={block} weekly={weekly.data} liveUsage={liveUsage.data} weekStart={weekStart} />
       )}
 
       {/* Spend vs caps — always shown in API mode (the cost IS the bill);
@@ -80,7 +81,7 @@ export function LiveTab({ limits }: LiveTabProps) {
         <SpendingLimits
           limits={limits}
           costPerDay={costPerDay}
-          weekCost={weekly.data?.totals.cost}
+          weekCost={sumCostThisWeek(weekly.data?.buckets, weekStart, Date.now())}
           alwaysShow={isApi}
           actual={litellmActual ?? undefined}
         />

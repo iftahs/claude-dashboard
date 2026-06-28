@@ -3,19 +3,22 @@ import { HoverTooltip } from '@/components/design-system/molecules/HoverTooltip/
 import type { DailyActivity } from '@/types';
 import { compact } from '@/lib/format';
 import type { ActivityHeatmapProps } from './types';
-import { MONTHS, WEEKDAYS, WEEKS, color, localKey } from './utils';
+import { MONTHS, WEEKS, color, localKey, weekdayLabels } from './utils';
 
-export function ActivityHeatmap({ days }: ActivityHeatmapProps) {
+export function ActivityHeatmap({ days, weekStart }: ActivityHeatmapProps) {
   const [hoveredDate, setHoveredDate] = useState<string | null>(null);
 
   const byDate = new Map(days.map((d) => [d.date, d]));
   const max = days.reduce((m, d) => Math.max(m, d.effectiveTokens), 0);
+  const weekdays = weekdayLabels(weekStart);
 
-  // Grid of the last WEEKS*7 days, columns = weeks (Sun-start), rows = weekday.
+  // Grid of the last WEEKS*7 days, columns = weeks (week-start aligned), rows = weekday.
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const end = new Date(today);
-  end.setDate(end.getDate() + (6 - end.getDay())); // end of current week (Sat)
+  // Advance to the last day of the current week (the day before the next week start).
+  const dow = weekStart === 'sunday' ? end.getDay() : (end.getDay() + 6) % 7;
+  end.setDate(end.getDate() + (6 - dow));
   const totalDays = WEEKS * 7;
 
   const cells: DailyActivity[] = [];
@@ -59,7 +62,7 @@ export function ActivityHeatmap({ days }: ActivityHeatmapProps) {
 
           {/* Rows 1-7: Weekdays */}
           {Array.from({ length: 7 }).map((_, rowIndex) => {
-            const weekdayLabel = WEEKDAYS[rowIndex];
+            const weekdayLabel = weekdays[rowIndex];
             return (
               <Fragment key={rowIndex}>
                 <div className="text-[10px] font-bold text-zinc-500 pr-2 flex items-center justify-end h-full min-w-[28px] select-none">
