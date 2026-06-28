@@ -1,13 +1,10 @@
-import type { Limits } from '@/hooks/useLimits';
+import type { BudgetPeriod } from '@/lib/budget';
 
 export interface SpendingLimitsProps {
-  limits: Limits;
-  costPerDay: number;
-  /** Estimated cost over the current week window; falls back to costPerDay × 7. */
-  weekCost?: number;
-  /** Always render the spend rows (even without caps) — used in API mode. */
+  /** Calendar-aligned budget periods (today / this week / this month). */
+  rows: BudgetPeriod[];
+  /** Header note, e.g. "actual · via gateway" or "estimated from local logs". */
+  note: string;
+  /** Always render rows even without a cap (API mode — the spend IS the bill). */
   alwaysShow?: boolean;
-  /** When set, rows show the real billed cost (e.g. from a LiteLLM gateway) against
-   *  the caps, instead of the local-logs estimate, and the header note reflects it. */
-  actual?: { today: number; week: number; month: number; note: string };
 }

@@ -12,3 +12,21 @@ export function modelColor(model: string): string {
   }
   return c;
 }
+
+// Separate assigner so user tags get stable, distinct colors without sharing the
+// model color map (which would make a tag and a model collide on the same hue).
+const tagAssigned = new Map<string, string>();
+let tagNext = 0;
+
+/** Neutral gray for the catch-all "Untagged" bucket — never drawn from the palette. */
+export const UNTAGGED_COLOR = '#52525b';
+
+export function tagColor(tag: string): string {
+  let c = tagAssigned.get(tag);
+  if (!c) {
+    c = COLORS[tagNext % COLORS.length];
+    tagNext += 1;
+    tagAssigned.set(tag, c);
+  }
+  return c;
+}

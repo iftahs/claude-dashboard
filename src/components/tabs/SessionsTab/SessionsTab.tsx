@@ -1,11 +1,13 @@
 import { ConfigProfile } from '@/components/design-system/organisms/ConfigProfile/ConfigProfile';
 import { ProjectBreakdown } from '@/components/design-system/organisms/ProjectBreakdown/ProjectBreakdown';
+import { TagBreakdown } from '@/components/design-system/organisms/TagBreakdown/TagBreakdown';
 import { SessionHistoryTable } from '@/components/design-system/organisms/SessionHistoryTable/SessionHistoryTable';
 import { Skeleton } from '@/components/design-system/atoms/Skeleton/Skeleton';
 import { usePolling } from '@/hooks/usePolling';
 import { useSource } from '@/hooks/useSource';
 import { useConfigMode } from '@/hooks/useConfigMode';
 import { useSessionPeriod } from '@/hooks/useSessionPeriod';
+import { useTags } from '@/hooks/useTags';
 import type { SessionMeta, ProjectData } from '@/types';
 
 export function SessionsTab() {
@@ -14,6 +16,7 @@ export function SessionsTab() {
   const sessions = usePolling<SessionMeta[]>(withSrc('/api/sessions'), 10000);
   const projectCosts = usePolling<ProjectData>(withSrc('/api/projects?days=90'), 30000);
   const totalPeriodDays = useSessionPeriod(sessions.data);
+  const tags = useTags();
 
   return (
     <>
@@ -37,6 +40,7 @@ export function SessionsTab() {
                 sessions={sessions.data}
                 periodDays={totalPeriodDays}
                 projectCosts={projectCosts.data?.projects}
+                tags={tags}
               />
             ) : sessions.loading ? (
               <div className="card p-5">
@@ -45,6 +49,14 @@ export function SessionsTab() {
             ) : null}
           </div>
         </div>
+      )}
+
+      {source !== 'cowork' && sessions.data && (
+        <TagBreakdown
+          sessions={sessions.data}
+          projectCosts={projectCosts.data?.projects}
+          tags={tags}
+        />
       )}
 
       {sessions.data ? (

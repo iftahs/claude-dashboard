@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { StatCard } from '@/components/design-system/atoms/StatCard/StatCard';
 import { Section } from '@/components/design-system/molecules/Section/Section';
+import { ExportButton } from '@/components/design-system/molecules/ExportButton/ExportButton';
 import { CacheEfficiencyChart } from '@/components/design-system/organisms/CacheEfficiencyChart/CacheEfficiencyChart';
 import { PeakHoursHeatmap } from '@/components/design-system/organisms/PeakHoursHeatmap/PeakHoursHeatmap';
 import { ActivityHeatmap } from '@/components/design-system/organisms/ActivityHeatmap/ActivityHeatmap';
@@ -10,6 +11,7 @@ import { DailyTrendChart } from '@/components/design-system/organisms/DailyTrend
 import type { DailyMetric } from '@/components/design-system/organisms/DailyTrendChart/types';
 import { StatCardSkeleton, HeatmapSkeleton } from '@/components/design-system/atoms/Skeleton/Skeleton';
 import { compact, usd, shortModel } from '@/lib/format';
+import { buildSpendReport } from '@/lib/report';
 import { usePolling } from '@/hooks/usePolling';
 import { useSource } from '@/hooks/useSource';
 import { useConfigMode } from '@/hooks/useConfigMode';
@@ -39,18 +41,24 @@ export function TrendsTab() {
           and (when present) the LiteLLM actual-billed chart. */}
       <div className="flex items-center justify-between">
         <span className="text-xs uppercase tracking-wider text-zinc-500">Spending · last {weekDays} days</span>
-        <div className="flex overflow-hidden rounded-lg ring-1 ring-white/10">
-          {[7, 14, 21, 28].map((d) => (
-            <button
-              key={d}
-              onClick={() => setWeekDays(d)}
-              className={`px-2.5 py-1 text-xs tabular-nums transition-colors ${
-                weekDays === d ? 'bg-clay-500/20 text-clay-400' : 'text-zinc-500 hover:text-zinc-300'
-              }`}
-            >
-              {d / 7}w
-            </button>
-          ))}
+        <div className="flex items-center gap-3">
+          <div className="flex overflow-hidden rounded-lg ring-1 ring-white/10">
+            {[7, 14, 21, 28].map((d) => (
+              <button
+                key={d}
+                onClick={() => setWeekDays(d)}
+                className={`px-2.5 py-1 text-xs tabular-nums transition-colors ${
+                  weekDays === d ? 'bg-clay-500/20 text-clay-400' : 'text-zinc-500 hover:text-zinc-300'
+                }`}
+              >
+                {d / 7}w
+              </button>
+            ))}
+          </div>
+          <ExportButton
+            label="Spend report"
+            getData={() => (weekly.data ? buildSpendReport(weekly.data, weekDays, source) : null)}
+          />
         </div>
       </div>
       {/* Cost stat cards */}
