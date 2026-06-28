@@ -138,7 +138,7 @@ export function TrendsTab() {
         help="Effective tokens summed into a 7-day × 24-hour grid (your local time). Darker cells are your busiest hours — when you use Claude most."
       >
         {heatmap.data ? (
-          <PeakHoursHeatmap grid={heatmap.data.grid} />
+          <PeakHoursHeatmap grid={heatmap.data.grid} weekStart={weekStart} />
         ) : heatmap.loading ? (
           <HeatmapSkeleton />
         ) : (

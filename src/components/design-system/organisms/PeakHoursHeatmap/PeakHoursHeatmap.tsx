@@ -2,10 +2,11 @@ import { useState } from 'react';
 import { HoverTooltip } from '@/components/design-system/molecules/HoverTooltip/HoverTooltip';
 import { compact } from '@/lib/format';
 import type { PeakHoursHeatmapProps } from './types';
-import { DAYS, HOURS, formatHour } from './utils';
+import { DAYS, HOURS, dayOrder, formatHour } from './utils';
 
-export function PeakHoursHeatmap({ grid }: PeakHoursHeatmapProps) {
+export function PeakHoursHeatmap({ grid, weekStart }: PeakHoursHeatmapProps) {
   const [tooltip, setTooltip] = useState<{ day: number; hour: number; value: number } | null>(null);
+  const rows = dayOrder(weekStart);
 
   // Find global max for intensity scaling
   const allValues = grid.flat();
@@ -34,11 +35,11 @@ export function PeakHoursHeatmap({ grid }: PeakHoursHeatmapProps) {
         ))}
       </div>
 
-      {/* Grid rows */}
-      {grid.map((row, dayIdx) => (
+      {/* Grid rows — ordered by the week-start preference (dayIdx stays canonical Mon=0..Sun=6) */}
+      {rows.map((dayIdx) => (
         <div key={dayIdx} className="flex items-center mb-0.5">
           <div className="w-10 text-[10px] text-zinc-500 font-medium shrink-0">{DAYS[dayIdx]}</div>
-          {row.map((value, hourIdx) => (
+          {grid[dayIdx].map((value, hourIdx) => (
             <div
               key={hourIdx}
               className="relative flex-1 rounded-sm cursor-default transition-opacity"
