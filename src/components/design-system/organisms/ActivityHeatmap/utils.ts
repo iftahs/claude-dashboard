@@ -1,6 +1,19 @@
+import type { WeekStart } from '@/lib/week';
+
 export const WEEKS = 18; // ~4 months
 export const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-export const WEEKDAYS = ['', 'Mon', '', 'Wed', '', 'Fri', '']; // rows Sun..Sat, label odd rows
+
+const SHORT_DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const LABELED_DOW = new Set([1, 3, 5]); // label Mon/Wed/Fri rows, blank the rest
+
+/** Row labels (top→bottom) for the heatmap, sparse, honoring the week start. */
+export function weekdayLabels(weekStart: WeekStart): string[] {
+  const startDow = weekStart === 'sunday' ? 0 : 1;
+  return Array.from({ length: 7 }, (_, i) => {
+    const dow = (startDow + i) % 7;
+    return LABELED_DOW.has(dow) ? SHORT_DAYS[dow] : '';
+  });
+}
 
 export function localKey(d: Date): string {
   const y = d.getFullYear();

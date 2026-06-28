@@ -21,7 +21,7 @@ import type { ActivityData, HeatmapData } from '@/types';
 
 export function TrendsTab() {
   const { coworkAvailable, source, withSrc } = useSource();
-  const { litellmAvailable, litellmHost } = useConfigMode();
+  const { litellmAvailable, litellmHost, weekStart } = useConfigMode();
   const { weekly, models, weekDays, setWeekDays } = useLiveData();
   const { costPerDay, daysLeftInMonth, projectedMonthCost, weeklyEffective, prevWeeklyEffective } =
     useCostMetrics();
@@ -152,7 +152,7 @@ export function TrendsTab() {
         help="GitHub-style calendar: one square per day, darker = more effective tokens used. Shows your day-to-day usage streaks over the last ~18 weeks."
       >
         {activity.data ? (
-          <ActivityHeatmap days={activity.data.dailyActivity} />
+          <ActivityHeatmap days={activity.data.dailyActivity} weekStart={weekStart} />
         ) : activity.loading ? (
           <HeatmapSkeleton />
         ) : null}
