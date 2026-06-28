@@ -2,8 +2,9 @@ import { useMemo, useState } from 'react';
 import { compact, usd } from '@/lib/format';
 import { ToggleGroup } from '@/components/design-system/atoms/ToggleGroup/ToggleGroup';
 import { InfoTip } from '@/components/design-system/atoms/InfoTip/InfoTip';
-import type { ProjectBreakdownProps, LocalProjectStat } from './types';
-import { normalizePath } from './utils';
+import { TagEditor } from '@/components/design-system/molecules/TagEditor/TagEditor';
+import type { ProjectBreakdownProps } from './types';
+import { buildProjectStats } from './utils';
 
 type SortMode = 'cost' | 'time' | 'tokens' | 'files';
 
@@ -18,60 +19,12 @@ export function ProjectBreakdown({
   sessions,
   periodDays,
   projectCosts,
+  tags,
 }: ProjectBreakdownProps) {
   const [sortBy, setSortBy] = useState<SortMode>('cost');
 
-  // Build a cost lookup map keyed by normalized project name and full path
-  const costByName = useMemo(() => {
-    const m = new Map<string, number>();
-    for (const p of projectCosts ?? []) {
-      m.set(normalizePath(p.name), p.cost);
-      m.set(normalizePath(p.path), p.cost);
-    }
-    return m;
-  }, [projectCosts]);
-
   const stats = useMemo(() => {
-    const map = new Map<string, LocalProjectStat>();
-
-    for (const s of sessions) {
-      if (!s.project_path) continue;
-      const path = s.project_path;
-
-      let stat = map.get(path);
-      if (!stat) {
-        const parts = path.split(/[\\\/]/);
-        const name = parts[parts.length - 1] || path;
-        stat = {
-          path,
-          name,
-          totalTimeMinutes: 0,
-          effectiveTokens: 0,
-          cacheReadTokens: 0,
-          filesModified: 0,
-          linesAdded: 0,
-          linesRemoved: 0,
-          sessionCount: 0,
-          cost: 0,
-        };
-        map.set(path, stat);
-      }
-
-      stat.totalTimeMinutes += s.duration_minutes ?? 0;
-      stat.effectiveTokens += s.effective_tokens ?? (s.input_tokens ?? 0) + (s.output_tokens ?? 0);
-      stat.cacheReadTokens += s.cache_read_tokens ?? 0;
-      stat.filesModified += s.files_modified ?? 0;
-      stat.linesAdded += s.lines_added ?? 0;
-      stat.linesRemoved += s.lines_removed ?? 0;
-      stat.sessionCount += 1;
-    }
-
-    // Merge cost data from /api/projects using normalized paths for robust matching
-    for (const stat of map.values()) {
-      stat.cost = costByName.get(normalizePath(stat.path)) ?? costByName.get(normalizePath(stat.name)) ?? 0;
-    }
-
-    const list = [...map.values()];
+    const list = buildProjectStats(sessions, projectCosts);
 
     if (sortBy === 'cost') list.sort((a, b) => b.cost - a.cost);
     else if (sortBy === 'time') list.sort((a, b) => b.totalTimeMinutes - a.totalTimeMinutes);
@@ -79,7 +32,7 @@ export function ProjectBreakdown({
     else list.sort((a, b) => b.filesModified - a.filesModified);
 
     return list;
-  }, [sessions, sortBy, costByName]);
+  }, [sessions, sortBy, projectCosts]);
 
   const maxVal = useMemo(() => {
     if (stats.length === 0) return 1;
@@ -174,6 +127,16 @@ export function ProjectBreakdown({
                     : `+${project.linesAdded} / -${project.linesRemoved} lines`}
                 </span>
               </div>
+
+              {tags && (
+                <div className="pt-1">
+                  <TagEditor
+                    value={tags.tagsFor(project.path)}
+                    onChange={(next) => tags.setTagsFor(project.path, next)}
+                    suggestions={tags.allTags()}
+                  />
+                </div>
+              )}
             </div>
           );
         })}

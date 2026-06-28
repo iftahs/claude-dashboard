@@ -26,6 +26,20 @@ function startDow(ws: WeekStart): number {
   return ws === 'sunday' ? 0 : 1;
 }
 
+/** Local-midnight timestamp of today. */
+export function startOfDay(now: number): number {
+  const d = new Date(now);
+  d.setHours(0, 0, 0, 0);
+  return d.getTime();
+}
+
+/** Local-midnight timestamp of tomorrow (daily reset countdown). */
+export function nextDayReset(now: number): number {
+  const d = new Date(startOfDay(now));
+  d.setDate(d.getDate() + 1);
+  return d.getTime();
+}
+
 /** Local-midnight timestamp of the current week's first day. */
 export function startOfWeek(now: number, ws: WeekStart): number {
   const d = new Date(now);
@@ -42,6 +56,21 @@ export function nextWeekReset(now: number, ws: WeekStart): number {
   return d.getTime();
 }
 
+/** Local-midnight timestamp of the first day of the current month. */
+export function startOfMonth(now: number): number {
+  const d = new Date(now);
+  d.setHours(0, 0, 0, 0);
+  d.setDate(1);
+  return d.getTime();
+}
+
+/** Local-midnight timestamp of the first day of next month (reset countdown). */
+export function nextMonthReset(now: number): number {
+  const d = new Date(startOfMonth(now));
+  d.setMonth(d.getMonth() + 1);
+  return d.getTime();
+}
+
 /** Local YYYY-MM-DD key for a timestamp (matches the gateway's daily date keys). */
 export function localYmd(ms: number): string {
   const d = new Date(ms);
@@ -51,13 +80,33 @@ export function localYmd(ms: number): string {
   return `${y}-${m}-${day}`;
 }
 
+/** Sum daily-bucket cost for buckets whose start is at/after `from`. */
+function sumCostSince(buckets: { start: number; cost: number }[] | undefined, from: number): number {
+  if (!buckets) return 0;
+  return buckets.reduce((s, b) => (b.start >= from ? s + b.cost : s), 0);
+}
+
+/** Sum daily-bucket cost for buckets whose start falls today. */
+export function sumCostToday(
+  buckets: { start: number; cost: number }[] | undefined,
+  now: number,
+): number {
+  return sumCostSince(buckets, startOfDay(now));
+}
+
 /** Sum daily-bucket cost for buckets whose start falls in the current week. */
 export function sumCostThisWeek(
   buckets: { start: number; cost: number }[] | undefined,
   ws: WeekStart,
   now: number,
 ): number {
-  if (!buckets) return 0;
-  const from = startOfWeek(now, ws);
-  return buckets.reduce((s, b) => (b.start >= from ? s + b.cost : s), 0);
+  return sumCostSince(buckets, startOfWeek(now, ws));
+}
+
+/** Sum daily-bucket cost for buckets whose start falls in the current month. */
+export function sumCostThisMonth(
+  buckets: { start: number; cost: number }[] | undefined,
+  now: number,
+): number {
+  return sumCostSince(buckets, startOfMonth(now));
 }

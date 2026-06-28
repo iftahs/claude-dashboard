@@ -1,29 +1,17 @@
 import { ProgressBar } from '@/components/design-system/atoms/ProgressBar/ProgressBar';
 import { InfoTip } from '@/components/design-system/atoms/InfoTip/InfoTip';
 import { usd } from '@/lib/format';
+import { formatResetCountdown } from '@/lib/budget';
 import { spendingBarColor } from './utils';
 import type { SpendingLimitsProps } from './types';
 
-export function SpendingLimits({ limits, costPerDay, weekCost, alwaysShow = false, actual }: SpendingLimitsProps) {
-  const weeklyCost = weekCost ?? costPerDay * 7;
-  // When `actual` is provided, show the gateway's real billed cost (and exact
-  // month-to-date); otherwise fall back to the local-logs estimate.
-  const allRows = actual
-    ? [
-        { label: 'Today', cost: actual.today, limit: limits.dailyLimit },
-        { label: 'This week', cost: actual.week, limit: limits.weeklyLimit },
-        { label: 'This month', cost: actual.month, limit: limits.monthlyLimit },
-      ]
-    : [
-        { label: 'Today', cost: costPerDay, limit: limits.dailyLimit },
-        { label: 'This week', cost: weeklyCost, limit: limits.weeklyLimit },
-        { label: 'Monthly (est.)', cost: costPerDay * 30, limit: limits.monthlyLimit },
-      ];
-
+export function SpendingLimits({ rows, note, alwaysShow = false }: SpendingLimitsProps) {
+  const actual = rows.some((r) => r.isActual);
   // API mode shows every row (the spend is the bill); subscription mode only
   // shows rows the user has set a cap for.
-  const rows = alwaysShow ? allRows : allRows.filter((r) => r.limit != null);
-  if (rows.length === 0) return null;
+  const visible = alwaysShow ? rows : rows.filter((r) => r.cap != null);
+  if (visible.length === 0) return null;
+  const now = Date.now();
 
   return (
     <div className="card p-5">
@@ -33,40 +21,42 @@ export function SpendingLimits({ limits, costPerDay, weekCost, alwaysShow = fals
           <InfoTip
             text={
               actual
-                ? 'Real cost billed by your LiteLLM gateway (today, last 7 days, and month-to-date) against the daily/weekly/monthly USD caps you set in ⚙ Settings. Caps are stored locally in your browser.'
-                : 'Your estimated equivalent API spend against the daily/weekly/monthly USD caps you set (⚙ Settings). Caps are stored locally in your browser — this is a budgeting aid, not a real bill.'
+                ? 'Real cost billed by your LiteLLM gateway (today, this week, this month) against the daily/weekly/monthly USD caps you set in ⚙ Settings. Caps reset on real calendar boundaries and are stored locally in your browser.'
+                : 'Your estimated equivalent API spend against the daily/weekly/monthly USD caps you set (⚙ Settings). Caps reset on real calendar boundaries and are stored locally — this is a budgeting aid, not a real bill.'
             }
           />
         </h3>
-        <span className="text-xs text-zinc-600">{actual ? actual.note : 'estimated from local logs'}</span>
+        <span className="text-xs text-zinc-600">{note}</span>
       </div>
       <div className="space-y-4">
-        {rows.map(({ label, cost, limit }) => {
-          if (limit == null) {
+        {visible.map((r) => {
+          if (r.cap == null || r.pct == null) {
             // No cap set — show the figure with a gentle nudge instead of a bar.
             return (
-              <div key={label} className="flex items-center justify-between text-xs">
-                <span className="font-medium text-zinc-300">{label}</span>
+              <div key={r.key} className="flex items-center justify-between text-xs">
+                <span className="font-medium text-zinc-300">{r.label}</span>
                 <span className="font-mono text-zinc-400">
-                  {usd(cost)}{' '}
-                  <span className="text-zinc-600">· no cap set</span>
+                  {usd(r.spent)} <span className="text-zinc-600">· no cap set</span>
                 </span>
               </div>
             );
           }
-          const pct = Math.min(100, (cost / limit) * 100);
-          const color = spendingBarColor(pct);
+          const color = spendingBarColor(r.pct);
           return (
-            <div key={label}>
+            <div key={r.key}>
               <div className="mb-1.5 flex items-center justify-between text-xs">
-                <span className="font-medium text-zinc-300">{label}</span>
+                <span className="font-medium text-zinc-300">
+                  {r.label}
+                  <span className="ml-1.5 font-normal text-zinc-600">
+                    {formatResetCountdown(r.resetsAt, now)}
+                  </span>
+                </span>
                 <span className="font-mono" style={{ color }}>
-                  {usd(cost)}{' '}
-                  <span className="text-zinc-600">/ ${limit}</span>
-                  <span className="ml-1.5 text-zinc-500">({pct.toFixed(0)}%)</span>
+                  {usd(r.spent)} <span className="text-zinc-600">/ ${r.cap}</span>
+                  <span className="ml-1.5 text-zinc-500">({r.pct.toFixed(0)}%)</span>
                 </span>
               </div>
-              <ProgressBar pct={pct} color={color} />
+              <ProgressBar pct={r.pct} color={color} />
             </div>
           );
         })}

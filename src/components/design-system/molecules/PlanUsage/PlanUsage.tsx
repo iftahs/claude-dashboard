@@ -2,13 +2,16 @@ import { useEffect, useState } from 'react';
 import { ProgressBar } from '@/components/design-system/atoms/ProgressBar/ProgressBar';
 import { InfoTip } from '@/components/design-system/atoms/InfoTip/InfoTip';
 import { formatRemainingHours, formatRemainingDays, blockBarColor } from './utils';
-import { nextWeekReset } from '@/lib/week';
+import { nextWeekReset, startOfWeek } from '@/lib/week';
+import { buildWeeklyForecast } from '@/lib/forecast';
 import type { PlanUsageProps } from './types';
+
+const WEEK_MS = 7 * 24 * 3600_000;
 
 const DEFAULT_BLOCK_LIMIT = 6000000; // 6.0M effective tokens
 const DEFAULT_WEEKLY_LIMIT = 35000000; // 35M effective tokens
 
-export function PlanUsage({ block, weekly, liveUsage, weekStart }: PlanUsageProps) {
+export function PlanUsage({ block, weekly, liveUsage, weekStart, tier }: PlanUsageProps) {
   const [, forceUpdate] = useState(0);
 
   useEffect(() => {
@@ -34,9 +37,10 @@ export function PlanUsage({ block, weekly, liveUsage, weekStart }: PlanUsageProp
 
   // Weekly calculations
   const weeklyLimit = DEFAULT_WEEKLY_LIMIT;
-  const weeklyPct = hasLive
-    ? Math.round(liveUsage.seven_day.utilization)
-    : Math.min(100, Math.round(((weekly?.totals.effectiveTokens ?? 0) / weeklyLimit) * 100));
+  const weeklyPctRaw = hasLive
+    ? liveUsage.seven_day.utilization
+    : Math.min(100, ((weekly?.totals.effectiveTokens ?? 0) / weeklyLimit) * 100);
+  const weeklyPct = Math.round(weeklyPctRaw);
 
   const liveWeeklyResetsAt = hasLive ? Date.parse(liveUsage.seven_day.resets_at) : null;
   const noActiveWeekly = hasLive && liveUsage.seven_day.resets_at == null;
@@ -47,22 +51,41 @@ export function PlanUsage({ block, weekly, liveUsage, weekStart }: PlanUsageProp
   const weeklyRemainingMs = Math.max(0, weeklyResetsAt - now);
   const weeklyResetStr = noActiveWeekly ? 'on next msg' : formatRemainingDays(weeklyRemainingMs);
 
+  // Burn-rate forecast for the weekly window (LiteLLM-inspired): where usage lands
+  // by reset at the current pace. Window start is Anthropic's (resets−7d) when live,
+  // else the user's calendar week. Suppressed when there's no active weekly window.
+  const weeklyWindowStart = liveWeeklyResetsAt && !isNaN(liveWeeklyResetsAt)
+    ? liveWeeklyResetsAt - WEEK_MS
+    : startOfWeek(now, weekStart);
+  const weeklyForecast = noActiveWeekly
+    ? null
+    : buildWeeklyForecast({ pct: weeklyPctRaw, windowStart: weeklyWindowStart, resetsAt: weeklyResetsAt, now });
+
   // Model-specific weekly limits — only present on some plans (e.g. Max exposes a Sonnet cap).
   const modelLimits = hasLive
     ? ([
         { label: 'Weekly · Sonnet', info: liveUsage.seven_day_sonnet, color: '#10b981' },
         { label: 'Weekly · Opus', info: liveUsage.seven_day_opus, color: '#a78bfa' },
+        { label: 'Weekly · Cowork', info: liveUsage.seven_day_cowork, color: '#22d3ee' },
       ] as const).filter((l) => l.info != null)
     : [];
+
+  const tierLabel = tier ? tier.replace(/_/g, ' ').toUpperCase() : null;
 
   return (
     <div className="card p-5 flex flex-col justify-between flex-none">
       <div className="mb-4 flex items-center justify-between">
         <h3 className="flex items-center gap-1.5 text-sm font-bold uppercase tracking-wider text-zinc-300">
           Plan usage
-          <InfoTip text="Your live subscription limits from Claude.ai: the 5-hour window plus the weekly all-models and Sonnet caps, each with % used and time to reset. Pulled from Anthropic's usage API." />
+          <InfoTip text="Your live subscription rate-limit ceilings from Claude.ai: the 5-hour window plus the weekly all-models, per-model and Cowork caps, each with % used and time to reset. Pulled from Anthropic's usage API — these are surfaced for awareness, not enforced." />
         </h3>
-        <span className="text-zinc-500 font-mono text-xs select-none">→</span>
+        {tierLabel ? (
+          <span className="rounded-full bg-white/5 px-2 py-0.5 font-mono text-[10px] uppercase tracking-wide text-zinc-400 ring-1 ring-white/10">
+            {tierLabel}
+          </span>
+        ) : (
+          <span className="text-zinc-500 font-mono text-xs select-none">→</span>
+        )}
       </div>
 
       <div className="space-y-4">
@@ -86,6 +109,12 @@ export function PlanUsage({ block, weekly, liveUsage, weekStart }: PlanUsageProp
             </span>
           </div>
           <ProgressBar pct={weeklyPct} variant="blue" />
+          {weeklyForecast && (
+            <div className="flex items-center gap-1 text-[11px]" style={{ color: weeklyForecast.color }}>
+              <span>{weeklyForecast.willExceed ? '⚠' : '↗'}</span>
+              <span>{weeklyForecast.label}</span>
+            </div>
+          )}
         </div>
 
         {/* Per-model weekly limits (shown only when the live API reports them) */}

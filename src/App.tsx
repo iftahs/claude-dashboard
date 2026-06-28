@@ -47,7 +47,7 @@ export default function App() {
   const { recent, weekly, version } = useLiveData();
   const [limits, setLimits] = useLimits();
   const sidebarTabs = useSidebarTabs(TABS);
-  useDashboardNotifications(activeTab);
+  useDashboardNotifications(activeTab, limits);
 
   const error = recent.error || weekly.error;
   const empty =

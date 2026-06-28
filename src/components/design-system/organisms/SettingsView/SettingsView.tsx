@@ -37,6 +37,12 @@ export function SettingsView({
     { value: 'sound', label: 'Notification + sound' },
   ];
 
+  const budgetAlertOptions: { value: Settings['budgetAlert']; label: string }[] = [
+    { value: 'off', label: 'Off' },
+    { value: 'notification', label: 'Notification' },
+    { value: 'sound', label: 'Notification + sound' },
+  ];
+
   const weekStartOptions: { value: Settings['weekStartDay']; label: string }[] = [
     { value: 'auto', label: 'Auto' },
     { value: 'sunday', label: 'Sunday' },
@@ -150,6 +156,20 @@ export function SettingsView({
           >
             Save
           </button>
+        </div>
+
+        <div className="mt-5 border-t border-white/5 pt-4">
+          <h5 className="mb-1 text-xs font-semibold text-zinc-300">Budget alerts</h5>
+          <p className="mb-3 text-xs text-zinc-500">
+            Notify me the first time spend crosses 70 / 90 / 100% of a cap (resets each calendar
+            period). Caps reset on real day/week/month boundaries.
+          </p>
+          <ToggleGroup<Settings['budgetAlert']>
+            options={budgetAlertOptions}
+            value={settings.budgetAlert}
+            onChange={(budgetAlert) => onChangeSettings({ ...settings, budgetAlert })}
+            grow
+          />
         </div>
       </section>
 

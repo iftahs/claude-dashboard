@@ -1,25 +1,48 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { track, setUserContext } from '../lib/analytics';
+import { buildBudgetRows } from '../lib/budget';
 import { useNotifications } from './useNotifications';
 import { useUpdateToast } from './useUpdateToast';
 import { useConfigMode } from './useConfigMode';
 import { useLiveData } from './useLiveData';
+import { useLiteLlmActual } from './useLiteLlmActual';
+import { useCostMetrics } from './useCostMetrics';
 import { useAgentTraffic } from './useAgentTraffic';
 import { useAgentAlerts } from './useAgentAlerts';
+import { useBudgetAlerts } from './useBudgetAlerts';
+import type { Limits } from './useLimits';
 
 /**
  * App-level side effects: anonymous analytics + the toast notifications that
  * replaced the old inline banners (update available, Claude.ai offline/expired,
  * pay-as-you-go note). Kept out of the render tree so App stays a thin shell.
  */
-export function useDashboardNotifications(activeTab: string) {
-  const { configData, effectiveMode, isApi, settings } = useConfigMode();
-  const { liveUsage, version } = useLiveData();
+export function useDashboardNotifications(activeTab: string, limits: Limits) {
+  const { configData, effectiveMode, isApi, settings, weekStart } = useConfigMode();
+  const { liveUsage, version, weekly } = useLiveData();
+  const { litellmActual } = useLiteLlmActual();
+  const { costPerDay } = useCostMetrics();
   const { notify, dismiss } = useNotifications();
   const { waiting } = useAgentTraffic();
   useUpdateToast(version.data);
   // Alert (per Settings) when a new agent turns red / needs attention.
   useAgentAlerts(waiting, settings.agentAlert);
+
+  // Soft (non-blocking) budget alerts (LiteLLM-inspired) — fire app-wide, not
+  // just on the Live tab, the first time spend crosses a cap threshold.
+  const budgetRows = useMemo(
+    () =>
+      buildBudgetRows({
+        limits,
+        buckets: weekly.data?.buckets,
+        costPerDay,
+        weekStart,
+        actual: litellmActual ?? null,
+        now: Date.now(),
+      }),
+    [limits, weekly.data?.buckets, costPerDay, weekStart, litellmActual],
+  );
+  useBudgetAlerts(budgetRows, settings.budgetAlert);
 
   // ── Product analytics (anonymous, path-free events only — see lib/analytics) ──
   useEffect(() => {

@@ -5,7 +5,7 @@ import { PlanUsage } from '@/components/design-system/molecules/PlanUsage/PlanUs
 import { SpendingLimits } from '@/components/design-system/molecules/SpendingLimits/SpendingLimits';
 import { GaugeSkeleton, ChartSkeleton } from '@/components/design-system/atoms/Skeleton/Skeleton';
 import { hourLabel } from '@/lib/format';
-import { sumCostThisWeek } from '@/lib/week';
+import { buildBudgetRows } from '@/lib/budget';
 import { useLiveData } from '@/hooks/useLiveData';
 import { useConfigMode } from '@/hooks/useConfigMode';
 import { useCostMetrics } from '@/hooks/useCostMetrics';
@@ -21,6 +21,15 @@ export function LiveTab({ limits }: LiveTabProps) {
   const block = recent.data?.activeBlock ?? null;
   const hasSpendingLimits =
     limits.dailyLimit != null || limits.weeklyLimit != null || limits.monthlyLimit != null;
+
+  const budgetRows = buildBudgetRows({
+    limits,
+    buckets: weekly.data?.buckets,
+    costPerDay,
+    weekStart,
+    actual: litellmActual ?? null,
+    now: Date.now(),
+  });
 
   return (
     <>
@@ -72,18 +81,22 @@ export function LiveTab({ limits }: LiveTabProps) {
 
       {/* Subscription rate-limit bars — only meaningful with a plan. */}
       {configData && !isApi && (
-        <PlanUsage block={block} weekly={weekly.data} liveUsage={liveUsage.data} weekStart={weekStart} />
+        <PlanUsage
+          block={block}
+          weekly={weekly.data}
+          liveUsage={liveUsage.data}
+          weekStart={weekStart}
+          tier={configData.subscriptionType ?? configData.rateLimitTier ?? null}
+        />
       )}
 
       {/* Spend vs caps — always shown in API mode (the cost IS the bill);
           in subscription mode only when the user has configured caps. */}
       {(isApi || hasSpendingLimits) && (
         <SpendingLimits
-          limits={limits}
-          costPerDay={costPerDay}
-          weekCost={sumCostThisWeek(weekly.data?.buckets, weekStart, Date.now())}
+          rows={budgetRows}
+          note={litellmActual?.note ?? 'estimated from local logs'}
           alwaysShow={isApi}
-          actual={litellmActual ?? undefined}
         />
       )}
     </>
