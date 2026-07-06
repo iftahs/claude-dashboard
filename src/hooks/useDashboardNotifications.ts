@@ -62,12 +62,19 @@ export function useDashboardNotifications(activeTab: string, limits: Limits) {
     }
     const lc = err.toLowerCase();
     const expired = lc.includes('expired') || lc.includes('no access token');
+    // Upstream Anthropic outage (5xx) — not a token problem; running `claude` won't help.
+    const upstream = /:\s*5\d\d\b/.test(err) || lc.includes('service unavailable')
+      || lc.includes('bad gateway') || lc.includes('gateway timeout');
     notify({
       id: 'offline',
       severity: 'warning',
-      title: expired ? 'Claude.ai session expired' : 'Claude.ai connection offline',
+      title: expired ? 'Claude.ai session expired'
+        : upstream ? 'Claude.ai service unavailable'
+        : 'Claude.ai connection offline',
       message: expired
         ? 'Token needs a refresh — run `claude` in your terminal and it refreshes automatically.'
+        : upstream
+        ? `Anthropic's usage service is temporarily unavailable (${err.match(/5\d\d/)?.[0] ?? '5xx'}). It's on their side — the dashboard keeps retrying and this clears on its own.`
         : `${err} — try running \`claude\` in a terminal.`,
     });
   }, [isApi, liveUsage.data?.error, notify, dismiss]);

@@ -4,6 +4,8 @@ import { homedir, platform } from 'node:os';
 import { join } from 'node:path';
 import { createInterface } from 'node:readline';
 
+const CLAUDE_CODE_UA = 'claude-code/2.1.199'; // keep roughly in step with the CLI
+
 export type UsageSource = 'code' | 'cowork';
 
 export interface UsageEvent {
@@ -325,9 +327,26 @@ export function oauthHeaders(accessToken: string): Record<string, string> {
   return {
     'Authorization': `Bearer ${accessToken}`,
     'anthropic-beta': 'oauth-2025-04-20',
-    'User-Agent': 'claude-code/2.1.162',
+    'User-Agent': CLAUDE_CODE_UA,
     'Accept': 'application/json',
   };
+}
+
+/**
+ * GET an Anthropic OAuth endpoint, retrying transient 5xx with short backoff.
+ * 4xx (incl. 403 / 429) return immediately — retrying auth failures or rate
+ * limits only makes things worse.
+ */
+async function oauthGet(url: string, accessToken: string): Promise<Response> {
+  const headers = oauthHeaders(accessToken);
+  const backoffs = [250, 750]; // ms → 3 attempts total
+  let res = await fetch(url, { headers });
+  for (const wait of backoffs) {
+    if (res.status < 500) return res;
+    await new Promise((r) => setTimeout(r, wait));
+    res = await fetch(url, { headers });
+  }
+  return res;
 }
 
 export async function fetchLiveUsage(): Promise<any> {
@@ -346,9 +365,7 @@ export async function fetchLiveUsage(): Promise<any> {
   }
 
   const url = 'https://api.anthropic.com/api/oauth/usage';
-  const headers = oauthHeaders(credentials.claudeAiOauth.accessToken);
-
-  const res = await fetch(url, { headers });
+  const res = await oauthGet(url, credentials.claudeAiOauth.accessToken);
   if (res.status === 403) {
     throw new Error('OAuth token invalid (403). Please run any command in Claude CLI to refresh.');
   }
@@ -386,9 +403,7 @@ export async function fetchLiveProfile(): Promise<any> {
     throw new Error('OAuth token expired');
   }
 
-  const res = await fetch('https://api.anthropic.com/api/oauth/profile', {
-    headers: oauthHeaders(accessToken),
-  });
+  const res = await oauthGet('https://api.anthropic.com/api/oauth/profile', accessToken);
   if (!res.ok) {
     throw new Error(`Failed to fetch profile from Anthropic API: ${res.status} ${res.statusText}`);
   }
