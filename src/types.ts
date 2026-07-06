@@ -202,7 +202,34 @@ export interface LiveUsageData {
   seven_day_sonnet?: LiveLimitInfo | null;
   seven_day_cowork?: LiveLimitInfo | null;
   seven_day_omelette?: LiveLimitInfo | null;
+  limits?: LiveLimit[] | null;
   error?: string;
+}
+
+// "What's contributing to your limits usage?" — cost-weighted Day/Week breakdown.
+export interface ContribBehavior {
+  key: 'long_context' | 'subagent_heavy' | 'high_parallel' | 'cron';
+  headline: string;
+  body: string;
+  pct: number;
+}
+export interface ContribRow {
+  name: string;
+  pct: number;
+}
+export interface ContribWindow {
+  totalCost: number;
+  requestCount: number;
+  sessionCount: number;
+  behaviors: ContribBehavior[];
+  subagents: ContribRow[];
+  mcpServers: ContribRow[];
+  skills: ContribRow[];
+  plugins: ContribRow[];
+}
+export interface ContributorsData {
+  day: ContribWindow;
+  week: ContribWindow;
 }
 
 export interface HeatmapData {

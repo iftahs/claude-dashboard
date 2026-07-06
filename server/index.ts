@@ -14,6 +14,7 @@ import {
   buildErrors, buildRetries, buildLanguages, buildBranches, buildMcp,
   buildComplexity, buildYield, buildRejections, buildSubagentStats, buildFileChurn, scopeInsights,
 } from './insights.ts';
+import { buildContributors } from './contributors.ts';
 import { getCommandUsage } from './history.ts';
 import { getWorkspaceTasks, getInventory } from './workspace.ts';
 import { getLiveSubagents } from './subagents-live.ts';
@@ -346,6 +347,26 @@ app.get('/api/usage/models', async (req, res) => {
     const source = parseSource(req.query.source);
     const data = memoBuilder('models', [days, source], eventsFingerprint(), () =>
       buildModels(filterSource(events, source), computedAt, days),
+    );
+    res.json(wrap(data, computedAt));
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+// "What's contributing to your limits usage?" — cost-weighted Day/Week breakdown,
+// replicating the Claude CLI panel. Joins priced events (cost/context) with insights
+// (session duration + subagent type). Both windows are returned in one payload.
+app.get('/api/usage/contributors', async (req, res) => {
+  try {
+    const { events, computedAt } = await getEvents();
+    const { insights } = await getInsights();
+    const source = parseSource(req.query.source);
+    const data = memoBuilder(
+      'contributors',
+      [source, insightsFingerprint()],
+      eventsFingerprint(),
+      () => buildContributors(filterSource(events, source), scopeInsights(insights, source), computedAt),
     );
     res.json(wrap(data, computedAt));
   } catch (e) {

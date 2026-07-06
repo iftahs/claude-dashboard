@@ -17,6 +17,8 @@ export interface UsageEvent {
   cacheCreateTokens: number;
   cacheReadTokens: number;
   tools: string[]; // tool_use names invoked in this assistant message
+  skills: string[]; // Skill tool_use names invoked in this message (for cost attribution)
+  isSidechain: boolean; // true when this message is a subagent (Task) sub-response
   projectPath: string; // decoded path of the project directory
   gitBranch: string; // git branch at the time of the message ('' if unknown)
   source: UsageSource; // 'code' = Claude Code CLI, 'cowork' = desktop local-agent mode
@@ -155,6 +157,9 @@ async function parseFile(
       }
     }
   } catch { /* keep empty */ }
+  // A file under a `subagents/` segment is a subagent (Task) transcript — mirrors
+  // insights-scan's isSubagentFile(). Used to attribute cost to subagent usage.
+  const fileIsSidechain = /(^|[\\/])subagents([\\/])/.test(file);
   const rl = createInterface({
     input: createReadStream(file, { encoding: 'utf8' }),
     crlfDelay: Infinity,
@@ -177,10 +182,18 @@ async function parseFile(
     if (Number.isNaN(ts)) continue;
 
     const tools: string[] = [];
+    const skills: string[] = [];
     const content = obj.message?.content;
     if (Array.isArray(content)) {
       for (const block of content) {
-        if (block?.type === 'tool_use' && typeof block.name === 'string') tools.push(block.name);
+        if (block?.type === 'tool_use' && typeof block.name === 'string') {
+          tools.push(block.name);
+          // A Skill invocation names the skill in its input — capture for attribution.
+          if (block.name === 'Skill') {
+            const s = block.input?.skill ?? block.input?.command ?? block.input?.name;
+            if (typeof s === 'string' && s) skills.push(s);
+          }
+        }
       }
     }
 
@@ -199,6 +212,8 @@ async function parseFile(
       cacheCreateTokens: num(usage.cache_creation_input_tokens),
       cacheReadTokens: num(usage.cache_read_input_tokens),
       tools,
+      skills,
+      isSidechain: fileIsSidechain || obj.isSidechain === true,
       projectPath: resolvedProjectPath,
       gitBranch,
       source,
