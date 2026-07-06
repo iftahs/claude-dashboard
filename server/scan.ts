@@ -17,8 +17,14 @@ export interface UsageEvent {
   cacheCreateTokens: number;
   cacheReadTokens: number;
   tools: string[]; // tool_use names invoked in this assistant message
-  skills: string[]; // Skill tool_use names invoked in this message (for cost attribution)
   isSidechain: boolean; // true when this message is a subagent (Task) sub-response
+  rootSessionId: string; // top-level session — for subagents, the parent that spawned them
+  // Per-request attribution written by the CLI itself (same tags Claude's usage
+  // view reads) — '' when absent. These make our breakdown match Claude exactly.
+  attributionAgent: string; // subagent type this request ran under
+  attributionSkill: string; // skill this request ran under
+  attributionMcpServer: string; // MCP server whose results sit in this request's context
+  attributionPlugin: string; // plugin this request ran under
   projectPath: string; // decoded path of the project directory
   gitBranch: string; // git branch at the time of the message ('' if unknown)
   source: UsageSource; // 'code' = Claude Code CLI, 'cowork' = desktop local-agent mode
@@ -160,6 +166,9 @@ async function parseFile(
   // A file under a `subagents/` segment is a subagent (Task) transcript — mirrors
   // insights-scan's isSubagentFile(). Used to attribute cost to subagent usage.
   const fileIsSidechain = /(^|[\\/])subagents([\\/])/.test(file);
+  // The parent that spawned these subagents is the path segment before `subagents/`
+  // (…/<parentSessionId>/subagents/…) — lets us roll subagent cost up to its session.
+  const parentFromPath = file.replace(/\\/g, '/').match(/\/([^/]+)\/subagents\//)?.[1] ?? '';
   const rl = createInterface({
     input: createReadStream(file, { encoding: 'utf8' }),
     crlfDelay: Infinity,
@@ -182,20 +191,14 @@ async function parseFile(
     if (Number.isNaN(ts)) continue;
 
     const tools: string[] = [];
-    const skills: string[] = [];
     const content = obj.message?.content;
     if (Array.isArray(content)) {
       for (const block of content) {
-        if (block?.type === 'tool_use' && typeof block.name === 'string') {
-          tools.push(block.name);
-          // A Skill invocation names the skill in its input — capture for attribution.
-          if (block.name === 'Skill') {
-            const s = block.input?.skill ?? block.input?.command ?? block.input?.name;
-            if (typeof s === 'string' && s) skills.push(s);
-          }
-        }
+        if (block?.type === 'tool_use' && typeof block.name === 'string') tools.push(block.name);
       }
     }
+
+    const attrStr = (v: unknown): string => (typeof v === 'string' ? v : '');
 
     const sessionId = obj.sessionId ?? obj.session_id ?? '';
     const resolvedProjectPath = (source === 'code' && sessionPathMap && sessionId)
@@ -212,8 +215,12 @@ async function parseFile(
       cacheCreateTokens: num(usage.cache_creation_input_tokens),
       cacheReadTokens: num(usage.cache_read_input_tokens),
       tools,
-      skills,
       isSidechain: fileIsSidechain || obj.isSidechain === true,
+      rootSessionId: (fileIsSidechain && parentFromPath) ? parentFromPath : sessionId,
+      attributionAgent: attrStr(obj.attributionAgent),
+      attributionSkill: attrStr(obj.attributionSkill),
+      attributionMcpServer: attrStr(obj.attributionMcpServer),
+      attributionPlugin: attrStr(obj.attributionPlugin),
       projectPath: resolvedProjectPath,
       gitBranch,
       source,
