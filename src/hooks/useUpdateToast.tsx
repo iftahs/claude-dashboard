@@ -96,7 +96,7 @@ export function useUpdateToast(data: VersionInfo | null | undefined) {
         content: (
           <>
             <p>Running in Docker — pull latest and rebuild:</p>
-            <CodeBlock lines={['git pull', 'npm run docker:up']} />
+            <CodeBlock lines={['git checkout main', 'git pull', 'npm run docker:up']} />
             <ChangelogLink url={data.changelogUrl} />
           </>
         ),
@@ -119,7 +119,7 @@ export function useUpdateToast(data: VersionInfo | null | undefined) {
         content: (
           <>
             <p>Run it manually:</p>
-            <CodeBlock lines={['git pull', 'npm install']} />
+            <CodeBlock lines={['git checkout main', 'git pull', 'npm install']} />
             <ChangelogLink url={data.changelogUrl} />
           </>
         ),
