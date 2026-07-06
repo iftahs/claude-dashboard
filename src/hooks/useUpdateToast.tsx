@@ -5,12 +5,32 @@ import type { VersionInfo } from '../types';
 const DISMISS_KEY = 'claude-dashboard-update-dismissed';
 type PullStatus = 'idle' | 'running' | 'done' | 'error';
 
-/** Monospace command block — renders shell commands so they read as code. */
+/** Monospace command block — renders shell commands so they read as code,
+ *  with a copy-to-clipboard button. */
 function CodeBlock({ lines }: { lines: string[] }) {
+  const [copied, setCopied] = useState(false);
+  const copy = () => {
+    navigator.clipboard
+      ?.writeText(lines.join('\n'))
+      .then(() => {
+        setCopied(true);
+        setTimeout(() => setCopied(false), 1500);
+      })
+      .catch(() => {});
+  };
   return (
-    <pre className="mt-1.5 overflow-x-auto rounded-md bg-black/40 px-2.5 py-1.5 font-mono text-[11px] leading-relaxed text-zinc-200 ring-1 ring-white/10">
-      <code>{lines.join('\n')}</code>
-    </pre>
+    <div className="relative mt-1.5">
+      <pre className="overflow-x-auto rounded-md bg-black/40 py-1.5 pl-2.5 pr-12 font-mono text-[11px] leading-relaxed text-zinc-200 ring-1 ring-white/10">
+        <code>{lines.join('\n')}</code>
+      </pre>
+      <button
+        onClick={copy}
+        title="Copy to clipboard"
+        className="absolute right-1 top-1 rounded px-1.5 py-0.5 text-[10px] font-semibold text-zinc-400 ring-1 ring-white/10 transition-colors hover:bg-white/10 hover:text-zinc-200"
+      >
+        {copied ? 'Copied ✓' : 'Copy'}
+      </button>
+    </div>
   );
 }
 
