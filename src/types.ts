@@ -178,6 +178,22 @@ export interface LiveLimitInfo {
   resets_at: string;
 }
 
+/**
+ * One entry in Anthropic's newer `limits` array — the model-scoped source that
+ * replaced the top-level `seven_day_<model>` keys. `kind` is 'session' |
+ * 'weekly_all' | 'weekly_scoped'; scoped weekly windows (e.g. Fable) carry the
+ * model in `scope.model.display_name`.
+ */
+export interface LiveLimit {
+  kind: string;
+  group: string; // 'session' | 'weekly'
+  percent: number;
+  severity: string;
+  resets_at: string | null;
+  scope: { model?: { id: string | null; display_name: string | null } | null; surface?: string | null } | null;
+  is_active: boolean;
+}
+
 export interface LiveUsageData {
   five_hour: LiveLimitInfo;
   seven_day: LiveLimitInfo;
@@ -186,7 +202,34 @@ export interface LiveUsageData {
   seven_day_sonnet?: LiveLimitInfo | null;
   seven_day_cowork?: LiveLimitInfo | null;
   seven_day_omelette?: LiveLimitInfo | null;
+  limits?: LiveLimit[] | null;
   error?: string;
+}
+
+// "What's contributing to your limits usage?" — cost-weighted Day/Week breakdown.
+export interface ContribBehavior {
+  key: 'long_context' | 'subagent_heavy' | 'high_parallel' | 'cron';
+  headline: string;
+  body: string;
+  pct: number;
+}
+export interface ContribRow {
+  name: string;
+  pct: number;
+}
+export interface ContribWindow {
+  totalCost: number;
+  requestCount: number;
+  sessionCount: number;
+  behaviors: ContribBehavior[];
+  subagents: ContribRow[];
+  mcpServers: ContribRow[];
+  skills: ContribRow[];
+  plugins: ContribRow[];
+}
+export interface ContributorsData {
+  day: ContribWindow;
+  week: ContribWindow;
 }
 
 export interface HeatmapData {

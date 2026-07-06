@@ -4,6 +4,8 @@ import { homedir, platform } from 'node:os';
 import { join } from 'node:path';
 import { createInterface } from 'node:readline';
 
+const CLAUDE_CODE_UA = 'claude-code/2.1.199'; // keep roughly in step with the CLI
+
 export type UsageSource = 'code' | 'cowork';
 
 export interface UsageEvent {
@@ -15,6 +17,8 @@ export interface UsageEvent {
   cacheCreateTokens: number;
   cacheReadTokens: number;
   tools: string[]; // tool_use names invoked in this assistant message
+  skills: string[]; // Skill tool_use names invoked in this message (for cost attribution)
+  isSidechain: boolean; // true when this message is a subagent (Task) sub-response
   projectPath: string; // decoded path of the project directory
   gitBranch: string; // git branch at the time of the message ('' if unknown)
   source: UsageSource; // 'code' = Claude Code CLI, 'cowork' = desktop local-agent mode
@@ -153,6 +157,9 @@ async function parseFile(
       }
     }
   } catch { /* keep empty */ }
+  // A file under a `subagents/` segment is a subagent (Task) transcript — mirrors
+  // insights-scan's isSubagentFile(). Used to attribute cost to subagent usage.
+  const fileIsSidechain = /(^|[\\/])subagents([\\/])/.test(file);
   const rl = createInterface({
     input: createReadStream(file, { encoding: 'utf8' }),
     crlfDelay: Infinity,
@@ -175,10 +182,18 @@ async function parseFile(
     if (Number.isNaN(ts)) continue;
 
     const tools: string[] = [];
+    const skills: string[] = [];
     const content = obj.message?.content;
     if (Array.isArray(content)) {
       for (const block of content) {
-        if (block?.type === 'tool_use' && typeof block.name === 'string') tools.push(block.name);
+        if (block?.type === 'tool_use' && typeof block.name === 'string') {
+          tools.push(block.name);
+          // A Skill invocation names the skill in its input — capture for attribution.
+          if (block.name === 'Skill') {
+            const s = block.input?.skill ?? block.input?.command ?? block.input?.name;
+            if (typeof s === 'string' && s) skills.push(s);
+          }
+        }
       }
     }
 
@@ -197,6 +212,8 @@ async function parseFile(
       cacheCreateTokens: num(usage.cache_creation_input_tokens),
       cacheReadTokens: num(usage.cache_read_input_tokens),
       tools,
+      skills,
+      isSidechain: fileIsSidechain || obj.isSidechain === true,
       projectPath: resolvedProjectPath,
       gitBranch,
       source,
@@ -325,9 +342,26 @@ export function oauthHeaders(accessToken: string): Record<string, string> {
   return {
     'Authorization': `Bearer ${accessToken}`,
     'anthropic-beta': 'oauth-2025-04-20',
-    'User-Agent': 'claude-code/2.1.162',
+    'User-Agent': CLAUDE_CODE_UA,
     'Accept': 'application/json',
   };
+}
+
+/**
+ * GET an Anthropic OAuth endpoint, retrying transient 5xx with short backoff.
+ * 4xx (incl. 403 / 429) return immediately — retrying auth failures or rate
+ * limits only makes things worse.
+ */
+async function oauthGet(url: string, accessToken: string): Promise<Response> {
+  const headers = oauthHeaders(accessToken);
+  const backoffs = [250, 750]; // ms → 3 attempts total
+  let res = await fetch(url, { headers });
+  for (const wait of backoffs) {
+    if (res.status < 500) return res;
+    await new Promise((r) => setTimeout(r, wait));
+    res = await fetch(url, { headers });
+  }
+  return res;
 }
 
 export async function fetchLiveUsage(): Promise<any> {
@@ -346,9 +380,7 @@ export async function fetchLiveUsage(): Promise<any> {
   }
 
   const url = 'https://api.anthropic.com/api/oauth/usage';
-  const headers = oauthHeaders(credentials.claudeAiOauth.accessToken);
-
-  const res = await fetch(url, { headers });
+  const res = await oauthGet(url, credentials.claudeAiOauth.accessToken);
   if (res.status === 403) {
     throw new Error('OAuth token invalid (403). Please run any command in Claude CLI to refresh.');
   }
@@ -386,9 +418,7 @@ export async function fetchLiveProfile(): Promise<any> {
     throw new Error('OAuth token expired');
   }
 
-  const res = await fetch('https://api.anthropic.com/api/oauth/profile', {
-    headers: oauthHeaders(accessToken),
-  });
+  const res = await oauthGet('https://api.anthropic.com/api/oauth/profile', accessToken);
   if (!res.ok) {
     throw new Error(`Failed to fetch profile from Anthropic API: ${res.status} ${res.statusText}`);
   }

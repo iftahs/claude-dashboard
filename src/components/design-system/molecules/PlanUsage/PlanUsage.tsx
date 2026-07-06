@@ -11,6 +11,16 @@ const WEEK_MS = 7 * 24 * 3600_000;
 const DEFAULT_BLOCK_LIMIT = 6000000; // 6.0M effective tokens
 const DEFAULT_WEEKLY_LIMIT = 35000000; // 35M effective tokens
 
+// Per-model weekly bar (normalized across the new limits[] array and legacy keys).
+type WeeklyModelBar = { label: string; pct: number; resetsAt: string | null; color: string };
+const MODEL_COLORS: Record<string, string> = {
+  Opus: '#a78bfa',
+  Sonnet: '#10b981',
+  Haiku: '#f472b6',
+  Fable: '#f59e0b',
+};
+const DEFAULT_MODEL_COLOR = '#22d3ee';
+
 export function PlanUsage({ block, weekly, liveUsage, weekStart, tier }: PlanUsageProps) {
   const [, forceUpdate] = useState(0);
 
@@ -61,14 +71,31 @@ export function PlanUsage({ block, weekly, liveUsage, weekStart, tier }: PlanUsa
     ? null
     : buildWeeklyForecast({ pct: weeklyPctRaw, windowStart: weeklyWindowStart, resetsAt: weeklyResetsAt, now });
 
-  // Model-specific weekly limits — only present on some plans (e.g. Max exposes a Sonnet cap).
-  const modelLimits = hasLive
-    ? ([
-        { label: 'Weekly · Sonnet', info: liveUsage.seven_day_sonnet, color: '#10b981' },
-        { label: 'Weekly · Opus', info: liveUsage.seven_day_opus, color: '#a78bfa' },
-        { label: 'Weekly · Cowork', info: liveUsage.seven_day_cowork, color: '#22d3ee' },
-      ] as const).filter((l) => l.info != null)
+  // Model-specific weekly limits — only present on some plans (e.g. Max exposes a
+  // Sonnet/Opus cap; newer accounts expose Fable). Anthropic's current API delivers
+  // these as `limits[]` entries with kind 'weekly_scoped' (the top-level
+  // seven_day_<model> keys are being phased out → all null). Prefer the array;
+  // fall back to the legacy keys for older responses.
+  const scopedFromLimits: WeeklyModelBar[] = hasLive
+    ? (liveUsage.limits ?? [])
+        .filter((l) => l.group === 'weekly' && l.kind === 'weekly_scoped' && l.scope?.model?.display_name)
+        .map((l) => {
+          const name = l.scope!.model!.display_name!;
+          return { label: `Weekly · ${name}`, pct: Math.round(l.percent), resetsAt: l.resets_at, color: MODEL_COLORS[name] ?? DEFAULT_MODEL_COLOR };
+        })
     : [];
+
+  const legacyModelLimits: WeeklyModelBar[] = hasLive
+    ? ([
+        { label: 'Weekly · Sonnet', info: liveUsage.seven_day_sonnet, color: MODEL_COLORS.Sonnet },
+        { label: 'Weekly · Opus', info: liveUsage.seven_day_opus, color: MODEL_COLORS.Opus },
+        { label: 'Weekly · Cowork', info: liveUsage.seven_day_cowork, color: DEFAULT_MODEL_COLOR },
+      ] as const)
+        .filter((l) => l.info != null)
+        .map((l) => ({ label: l.label, pct: Math.round(l.info!.utilization), resetsAt: l.info!.resets_at, color: l.color }))
+    : [];
+
+  const modelLimits: WeeklyModelBar[] = scopedFromLimits.length ? scopedFromLimits : legacyModelLimits;
 
   const tierLabel = tier ? tier.replace(/_/g, ' ').toUpperCase() : null;
 
@@ -118,12 +145,11 @@ export function PlanUsage({ block, weekly, liveUsage, weekStart, tier }: PlanUsa
         </div>
 
         {/* Per-model weekly limits (shown only when the live API reports them) */}
-        {modelLimits.map(({ label, info, color }) => {
-          const pct = Math.round(info!.utilization);
-          const resetsAt = Date.parse(info!.resets_at);
-          const resetStr = info!.resets_at == null
+        {modelLimits.map(({ label, pct, resetsAt, color }) => {
+          const parsed = resetsAt ? Date.parse(resetsAt) : NaN;
+          const resetStr = resetsAt == null
             ? 'on next msg'
-            : formatRemainingDays(Math.max(0, (isNaN(resetsAt) ? now : resetsAt) - now));
+            : formatRemainingDays(Math.max(0, (isNaN(parsed) ? now : parsed) - now));
           return (
             <div key={label} className="space-y-1.5">
               <div className="flex justify-between items-center text-xs">

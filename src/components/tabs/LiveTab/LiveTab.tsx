@@ -2,6 +2,7 @@ import { BlockGauge } from '@/components/design-system/organisms/BlockGauge/Bloc
 import { UsageBarChart } from '@/components/design-system/organisms/UsageBarChart/UsageBarChart';
 import { Section } from '@/components/design-system/molecules/Section/Section';
 import { PlanUsage } from '@/components/design-system/molecules/PlanUsage/PlanUsage';
+import { LimitsContributors } from '@/components/design-system/organisms/LimitsContributors/LimitsContributors';
 import { SpendingLimits } from '@/components/design-system/molecules/SpendingLimits/SpendingLimits';
 import { GaugeSkeleton, ChartSkeleton } from '@/components/design-system/atoms/Skeleton/Skeleton';
 import { hourLabel } from '@/lib/format';
@@ -89,6 +90,9 @@ export function LiveTab({ limits }: LiveTabProps) {
           tier={configData.subscriptionType ?? configData.rateLimitTier ?? null}
         />
       )}
+
+      {/* What's contributing to your limits usage? — cost-weighted Day/Week breakdown. */}
+      {configData && !isApi && <LimitsContributors />}
 
       {/* Spend vs caps — always shown in API mode (the cost IS the bill);
           in subscription mode only when the user has configured caps. */}

@@ -5,6 +5,21 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.14] - 2026-07-06
+
+### Added
+- Introduced a panel displaying limits usage breakdown on the Live tab.
+- Added per-model weekly bars in the Plan Usage view from the live limits API.
+
+### Changed
+- Enhanced UsageEvent with additional attribution data.
+- Improved contributor resolution logic for session cost calculations.
+- Derived per-model weekly bars utilizing the new limits structure.
+- Updated the method for handling non-OK responses from OAuth endpoints to provide accurate service outage messages.
+
+### Fixed
+- Addressed the handling of Anthropic 5xx outages for more reliable user messaging and retry logic.
+
 ## [0.1.13] - 2026-06-27
 
 ### Added
@@ -159,6 +174,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Live-API fallback to the local logs when there is no active block
   (`resets_at = null`).
 
+[0.1.14]: https://github.com/iftahs/claude-dashboard/releases/tag/v0.1.14
 [0.1.13]: https://github.com/iftahs/claude-dashboard/releases/tag/v0.1.13
 [0.1.12]: https://github.com/iftahs/claude-dashboard/releases/tag/v0.1.12
 [0.1.11]: https://github.com/iftahs/claude-dashboard/releases/tag/v0.1.11
