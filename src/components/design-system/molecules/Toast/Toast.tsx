@@ -19,11 +19,13 @@ export function Toast({ notification, onDismiss }: ToastProps) {
         <span className={`mt-0.5 shrink-0 ${s.iconColor}`}>{s.icon}</span>
         <div className="min-w-0 flex-1">
           <p className="font-semibold text-zinc-100">{notification.title}</p>
-          {notification.message && (
+          {notification.content ? (
+            <div className="mt-1 text-xs leading-relaxed text-zinc-400">{notification.content}</div>
+          ) : notification.message ? (
             <p className="mt-0.5 whitespace-pre-line text-xs leading-relaxed text-zinc-400">
               {notification.message}
             </p>
-          )}
+          ) : null}
           {notification.action && (
             <button
               onClick={notification.action.onClick}

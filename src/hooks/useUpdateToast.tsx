@@ -5,6 +5,30 @@ import type { VersionInfo } from '../types';
 const DISMISS_KEY = 'claude-dashboard-update-dismissed';
 type PullStatus = 'idle' | 'running' | 'done' | 'error';
 
+/** Monospace command block — renders shell commands so they read as code. */
+function CodeBlock({ lines }: { lines: string[] }) {
+  return (
+    <pre className="mt-1.5 overflow-x-auto rounded-md bg-black/40 px-2.5 py-1.5 font-mono text-[11px] leading-relaxed text-zinc-200 ring-1 ring-white/10">
+      <code>{lines.join('\n')}</code>
+    </pre>
+  );
+}
+
+/** Real clickable changelog link. */
+function ChangelogLink({ url }: { url?: string }) {
+  if (!url) return null;
+  return (
+    <a
+      href={url}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="mt-2 inline-block text-blue-400 underline underline-offset-2 hover:text-blue-300"
+    >
+      View changelog →
+    </a>
+  );
+}
+
 /**
  * Drives the "update available" toast (replaces the old inline UpdateBanner).
  * Keeps the dev-only self-update progress state and the per-version dismissal
@@ -49,7 +73,13 @@ export function useUpdateToast(data: VersionInfo | null | undefined) {
         id: 'update',
         severity: 'info',
         title: `Update available — v${data.current} → v${data.latest}`,
-        message: `Running in Docker — pull latest and rebuild:\ngit pull\nnpm run docker:up\n\nChangelog: ${data.changelogUrl}`,
+        content: (
+          <>
+            <p>Running in Docker — pull latest and rebuild:</p>
+            <CodeBlock lines={['git pull', 'npm run docker:up']} />
+            <ChangelogLink url={data.changelogUrl} />
+          </>
+        ),
         onDismiss,
       });
     } else if (pull === 'done') {
@@ -66,7 +96,13 @@ export function useUpdateToast(data: VersionInfo | null | undefined) {
         id: 'update',
         severity: 'warning',
         title: 'Auto-update failed',
-        message: `Run it manually:\ngit pull\nnpm install\n\nChangelog: ${data.changelogUrl}`,
+        content: (
+          <>
+            <p>Run it manually:</p>
+            <CodeBlock lines={['git pull', 'npm install']} />
+            <ChangelogLink url={data.changelogUrl} />
+          </>
+        ),
         onDismiss,
       });
     } else {
@@ -74,7 +110,7 @@ export function useUpdateToast(data: VersionInfo | null | undefined) {
         id: 'update',
         severity: 'info',
         title: `Update available — v${data.current} → v${data.latest}`,
-        message: `Changelog: ${data.changelogUrl}`,
+        content: <ChangelogLink url={data.changelogUrl} />,
         action: { label: pull === 'running' ? 'Updating…' : 'Update now', onClick: runUpdate },
         onDismiss,
       });
