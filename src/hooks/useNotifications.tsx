@@ -14,6 +14,8 @@ export interface AppNotification {
   severity: Severity;
   title: string;
   message?: string;
+  /** Rich body (code blocks, links). Rendered instead of `message` when set. */
+  content?: ReactNode;
   dismissible: boolean;
   action?: NotificationAction;
   /** Fired when the user dismisses via the × (in addition to removal). Lets a
@@ -27,6 +29,7 @@ export interface NotifyOptions {
   severity?: Severity;
   title: string;
   message?: string;
+  content?: ReactNode;
   dismissible?: boolean;
   action?: NotificationAction;
   onDismiss?: () => void;
@@ -65,6 +68,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
         severity: opts.severity ?? 'info',
         title: opts.title,
         message: opts.message,
+        content: opts.content,
         dismissible: opts.dismissible ?? true,
         action: opts.action,
         onDismiss: opts.onDismiss,

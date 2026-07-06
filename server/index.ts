@@ -360,13 +360,9 @@ app.get('/api/usage/models', async (req, res) => {
 app.get('/api/usage/contributors', async (req, res) => {
   try {
     const { events, computedAt } = await getEvents();
-    const { insights } = await getInsights();
     const source = parseSource(req.query.source);
-    const data = memoBuilder(
-      'contributors',
-      [source, insightsFingerprint()],
-      eventsFingerprint(),
-      () => buildContributors(filterSource(events, source), scopeInsights(insights, source), computedAt),
+    const data = memoBuilder('contributors', [source], eventsFingerprint(), () =>
+      buildContributors(filterSource(events, source), computedAt),
     );
     res.json(wrap(data, computedAt));
   } catch (e) {

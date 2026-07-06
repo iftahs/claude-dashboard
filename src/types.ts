@@ -208,7 +208,7 @@ export interface LiveUsageData {
 
 // "What's contributing to your limits usage?" — cost-weighted Day/Week breakdown.
 export interface ContribBehavior {
-  key: 'long_context' | 'subagent_heavy' | 'high_parallel' | 'cron';
+  key: string; // 'long_context' | 'subagent_heavy' | … | 'mcp:<server>' | 'skill:<name>'
   headline: string;
   body: string;
   pct: number;
