@@ -5,6 +5,15 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.15] - 2026-07-08
+
+### Fixed
+- Detect Claude Team subscriptions correctly, preventing incorrect fallback to API mode.
+- Add Keychain support for OAuth tokens on macOS, ensuring proper detection of Team/Enterprise accounts.
+- Introduce a synced cache file for Docker users to access Keychain data.
+- Classify organization types into subscription types 'team'/'enterprise' more accurately.
+- Display overage/credit-pool info from Anthropic in a new Live tab card.
+
 ## [0.1.14] - 2026-07-06
 
 ### Added
@@ -174,6 +183,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Live-API fallback to the local logs when there is no active block
   (`resets_at = null`).
 
+[0.1.15]: https://github.com/iftahs/claude-dashboard/releases/tag/v0.1.15
 [0.1.14]: https://github.com/iftahs/claude-dashboard/releases/tag/v0.1.14
 [0.1.13]: https://github.com/iftahs/claude-dashboard/releases/tag/v0.1.13
 [0.1.12]: https://github.com/iftahs/claude-dashboard/releases/tag/v0.1.12
