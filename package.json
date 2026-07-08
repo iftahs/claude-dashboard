@@ -21,6 +21,7 @@
     "build": "tsc -b && vite build",
     "preview": "vite preview",
     "//docker:up": "Rebuild image from current code and (re)start the container in the background. Run this after any code change.",
+    "predocker:up": "node scripts/sync-macos-keychain.mjs",
     "docker:up": "docker compose up -d --build",
     "//docker:down": "Stop and remove the running container.",
     "docker:down": "docker compose down",

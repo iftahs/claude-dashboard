@@ -134,6 +134,8 @@ export interface ClaudeConfig {
   autoUpdatesChannel?: string;
   subscriptionType?: string | null;
   rateLimitTier?: string | null;
+  seatTier?: string | null;
+  hasExtraUsageEnabled?: boolean;
   authMode?: 'api' | 'subscription';
   litellm?: { available: boolean; gatewayHost: string };
   enabledPlugins?: Record<string, boolean>;
@@ -194,6 +196,38 @@ export interface LiveLimit {
   is_active: boolean;
 }
 
+/** Org-level "extra usage" credits — billed at standard API rates once a seat's
+ *  included plan usage runs out (Team/Enterprise pre-purchased pool, or a
+ *  personal Pro/Max self-serve toggle). Null/absent on older API responses. */
+export interface LiveExtraUsage {
+  is_enabled: boolean;
+  monthly_limit: number | null;
+  used_credits: number | null;
+  utilization: number | null;
+  currency: string;
+  decimal_places: number;
+  disabled_reason: string | null;
+  daily: unknown | null;
+  weekly: unknown | null;
+}
+
+/** Current spend against the extra-usage pool, in minor currency units
+ *  (amount_minor / 10^exponent = actual amount). */
+export interface LiveSpend {
+  used: { amount_minor: number; currency: string; exponent: number };
+  limit: number | null;
+  percent: number;
+  severity: string;
+  enabled: boolean;
+  disabled_reason: string | null;
+  cap: number | null;
+  balance: number | null;
+  auto_reload: unknown | null;
+  disclaimer: string | null;
+  can_purchase_credits: boolean;
+  can_toggle: boolean;
+}
+
 export interface LiveUsageData {
   five_hour: LiveLimitInfo;
   seven_day: LiveLimitInfo;
@@ -203,6 +237,8 @@ export interface LiveUsageData {
   seven_day_cowork?: LiveLimitInfo | null;
   seven_day_omelette?: LiveLimitInfo | null;
   limits?: LiveLimit[] | null;
+  extra_usage?: LiveExtraUsage | null;
+  spend?: LiveSpend | null;
   error?: string;
 }
 
