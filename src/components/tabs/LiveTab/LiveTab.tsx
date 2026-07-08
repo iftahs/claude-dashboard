@@ -2,6 +2,7 @@ import { BlockGauge } from '@/components/design-system/organisms/BlockGauge/Bloc
 import { UsageBarChart } from '@/components/design-system/organisms/UsageBarChart/UsageBarChart';
 import { Section } from '@/components/design-system/molecules/Section/Section';
 import { PlanUsage } from '@/components/design-system/molecules/PlanUsage/PlanUsage';
+import { ExtraUsageCard } from '@/components/design-system/molecules/ExtraUsageCard/ExtraUsageCard';
 import { LimitsContributors } from '@/components/design-system/organisms/LimitsContributors/LimitsContributors';
 import { SpendingLimits } from '@/components/design-system/molecules/SpendingLimits/SpendingLimits';
 import { GaugeSkeleton, ChartSkeleton } from '@/components/design-system/atoms/Skeleton/Skeleton';
@@ -88,6 +89,15 @@ export function LiveTab({ limits }: LiveTabProps) {
           liveUsage={liveUsage.data}
           weekStart={weekStart}
           tier={configData.subscriptionType ?? configData.rateLimitTier ?? null}
+        />
+      )}
+
+      {/* Extra usage — Anthropic's "pay once you hit your plan limit" overage/credit pool. */}
+      {configData && !isApi && liveUsage.data?.extra_usage && (
+        <ExtraUsageCard
+          extraUsage={liveUsage.data.extra_usage}
+          spend={liveUsage.data.spend}
+          orgEnabled={configData.hasExtraUsageEnabled}
         />
       )}
 

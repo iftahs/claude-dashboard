@@ -78,6 +78,8 @@ app.get('/api/config', async (_req, res) => {
     // a plan change until the next login, whereas the profile endpoint is current.
     let subscriptionType: string | null = credentials?.claudeAiOauth?.subscriptionType ?? null;
     let rateLimitTier: string | null = credentials?.claudeAiOauth?.rateLimitTier ?? null;
+    let seatTier: string | null = null;
+    let hasExtraUsageEnabled = false;
 
     // Auth mode — a Claude.ai subscription stores an OAuth token under
     // `claudeAiOauth` (used for live usage/profile); API / pay-as-you-go users
@@ -95,10 +97,16 @@ app.get('/api/config', async (_req, res) => {
         subscriptionType = /20x/.test(tier) ? 'max_20x' : /5x/.test(tier) ? 'max_5x' : 'max';
       } else if (account.has_claude_pro) {
         subscriptionType = 'pro';
+      } else if (/team/i.test(String(org.organization_type))) {
+        subscriptionType = 'team';
+      } else if (/enterprise/i.test(String(org.organization_type))) {
+        subscriptionType = 'enterprise';
       } else if (account.uuid) {
         subscriptionType = 'free';
       }
       if (org.rate_limit_tier) rateLimitTier = org.rate_limit_tier;
+      seatTier = org.seat_tier ?? null;
+      hasExtraUsageEnabled = !!org.has_extra_usage_enabled;
     } catch {
       // Offline or expired token — keep the values read from the local file.
     }
@@ -106,7 +114,7 @@ app.get('/api/config', async (_req, res) => {
     // LiteLLM gateway detection (pure env read) — gates the "Actual billed" cost UI.
     const litellm = detectLitellm();
 
-    const merged = { ...config, subscriptionType, rateLimitTier, authMode, litellm };
+    const merged = { ...config, subscriptionType, rateLimitTier, seatTier, hasExtraUsageEnabled, authMode, litellm };
     res.json(wrap(merged, Date.now()));
   } catch (e) {
     res.status(500).json({ error: String(e) });

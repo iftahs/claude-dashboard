@@ -3,6 +3,10 @@ import { readdir, stat, readFile } from 'node:fs/promises';
 import { homedir, platform } from 'node:os';
 import { join } from 'node:path';
 import { createInterface } from 'node:readline';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
+
+const execFileAsync = promisify(execFile);
 
 const CLAUDE_CODE_UA = 'claude-code/2.1.199'; // keep roughly in step with the CLI
 
@@ -281,15 +285,60 @@ export async function readConfig(): Promise<any> {
   }
 }
 
+/**
+ * On macOS, Claude Code keeps the real OAuth token in the Keychain (service
+ * "Claude Code-credentials") rather than in `.credentials.json` — the on-disk
+ * file may only hold unrelated `mcpOAuth` entries. Used as a fallback when the
+ * file has no `claudeAiOauth` block. Only reachable when running directly on
+ * the host (e.g. `npm run dev`) — a Docker container can't reach the host
+ * Keychain, which is what `.dashboard-oauth-cache.json` below is for.
+ */
+async function readKeychainCredentials(): Promise<any> {
+  try {
+    const { stdout } = await execFileAsync('security', [
+      'find-generic-password', '-s', 'Claude Code-credentials', '-w',
+    ]);
+    return JSON.parse(stdout);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * `scripts/sync-macos-keychain.mjs` (run on the host before `docker compose
+ * up`) copies the Keychain's `claudeAiOauth` block here, inside `~/.claude` —
+ * which Docker already bind-mounts read-only — so the container can see it
+ * too.
+ */
+async function readCachedKeychainCredentials(): Promise<any> {
+  try {
+    const filePath = join(claudeDir(), '.dashboard-oauth-cache.json');
+    const content = await readFile(filePath, 'utf8');
+    return JSON.parse(content);
+  } catch {
+    return null;
+  }
+}
+
 export async function readCredentials(): Promise<any> {
+  let fileCredentials: any = null;
   try {
     const filePath = join(claudeDir(), '.credentials.json');
     const content = await readFile(filePath, 'utf8');
-    return JSON.parse(content);
+    fileCredentials = JSON.parse(content);
   } catch (e) {
     console.error('[server] failed to read .credentials.json:', e);
-    return null;
   }
+
+  if (fileCredentials?.claudeAiOauth?.accessToken) return fileCredentials;
+
+  const cachedCredentials = await readCachedKeychainCredentials();
+  if (cachedCredentials?.claudeAiOauth?.accessToken) return cachedCredentials;
+
+  if (platform() !== 'darwin') return fileCredentials;
+
+  const keychainCredentials = await readKeychainCredentials();
+  return keychainCredentials?.claudeAiOauth ? keychainCredentials : fileCredentials;
 }
 
 export async function readStatsSummary(): Promise<any> {
