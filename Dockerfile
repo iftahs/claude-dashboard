@@ -30,6 +30,7 @@ RUN npm ci --omit=dev && npm install tsx@^4 && npm cache clean --force
 
 # App code + built frontend.
 COPY server ./server
+COPY scripts/seed-cli-credentials.mjs ./scripts/seed-cli-credentials.mjs
 COPY tsconfig.json ./
 COPY --from=build /app/dist ./dist
 
@@ -52,9 +53,6 @@ EXPOSE 8787
 # mount (the CLI refreshes tokens / writes logs, so it can't use the :ro mount),
 # then start the server. Without the CLI this is a no-op.
 CMD if command -v claude >/dev/null 2>&1 && [ -n "$CLAUDE_CONFIG_DIR" ]; then \
-      mkdir -p "$CLAUDE_CONFIG_DIR"; \
-      [ -f /data/.claude/.credentials.json ] && cp -f /data/.claude/.credentials.json "$CLAUDE_CONFIG_DIR/.credentials.json" || true; \
-      [ -f /data/.claude/settings.json ] && cp -f /data/.claude/settings.json "$CLAUDE_CONFIG_DIR/settings.json" || true; \
-      [ -f "$CLAUDE_CONFIG_DIR/.claude.json" ] || echo '{"hasCompletedOnboarding":true}' > "$CLAUDE_CONFIG_DIR/.claude.json"; \
+      node scripts/seed-cli-credentials.mjs; \
     fi; \
     exec npx tsx server/index.ts
