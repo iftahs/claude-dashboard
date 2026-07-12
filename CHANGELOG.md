@@ -5,6 +5,14 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.17] - 2026-07-12
+
+### Fixed
+- Auto-refreshes macOS Keychain OAuth token to prevent live usage from expiring.
+- Introduces a token-sync agent for automatic Keychain synchronization every 15 minutes.
+- Improves credential reading logic to prefer the latest expiration date for OAuth tokens.
+- Classifies upstream 401 errors as expired tokens for clearer error messaging.
+
 ## [Unreleased]
 
 ### Fixed
@@ -202,6 +210,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Live-API fallback to the local logs when there is no active block
   (`resets_at = null`).
 
+[0.1.17]: https://github.com/iftahs/claude-dashboard/releases/tag/v0.1.17
 [0.1.16]: https://github.com/iftahs/claude-dashboard/releases/tag/v0.1.16
 [0.1.15]: https://github.com/iftahs/claude-dashboard/releases/tag/v0.1.15
 [0.1.14]: https://github.com/iftahs/claude-dashboard/releases/tag/v0.1.14
