@@ -72,7 +72,8 @@ export function useDashboardNotifications(activeTab: string, limits: Limits) {
         : upstream ? 'Claude.ai service unavailable'
         : 'Claude.ai connection offline',
       message: expired
-        ? 'Token needs a refresh — run `claude` in your terminal and it refreshes automatically.'
+        // The server's message is runtime-aware (host vs Docker) — relay it.
+        ? err
         : upstream
         ? `Anthropic's usage service is temporarily unavailable (${err.match(/5\d\d/)?.[0] ?? '5xx'}). It's on their side — the dashboard keeps retrying and this clears on its own.`
         : `${err} — try running \`claude\` in a terminal.`,

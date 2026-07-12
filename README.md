@@ -138,6 +138,17 @@ Want the dashboard always available without running `npm` each time? Run it as a
 
 The container uses `restart: unless-stopped`, so it comes back automatically after a crash or reboot (as long as Docker Desktop is set to start on login). Stop it with `docker compose down`. To change the host port, edit the `ports` mapping in `docker-compose.yml` (e.g. `"9000:8787"`).
 
+### macOS: keeping the OAuth token fresh
+
+On macOS, Claude Code stores its OAuth token in the **Keychain**, which a Docker container can't reach. `npm run docker:up` therefore copies the token into `~/.claude/.dashboard-oauth-cache.json` (read by the container) *and* installs a small launchd agent (`com.claude-dashboard.token-sync`) that re-syncs it every 15 minutes — otherwise the snapshot's access token expires within hours and the Live tab degrades to "OAuth token expired". The running container picks up the refreshed file automatically; no rebuild or restart needed.
+
+- `npm run token-sync:status` — check the agent + cached-token health
+- `npm run token-sync` — one-shot manual sync
+- `npm run token-sync:uninstall` — remove the agent (the Live tab will then show "OAuth token expired" a few hours after each `docker:up`)
+- Log: `~/Library/Logs/claude-dashboard/token-sync.log`
+
+The agent bakes in the absolute paths of your `node` binary and this repo, so re-run `npm run token-sync:install` (or just `npm run docker:up`, which self-heals it) after upgrading/removing that Node version or moving the repo. If you have several checkouts, the last one to install wins — harmless, they all write the same cache file. **Linux/Windows are unaffected**: there Claude Code keeps `~/.claude/.credentials.json` fresh itself and the container reads it directly.
+
 ## Changing the Claude data folder
 
 By default the backend reads from your home directory:

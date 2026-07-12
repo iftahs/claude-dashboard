@@ -5,6 +5,16 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+- Docker on macOS no longer degrades to "OAuth token expired" a few hours after `docker:up`: a new token-sync LaunchAgent (auto-installed by `npm run docker:up`, managed via `npm run token-sync:install|status|uninstall`) re-copies the Keychain OAuth token into the cache file the container reads every 15 minutes — the running container heals without a rebuild.
+- Prefer the credential source (`.credentials.json` vs `.dashboard-oauth-cache.json`) with the latest `expiresAt`, so a stale file can no longer shadow a freshly synced token.
+- Classify upstream `401` responses as "token expired" (previously shown as a generic connection error), and make the expired-token message runtime-aware (Docker vs host) in both the API and the toast.
+
+### Added
+- `npm run token-sync` one-shot Keychain → cache sync, plus `token-sync:install` / `token-sync:status` / `token-sync:uninstall` for the LaunchAgent; sync log at `~/Library/Logs/claude-dashboard/token-sync.log`. The sync script now writes atomically (0600) and skips no-op/regressive writes.
+
 ## [0.1.16] - 2026-07-09
 
 ### Fixed
