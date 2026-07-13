@@ -26,7 +26,10 @@ function usageTone(pct: number): SidebarBadgeTone {
  * atom — no inline pill markup.
  */
 export function useSidebarTabs(tabs: TabDef[]): SidebarTab[] {
-  const { runningAgentCount, liveWorkflowCount, fiveHourPct } = useLiveMetrics();
+  const {
+    runningAgentCount, liveWorkflowCount, fiveHourPct,
+    autoResumeArmed, autoResumeWaiting, autoResumeExecutorMissing,
+  } = useLiveMetrics();
   const { waiting: waitingAgentCount } = useAgentTraffic();
 
   return useMemo(
@@ -73,6 +76,40 @@ export function useSidebarTabs(tabs: TabDef[]): SidebarTab[] {
             ),
           };
         }
+        if (t.id === 'autoresume') {
+          // Waiting resumes → clay count; armed-but-can't-execute → red !; armed → green on.
+          if (autoResumeWaiting > 0) {
+            return {
+              ...t,
+              badge: (
+                <SidebarBadge
+                  tone="clay"
+                  pulse
+                  label={autoResumeWaiting}
+                  title={`${plural(autoResumeWaiting, 'session')} waiting to auto-resume`}
+                />
+              ),
+            };
+          }
+          if (autoResumeExecutorMissing) {
+            return {
+              ...t,
+              badge: (
+                <SidebarBadge
+                  tone="danger"
+                  label="!"
+                  title="Auto-resume is armed but nothing can execute it — start the host watcher"
+                />
+              ),
+            };
+          }
+          if (autoResumeArmed) {
+            return {
+              ...t,
+              badge: <SidebarBadge tone="success" label="on" title="Auto-resume is armed" />,
+            };
+          }
+        }
         if (t.id === 'workflows' && liveWorkflowCount > 0) {
           return {
             ...t,
@@ -88,6 +125,6 @@ export function useSidebarTabs(tabs: TabDef[]): SidebarTab[] {
         }
         return { ...t };
       }),
-    [tabs, runningAgentCount, waitingAgentCount, liveWorkflowCount, fiveHourPct],
+    [tabs, runningAgentCount, waitingAgentCount, liveWorkflowCount, fiveHourPct, autoResumeArmed, autoResumeWaiting, autoResumeExecutorMissing],
   );
 }

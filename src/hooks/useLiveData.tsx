@@ -14,6 +14,7 @@ import type {
   WorkflowsData,
   WorkflowStats,
   VersionInfo,
+  AutoResumeState,
 } from '../types';
 
 const POLL = 5000;
@@ -34,6 +35,7 @@ interface LiveDataCtx {
   workflows: PollState<WorkflowsData>;
   workflowStats: PollState<WorkflowStats>;
   version: PollState<VersionInfo>;
+  autoResume: PollState<AutoResumeState>;
 }
 
 const LiveDataContext = createContext<LiveDataCtx | null>(null);
@@ -62,6 +64,9 @@ export function LiveDataProvider({ children }: { children: ReactNode }) {
   const workflows = usePolling<WorkflowsData>('/api/workflows', 4000);
   const workflowStats = usePolling<WorkflowStats>('/api/workflows/stats', 30000);
   const version = usePolling<VersionInfo>('/api/version', 1_800_000);
+  // 5s: drives the header pill + sidebar badge, which must track arm/disarm
+  // clicks promptly (the endpoint is in-memory — polling it is near-free).
+  const autoResume = usePolling<AutoResumeState>('/api/auto-resume/state', 5000);
 
   const value = useMemo<LiveDataCtx>(
     () => ({
@@ -78,8 +83,9 @@ export function LiveDataProvider({ children }: { children: ReactNode }) {
       workflows,
       workflowStats,
       version,
+      autoResume,
     }),
-    [recentHours, weekDays, recent, weekly, models, litellm, liveUsage, liveSubagents, workflows, workflowStats, version],
+    [recentHours, weekDays, recent, weekly, models, litellm, liveUsage, liveSubagents, workflows, workflowStats, version, autoResume],
   );
 
   return <LiveDataContext.Provider value={value}>{children}</LiveDataContext.Provider>;

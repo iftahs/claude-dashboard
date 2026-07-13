@@ -6,6 +6,12 @@ export interface LiveMetrics {
   liveWorkflowCount: number;
   /** Current 5-hour limit utilization (0–100), or null when unavailable. */
   fiveHourPct: number | null;
+  /** Auto-resume armed (once/always)? */
+  autoResumeArmed: boolean;
+  /** Sessions currently waiting for (or running) a scheduled resume. */
+  autoResumeWaiting: number;
+  /** Armed but nothing can execute the resumes (no watcher, no host CLI). */
+  autoResumeExecutorMissing: boolean;
 }
 
 /**
@@ -13,7 +19,7 @@ export interface LiveMetrics {
  * (visible from any tab) and the Agents header chips.
  */
 export function useLiveMetrics(): LiveMetrics {
-  const { liveSubagents, workflows, liveUsage } = useLiveData();
+  const { liveSubagents, workflows, liveUsage, autoResume } = useLiveData();
 
   const runningAgentCount =
     (liveSubagents.data?.running.length ?? 0) +
@@ -24,5 +30,17 @@ export function useLiveMetrics(): LiveMetrics {
       ? Math.round(liveUsage.data.five_hour.utilization)
       : null;
 
-  return { runningAgentCount, liveWorkflowCount, fiveHourPct };
+  const ar = autoResume.data;
+  const autoResumeArmed = ar?.armed ?? false;
+  const autoResumeWaiting = ar?.jobs.length ?? 0;
+  const autoResumeExecutorMissing = autoResumeArmed && !!ar && !ar.watcher.online && !ar.internalExecutor;
+
+  return {
+    runningAgentCount,
+    liveWorkflowCount,
+    fiveHourPct,
+    autoResumeArmed,
+    autoResumeWaiting,
+    autoResumeExecutorMissing,
+  };
 }

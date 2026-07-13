@@ -435,7 +435,9 @@ export async function fetchLiveUsage(): Promise<any> {
     throw new Error('OAuth token expired — run any Claude Code command in your terminal to refresh it automatically.');
   }
 
-  const url = 'https://api.anthropic.com/api/oauth/usage';
+  // OAUTH_API_BASE: test-only override so the auto-resume detection loop can be
+  // driven end-to-end by a local mock without exhausting a real limit.
+  const url = `${process.env.OAUTH_API_BASE || 'https://api.anthropic.com'}/api/oauth/usage`;
   const res = await oauthGet(url, credentials.claudeAiOauth.accessToken);
   if (res.status === 403) {
     throw new Error('OAuth token invalid (403). Please run any command in Claude CLI to refresh.');

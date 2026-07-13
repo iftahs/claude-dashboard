@@ -22,6 +22,15 @@ import { getWorkflows, getWorkflowStats } from './workflows.ts';
 import { runAi, runAiStream, resolveBackend, AiUnavailableError, AiTokenRejectedError, AiCallError, type AiCreds } from './ai.ts';
 import { buildAiContext, buildChatUserMessage, CHAT_SYSTEM, buildSectionUserMessage, SECTION_SYSTEM, SUGGEST_SYSTEM, buildSuggestMessage, type ChatTurn } from './ai-context.ts';
 import { getVersionInfo, isDocker } from './version.ts';
+import {
+  getState as getAutoResumeState,
+  setStateFromClient as setAutoResumeFromClient,
+  validPrefs as validAutoResumePrefs,
+  getPendingJobs as getPendingResumeJobs,
+  claimJob as claimResumeJob,
+  completeJob as completeResumeJob,
+  createTestJob as createTestResumeJob,
+} from './auto-resume.ts';
 
 const execAsync = promisify(exec);
 
@@ -303,6 +312,71 @@ app.get('/api/usage/live', async (_req, res) => {
     res.json(wrap(liveUsage, Date.now()));
   } catch (e: any) {
     res.json(wrap({ error: e.message || String(e) }, Date.now()));
+  }
+});
+
+// ── Auto-resume after usage-limit reset ─────────────────────────────────────
+// Backend detects the limit hit + schedules a ResumeJob; execution happens on
+// the host (scripts/resume-watcher.mjs polling /pending, or the backend itself
+// in host/dev mode). See server/auto-resume.ts.
+
+app.get('/api/auto-resume/state', async (_req, res) => {
+  try {
+    res.json(wrap(await getAutoResumeState(), Date.now()));
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+app.post('/api/auto-resume/state', async (req, res) => {
+  const prefs = validAutoResumePrefs(req.body);
+  if (!prefs) {
+    res.status(400).json({ error: 'invalid mode/permission' });
+    return;
+  }
+  try {
+    res.json(wrap(await setAutoResumeFromClient(prefs), Date.now()));
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+// Watcher-facing; the poll doubles as the watcher heartbeat.
+app.get('/api/auto-resume/pending', (req, res) => {
+  const id = String(req.query.watcherId ?? '') || undefined;
+  res.json(wrap(getPendingResumeJobs(id), Date.now()));
+});
+
+app.post('/api/auto-resume/jobs/:id/claim', async (req, res) => {
+  const r = await claimResumeJob(req.params.id, String(req.body?.claimedBy ?? 'unknown'));
+  if (!r.ok) {
+    res.status(r.code).json({ error: r.reason });
+    return;
+  }
+  res.json(wrap(r.job, Date.now()));
+});
+
+app.post('/api/auto-resume/jobs/:id/complete', (req, res) => {
+  const job = completeResumeJob(req.params.id, {
+    ok: !!req.body?.ok,
+    exitCode: typeof req.body?.exitCode === 'number' ? req.body.exitCode : undefined,
+    message: typeof req.body?.message === 'string' ? req.body.message : undefined,
+  });
+  if (!job) {
+    res.status(404).json({ error: 'unknown job' });
+    return;
+  }
+  res.json(wrap(job, Date.now()));
+});
+
+// Testing/dev convenience: schedule a real resume of the most recent session
+// in delayMs, bypassing limit detection.
+app.post('/api/auto-resume/test', async (req, res) => {
+  try {
+    const delayMs = Math.max(5_000, Number(req.body?.delayMs ?? 15_000));
+    res.json(wrap(await createTestResumeJob(delayMs), Date.now()));
+  } catch (e: any) {
+    res.status(400).json({ error: e?.message || String(e) });
   }
 });
 
