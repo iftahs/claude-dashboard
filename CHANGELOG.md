@@ -5,6 +5,11 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.18] - 2026-07-13
+
+### Changed
+- Internal maintenance and tooling.
+
 ## [0.1.17] - 2026-07-13
 
 ### Added
@@ -210,6 +215,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Live-API fallback to the local logs when there is no active block
   (`resets_at = null`).
 
+[0.1.18]: https://github.com/iftahs/claude-dashboard/releases/tag/v0.1.18
 [0.1.17]: https://github.com/iftahs/claude-dashboard/releases/tag/v0.1.17
 [0.1.16]: https://github.com/iftahs/claude-dashboard/releases/tag/v0.1.16
 [0.1.15]: https://github.com/iftahs/claude-dashboard/releases/tag/v0.1.15
