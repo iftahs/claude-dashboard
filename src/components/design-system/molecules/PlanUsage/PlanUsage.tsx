@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import { ProgressBar } from '@/components/design-system/atoms/ProgressBar/ProgressBar';
 import { InfoTip } from '@/components/design-system/atoms/InfoTip/InfoTip';
-import { formatRemainingHours, formatRemainingDays, blockBarColor } from './utils';
+import { blockBarColor } from './utils';
+import { untilFull, dateTimeLabel } from '@/lib/format';
 import { nextWeekReset, startOfWeek } from '@/lib/week';
 import { buildWeeklyForecast } from '@/lib/forecast';
 import type { PlanUsageProps } from './types';
@@ -42,8 +43,7 @@ export function PlanUsage({ block, weekly, liveUsage, weekStart, tier }: PlanUsa
   const liveResetsAt = hasLive ? Date.parse(liveUsage.five_hour.resets_at) : null;
   const noActiveBlock = hasLive && liveUsage.five_hour.resets_at == null;
   const blockResetsAt = liveResetsAt && !isNaN(liveResetsAt) ? liveResetsAt : (block?.resetsAt ?? (now + 5 * 3600_000));
-  const blockRemainingMs = Math.max(0, blockResetsAt - now);
-  const blockResetStr = noActiveBlock ? 'on next msg' : formatRemainingHours(blockRemainingMs);
+  const blockResetStr = noActiveBlock ? 'on next msg' : untilFull(blockResetsAt);
 
   // Weekly calculations
   const weeklyLimit = DEFAULT_WEEKLY_LIMIT;
@@ -58,8 +58,7 @@ export function PlanUsage({ block, weekly, liveUsage, weekStart, tier }: PlanUsa
   const weeklyResetsAt = liveWeeklyResetsAt && !isNaN(liveWeeklyResetsAt)
     ? liveWeeklyResetsAt
     : nextWeekReset(now, weekStart);
-  const weeklyRemainingMs = Math.max(0, weeklyResetsAt - now);
-  const weeklyResetStr = noActiveWeekly ? 'on next msg' : formatRemainingDays(weeklyRemainingMs);
+  const weeklyResetStr = noActiveWeekly ? 'on next msg' : untilFull(weeklyResetsAt);
 
   // Burn-rate forecast for the weekly window (LiteLLM-inspired): where usage lands
   // by reset at the current pace. Window start is Anthropic's (resets−7d) when live,
@@ -122,6 +121,7 @@ export function PlanUsage({ block, weekly, liveUsage, weekStart, tier }: PlanUsa
             <span className="font-semibold text-zinc-200">5-hour limit</span>
             <span className="text-zinc-400 font-mono">
               {blockPct}% <span className="text-zinc-600 font-sans">·</span> resets {blockResetStr}
+              {!noActiveBlock && <span className="text-zinc-600"> · {dateTimeLabel(blockResetsAt)}</span>}
             </span>
           </div>
           <ProgressBar pct={blockPct} color={blockBarColor(blockPct)} />
@@ -133,6 +133,7 @@ export function PlanUsage({ block, weekly, liveUsage, weekStart, tier }: PlanUsa
             <span className="font-semibold text-zinc-200">Weekly · all models</span>
             <span className="text-zinc-400 font-mono">
               {weeklyPct}% <span className="text-zinc-600 font-sans">·</span> resets {weeklyResetStr}
+              {!noActiveWeekly && <span className="text-zinc-600"> · {dateTimeLabel(weeklyResetsAt)}</span>}
             </span>
           </div>
           <ProgressBar pct={weeklyPct} variant="blue" />
@@ -147,15 +148,17 @@ export function PlanUsage({ block, weekly, liveUsage, weekStart, tier }: PlanUsa
         {/* Per-model weekly limits (shown only when the live API reports them) */}
         {modelLimits.map(({ label, pct, resetsAt, color }) => {
           const parsed = resetsAt ? Date.parse(resetsAt) : NaN;
+          const hasReset = resetsAt != null && !isNaN(parsed);
           const resetStr = resetsAt == null
             ? 'on next msg'
-            : formatRemainingDays(Math.max(0, (isNaN(parsed) ? now : parsed) - now));
+            : untilFull(isNaN(parsed) ? now : parsed);
           return (
             <div key={label} className="space-y-1.5">
               <div className="flex justify-between items-center text-xs">
                 <span className="font-semibold text-zinc-200">{label}</span>
                 <span className="text-zinc-400 font-mono">
                   {pct}% <span className="text-zinc-600 font-sans">·</span> resets {resetStr}
+                  {hasReset && <span className="text-zinc-600"> · {dateTimeLabel(parsed)}</span>}
                 </span>
               </div>
               <ProgressBar pct={pct} color={color} />
