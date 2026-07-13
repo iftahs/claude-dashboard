@@ -459,7 +459,9 @@ export async function fetchLiveUsage(): Promise<any> {
     throw new Error(expiredTokenMessage());
   }
 
-  const url = 'https://api.anthropic.com/api/oauth/usage';
+  // OAUTH_API_BASE: test-only override so the auto-resume detection loop can be
+  // driven end-to-end by a local mock without exhausting a real limit.
+  const url = `${process.env.OAUTH_API_BASE || 'https://api.anthropic.com'}/api/oauth/usage`;
   const res = await oauthGet(url, credentials.claudeAiOauth.accessToken);
   if (res.status === 401) {
     // Expiry the local expiresAt check misses (clock skew, server-side

@@ -8,87 +8,100 @@ Two features are optional and opt-in network paths, both privacy-hardened: **ano
 
 ## Interactive Features & Tour
 
-The dashboard is organized as a left **sidebar** with ten destinations. Views are deep-linkable (e.g. `/agents`, `/workflows`, `/ai`), live badges on the sidebar show running agents, the current 5-hour block %, and in-flight workflows, and **toast notifications** surface update-available, connection, and account-mode notices.
+The dashboard is organized as a left **sidebar** with eleven destinations. Views are deep-linkable (e.g. `/agents`, `/workflows`, `/ai`), live badges on the sidebar show running agents, the current 5-hour block %, in-flight workflows and queued resumes, and **toast notifications** surface update-available, connection, and account-mode notices.
 
 ### 1. ⚡ Live Usage
-* **Burn Rate Indicator**: Shows your current tokens/hour pace and time-to-limit countdown projection.
-* **Plan Usage**: Tracks both your **5-hour active session limit** and your **weekly limit** utilisation percentage, displaying when the next reset will occur.
-* **Active Session Stats**: Breakdown of effective tokens, previous session block sizes, cache reads, and live OAuth connection state from Claude.ai.
-* **Daily/Weekly/Monthly Spending Limits**: Configure client-side spend caps in USD to see consumption progress bars estimated from local logs.
+* **Block Gauge**: The current 5-hour block as a radial gauge — effective tokens, % of limit, previous block, cache reads, live **burn rate** (tokens/hr) and a projected time-to-limit.
+* **Plan Usage**: Your real subscription ceilings pulled live from Claude.ai — the **5-hour limit**, the **weekly all-models limit**, and **per-model weekly caps** (Opus / Sonnet / Fable / Cowork). Each bar shows % used, an exact countdown **and the absolute reset date & time**, plus a burn-rate forecast ("on pace to hit limit in ~3d") and your plan tier.
+* **Extra Usage**: Anthropic's overage / credit pool — spend against the monthly limit, or an explanation when your org hasn't enabled it.
+* **What's contributing to your limits usage?**: A cost-weighted breakdown of the day and week by **skill, subagent, plugin and MCP server**.
+* **Auto-Resume glance**: When armed, a compact card showing the watched limit and any queued resumes.
+* **Spending limits**: Client-side USD caps (daily / weekly / monthly) with progress gauges.
+
+![Plan usage · 5-hour, weekly and per-model caps with exact reset times](.github/screenshots/plan-usage.png)
 
 ### 2. 🤖 Agents · Live Activity
 Real-time view of what Claude Code is doing **right now**, reconstructed live from the session transcripts on disk.
-* **Live Main Sessions**: Each active session shows its first prompt, project, git branch, model, and effective tokens, with a sparkline of recent activity.
+* **Live Main Sessions**: Each active session shows its first prompt, project, git branch, model, and effective tokens.
 * **Live Subagents**: Spawned subagents (Task/Explore/etc.) appear nested under their parent session with their own model and token counts while they run, then settle into a recently-completed state.
-* **Delegating State**: A parent session is marked *delegating* while its subagents are doing the work.
+* **Traffic-light status**: Green = finished, amber = running, **red = waiting for you**. A red agent lights the header signal and the sidebar badge from any tab, and can raise a **browser notification and/or chime** (configurable in Settings).
 * **Idle Lifecycle**: Main sessions dim after 30s of inactivity and drop after 60s; completed subagents no longer keep an idle parent card alive.
 
 ![Agents · Live Activity, with the sidebar and nested subagents](.github/screenshots/agents.png)
 
 ### 3. 🔀 Workflows
 Live and recent **dynamic-workflow runs** (Claude Code's multi-agent orchestration), so you can watch a fan-out unfold.
-* **Live Runs**: Each running workflow shows its phase progress, per-agent labels with model and token counts, total tokens, and the agent count (including how many are still running).
-* **Recent Runs**: Completed runs from the last several days with status, duration, agents, tool calls, phases, and a result summary you can expand.
+* **Live Runs**: Phase progress with per-agent labels, model, tokens and tool calls.
+* **All-time stats**: Runs, success rate, total tokens, agents spawned, average duration, top model, estimated cost, tool calls and your busiest day.
+* **Recent Runs**: Grouped by Today / Yesterday / earlier (90-day window), each expandable to its result summary.
 
-![Workflows · live & recent runs](.github/screenshots/workflows.png)
+![Workflows · live & recent runs with all-time stats](.github/screenshots/workflows.png)
 
 ### 4. 📈 Trends
-* **Tokens vs. Cost Chart Toggle**: Click to switch the daily stacked bar chart between **Tokens** and **Cost (USD)**.
-* **Estimated Projection**: A projected monthly cost reference for the remaining days of the month based on your daily average.
-* **Cache Efficiency Over Time**: Line chart tracking your daily cache hit rate (cache reads / total tokens).
-* **Peak Hours Heatmap**: A 24-column × 7-row intensity grid showing token usage by hour of day and day of week.
-* **Activity Grid**: A GitHub-style daily activity heatmap covering the last 18 weeks.
+* **Tokens vs. Cost toggle**: Switch the daily stacked bar chart between **Tokens** and **Cost (USD)**, over a 1–4 week window.
+* **Projection**: A dotted projection past today, plus projected month-end cost.
+* **Cache Efficiency**: Daily cache hit-rate line (cache reads / total tokens).
+* **Peak Hours Heatmap** (7×24) and an 18-week **Activity Grid**.
+* **Spend report**: One-click **CSV / JSON export** of the full report (summary + per-day + per-model), plus a separate export on the daily chart.
+* **Sources split** (when Cowork data exists) and an **"Actual billed"** section when a [LiteLLM gateway](#optional-integrations) is configured.
 
-![Trends · daily tokens/cost, cache efficiency, heatmaps](.github/screenshots/trends.png)
+![Trends · daily tokens/cost, projection, cache efficiency, exports](.github/screenshots/trends.png)
 
 ### 5. 🧠 Models
-* **Model Breakdown**: Donut chart showing token share across Opus, Sonnet, and Haiku.
-* **Model Cost-Efficiency**: Horizontal bar chart comparing USD cost per 1M effective tokens for each model.
-* **Interactive Sandbox Calculator**: Calculate costs dynamically from model pricing rules (input, output, cache write, and cache read).
-* **Tool Usage**: Visual breakdown of your most frequently called tools (e.g. Bash, Write, Grep, MCP tools).
+* **Model Breakdown**: Donut of token share across your models, with **$ per 1M effective tokens** for each.
+* **Tool Usage**: Your most frequently called tools (Bash, Read, Edit, MCP tools…).
+* **Cost Calculation Explained**: A per-model pay-as-you-go price table (input / output / cache-write / cache-read per 1M) and an **interactive calculator** you can drag to price any token mix.
 
-![Models · breakdown, cost-efficiency, calculator](.github/screenshots/models.png)
+![Models · breakdown, cost-efficiency, interactive calculator](.github/screenshots/models.png)
 
 ### 6. 🔍 Insights
-Deep analytics mined from your session transcripts over a selectable window, surfacing patterns you can't see in raw token counts.
-* **Headline Metrics**: Error rate, edit accuracy, delegation rate, and estimated wasted tokens at a glance.
-* **Tool Errors & Failure Analysis**: Which tools fail most and why (by tool, by error type).
-* **Languages by File Type** and **Branches by Git Branch**: Where your tokens actually go.
-* **MCP Server Usage** and **Permission Rejections by Tool**: How external tools and gating affect your runs.
-* **Command Usage** and **File Churn**: Your most-invoked slash commands / skills, and the files you edit most.
-* **Session Complexity**, **Yield (Committed vs. Uncommitted)**, **Subagent Delegation**, and **Edit-Retry / One-Shot Accuracy**: Outcome quality across sessions.
+Deep analytics mined from your session transcripts over a 7 / 14 / 30-day window, surfacing patterns you can't see in raw token counts. Every panel has an **✨ AI** button that explains it in plain language.
+* **Headline Metrics**: Error rate, one-shot rate, delegation rate, and estimated wasted tokens.
+* **Tool Errors**: Which tools fail most, by category and by tool, with errors-per-day.
+* **Languages by file type**, **tokens by git branch**, **MCP vs built-in** tool split, and **permission rejections by tool**.
+* **Session Complexity**, **Yield (committed vs uncommitted)**, **Subagent delegation**, **Edit-retry / one-shot accuracy**, **slash-command & skill usage**, and **file churn**.
 
 ![Insights · analytics mined from transcripts](.github/screenshots/insights.png)
 
 ### 7. 🗂 Workspace
 Your Claude Code working state on disk, beyond raw usage.
-* **Tasks**: Counts by status (completed / in-progress / pending / blocked) with completion %, plus the top tasks and any that are blocked.
+* **Tasks**: Counts by status (completed / in-progress / pending / blocked) with completion %.
 * **Plans**: The plan documents under `~/.claude/plans` with title, age, and size.
-* **Plugins & MCP Inventory**: Installed plugins and marketplaces, configured MCP servers (with scope), hooks, and your effort level / default model.
+* **Plugins & MCP Inventory**: Installed plugins and marketplaces, registered MCP servers (with scope), hooks, and your effort level / default model.
 
-![Workspace · tasks & plans](.github/screenshots/workspace.png)
+![Workspace · tasks, plans, plugins & MCP inventory](.github/screenshots/workspace.png)
 
 ### 8. 🪄 AI Insights
 Ask questions about your own usage in plain language, and get per-section explanations on demand.
-* **Chat**: A conversational interface over your usage **aggregates** (e.g. "which project costs the most?", "am I retrying edits too much?"), with conversation-aware follow-up suggestions. The model only ever sees aggregate metrics — no transcripts, no file paths.
+* **Chat**: A streaming conversation over your usage **aggregates** ("which project costs the most?", "am I retrying edits too much?"), with conversation-aware follow-up suggestions. The model only ever sees aggregate metrics — no transcripts, no file paths.
 * **Per-section ✨ AI**: An "✨ AI" button on most panels writes a short plain-language summary of just that chart.
-* **Bring-your-own backend**: Works out of the box with the local `claude` CLI or your Claude.ai token; or set a provider + model + API key (Claude / OpenAI / Gemini) in Settings. See [AI Insights privacy](#ai-insights-opt-in).
+* **Bring-your-own backend**: Works out of the box with the local `claude` CLI or your Claude.ai token; or set a provider + model + API key (Claude / OpenAI / Gemini) in Settings. The badge in the corner names whichever backend answered. See [AI Insights privacy](#ai-insights-opt-in).
 
 ![AI Insights · chat over your usage aggregates](.github/screenshots/ai-insights.png)
 
 ### 9. 📋 Sessions
-* **Config Profile**: Your Claude Code config at a glance — default model, effort level, subscription/rate-limit tier, authorized workspaces, and approved command prefixes.
-* **Workspace Analytics**: Ranks estimated costs, tokens, sessions, and files modified across all your project directories. Supported on macOS, Linux, and Windows (with automatic drive-letter and folder normalization).
-* **Live Session History Log**: Rebuilt live from the JSONL transcripts (not stale sidecar files), so it never goes blank. Each row shows start time, project, first prompt, duration, and tokens, and is searchable by project or prompt.
-* **Detailed Session Expansion**: Click any row to drill into message counts, git commits/pushes, lines added/removed, files modified, tool errors, a full tool-invocation breakdown, and a collapsible transcript.
-* **CSV/JSON Export**: Export session logs and trends datasets with a single click.
+* **Config Profile**: Your Claude Code config at a glance — default model, effort level, subscription / rate-limit tier, permission mode, auto-update channel, authorized workspaces, and approved command prefixes.
+* **Workspace Analytics**: Ranks estimated cost, time, tokens and files modified across all your project directories — each project taggable, with a **spend-by-tag** rollup.
+* **Session History Log**: Rebuilt live from the JSONL transcripts (not stale sidecar files). Each row shows start time, project, first prompt, duration and tokens, with **full-text search across transcripts** and **CSV/JSON export**.
+* **Transcript modal**: Click any session to read the whole run — per-turn tool chips, models and compaction count.
 
-![Sessions · config profile & workspace analytics](.github/screenshots/sessions.png)
+![Sessions · config profile, project analytics & tags](.github/screenshots/sessions.png)
 
-### 10. ⚙ Settings
-A full-screen settings view (pinned to the bottom of the sidebar) for **usage mode** (auto / subscription / API), **spending limits**, **AI Insights** (provider, model, API key — stored only in your browser), and **telemetry** opt-out.
+### 10. ⏰ Auto-Resume
+Resume interrupted work automatically after a usage-limit reset. Full setup and caveats in [Auto-resume after a usage limit](#auto-resume-after-a-usage-limit).
+* **Arm it**: *Off* / *Once* (next limit only) / *Always*, optionally also on the **weekly** limit.
+* **Permission mode** for the unattended run: Inherit session (safest) / Plan / Accept edits / Auto / Bypass.
+* **Always-allowed tools**: Headless runs can't show approval prompts, so pick the tools up front — the rules from your `settings.json` `permissions.allow` are listed as checkboxes, **grouped by tool** (Bash, Read, WebFetch, MCP server…) with per-group and overall counters and a select-all. A free-text box takes any extra rules. They're passed to the resume as `--allowedTools`.
+* **Queue & history**: The sessions waiting to resume with live countdowns, and the **recovered sessions** log — each with its result and an expandable tail of the run's output.
 
-> A **source toggle** (Code / Cowork / All) appears in the header only if Claude Cowork data is detected on this machine; Code-only users see the dashboard unchanged.
+![Auto-Resume · arm controls, permission mode, queue & recovered sessions](.github/screenshots/auto-resume.png)
+
+![Auto-Resume · pick allowed tools from settings.json, grouped by tool](.github/screenshots/auto-resume-tools.png)
+
+### 11. ⚙ Settings
+A full-screen settings view (pinned to the bottom of the sidebar) for **usage mode** (auto / subscription / API), **agent alerts** (visual / notification / sound), **week start**, **spending limits** + **budget alerts** (first crossing of 70 / 90 / 100% of a cap), **AI Insights** (provider, model, API key — stored only in your browser), and **telemetry** opt-out.
+
+![Settings · usage mode, alerts, spend caps, AI provider, telemetry](.github/screenshots/settings.png)
 
 ---
 
@@ -107,8 +120,20 @@ Then open the URL Vite prints (default <http://localhost:5180>). The dashboard p
 
 `npm run dev` starts two processes via `concurrently`:
 
-- a small **Express backend** (port `8787`) that scans `~/.claude` and serves aggregated JSON,
+- a small **Express backend** (port `8788` in dev) that scans `~/.claude` and serves aggregated JSON,
 - the **Vite** dev server for the React UI, which proxies `/api` to the backend.
+
+Other scripts:
+
+```bash
+npm run build     # typecheck (tsc -b) + production build into dist/
+npm run preview   # serve the built dist/ locally
+npm run docker:up # rebuild + (re)start the container — run after every code change
+npm run docker:down
+npm run docker:logs
+```
+
+There is no test or lint script — a clean `npx tsc -b` (TypeScript `strict`) is the bar.
 
 ## Run with Docker (always-on)
 
@@ -131,12 +156,67 @@ Want the dashboard always available without running `npm` each time? Run it as a
 2. Build and start:
 
    ```bash
-   docker compose up -d --build
+   npm run docker:up          # or: docker compose up -d --build
    ```
 
 3. Open <http://localhost:8787>.
 
-The container uses `restart: unless-stopped`, so it comes back automatically after a crash or reboot (as long as Docker Desktop is set to start on login). Stop it with `docker compose down`. To change the host port, edit the `ports` mapping in `docker-compose.yml` (e.g. `"9000:8787"`).
+The container uses `restart: unless-stopped`, so it comes back automatically after a crash or reboot (as long as Docker Desktop is set to start on login). Stop it with `npm run docker:down`. To change the host port, edit the `ports` mapping in `docker-compose.yml` (e.g. `"9000:8787"`).
+
+> **Docker has no hot reload.** After any code change, run `npm run docker:up` again to rebuild and restart.
+
+## Optional integrations
+
+Both are auto-detected — if you don't use them, nothing changes in the UI.
+
+- **Cowork** — Claude's desktop app writes standard Claude Code JSONL in its own folder. When the dashboard finds it, a **source toggle (Code / Cowork / All)** appears in the header and a Code-vs-Cowork split shows up on Trends. Code-only users see the dashboard unchanged. Point `COWORK_DIR` / `COWORK_DIR_HOST` at it only if it lives somewhere non-standard.
+- **LiteLLM gateway** — if you route Claude Code through a [LiteLLM](https://litellm.ai) proxy, set `LITELLM_BASE_URL` / `LITELLM_API_KEY` (or just reuse `ANTHROPIC_BASE_URL` / `ANTHROPIC_AUTH_TOKEN`) and the dashboard will show your **real billed cost** — month-to-date and per-day on Trends, and against your spend caps — instead of the estimate.
+
+## Auto-resume after a usage limit
+
+When Claude Code hits your subscription's 5-hour usage limit mid-task, work stops until the window resets. This feature resumes the interrupted work automatically ~1 minute after the reset. **Every recently-active session gets its own resume** (up to 5 per limit hit) — if you were working in two terminals when the limit hit, both continue. Multiple resumes run one after another, not in parallel, so they don't race each other into the fresh window.
+
+Enable it on the **Auto-Resume** page (⏰ in the sidebar), which also shows the queue of sessions waiting to resume and the history of recovered sessions:
+
+- **Once** — arms for the next limit hit only, then turns itself off.
+- **Always** — re-arms after every fired resume.
+- Optional: also trigger on the **weekly** limit (note: that reset can be days away).
+- **Permission mode** for the unattended run: *Inherit session* (default, safest), *Plan*, *Accept edits*, *Auto*, or *Bypass* (only takes effect if bypass is enabled in your Claude Code config).
+- **Always-allowed tools** — headless runs can't show approval prompts, so any tool the resume needs must be granted up front or it stalls. Tick them from your `settings.json` `permissions.allow` list (grouped by tool, with select-all) and/or type extra rules; they're passed as `--allowedTools`.
+- The **resume prompt** is editable; default: *"You were interrupted by a usage limit. Continue exactly where you left off and finish the task in progress."*
+
+How it works: the backend watches your live limits while armed; when the limit is exhausted it captures every recently-active Claude Code session and schedules a resume job per session for `resets_at + 1 min`. The resumes themselves run `claude -p --resume <sessionId>` **on your host** — the Docker container can't launch Claude Code — so start the companion watcher:
+
+```bash
+npm run resume-watcher                                      # from the repo; dashboard in Docker (port 8787)
+DASHBOARD_URL=http://localhost:8788 npm run resume-watcher  # dashboard via `npm run dev`
+```
+
+Easiest: the **Auto-Resume page renders a ready-made copy-paste command** (absolute script path + `--url`, works from any folder and any shell) whenever the watcher isn't connected:
+
+```bash
+node "<path-to-claude-dashboard>/scripts/resume-watcher.mjs" --url http://localhost:8787
+```
+
+> The repo path is filled in automatically: `npm run dev` uses the backend's own folder, and `npm run docker:up` records it into `.env` (`HOST_REPO_DIR`) via a pre-hook. Only starting the container with a bare `docker compose up` skips that — set `HOST_REPO_DIR` in `.env` by hand in that case.
+
+**Don't want a terminal open all the time?** Install it once as a hidden background auto-start:
+
+```bash
+npm run resume-watcher:install     # from the repo (add -- --url http://localhost:8788 for dev mode)
+npm run resume-watcher:uninstall   # removes the auto-start and stops the running watcher
+```
+
+Per OS (no admin rights needed): **Windows** — a silent `.vbs` launcher in your Startup folder (runs hidden at every login, started immediately); **macOS** — a launchd user agent (`RunAtLoad` + `KeepAlive`); **Linux** — a systemd user unit (`enable --now`). The watcher logs to `~/.claude-resume-watcher.log`, and the Auto-Resume page shows a green "Host watcher connected" when it's alive. The page also renders both commands (install / run-once) ready to copy whenever no watcher is connected.
+
+If the dashboard backend runs directly on your host (`npm run dev`) with the `claude` CLI on PATH, the backend executes the resume itself whenever no watcher is connected — the watcher is only mandatory for Docker.
+
+**Limitations (v1):**
+
+- The resume is headless — it appends to the session's own transcript but **won't wake an open terminal or VS Code window**. Reopen the session (`claude --resume`) to see what it did.
+- Claude Desktop (Cowork) sessions are not covered — only terminal / VS Code extension sessions under `~/.claude/projects`.
+- Arm-state persists on the backend (a small file in the container/host home dir), so restarts re-arm automatically — no browser tab needed. A full image rebuild wipes it; the next opened dashboard tab re-arms from your browser's saved settings. A restart in the ~1-minute window between the reset and the scheduled resume can drop that round's jobs.
+- The dashboard backend must be running at reset time (in Docker it always is — `restart: unless-stopped`); the browser tab does **not** need to be open.
 
 ### macOS: keeping the OAuth token fresh
 
@@ -175,16 +255,18 @@ $env:CLAUDE_DIR = "D:\backups\.claude"; npm run dev
 set CLAUDE_DIR=D:\backups\.claude && npm run dev
 ```
 
-To change the backend port, set `SERVER_PORT` (default `8787`). If you change it, update the proxy target in `vite.config.ts` to match.
+To change the backend port, set `SERVER_PORT`. If you change it, update the proxy target in `vite.config.ts` to match.
 
 ## What this dashboard can and can't show
 
-It reflects **only** what Claude Code records locally. Two things deliberately are **not** shown because they don't exist in the local logs:
+Everything is derived from what Claude Code records locally, plus the OAuth token it already stores — which is enough to show your **real** limits:
 
-- **The exact rate-limit reset time** and **remaining quota** — those live in Anthropic API response headers, which Claude Code doesn't persist to disk. Any countdown would be a guess, so it's omitted.
-- **Claude.ai web usage** — that's server-side per-conversation and never written to `~/.claude`.
+- ✅ **Exact reset times and % used** for the 5-hour window, the weekly all-models cap and each per-model cap, read live from Anthropic's usage API with your existing token — including your plan tier and any extra-usage credits.
+- ⚠️ **Costs are an *estimated equivalent* API price.** A subscription has no per-token bill, so the dollar figures answer "what would this have cost on pay-as-you-go?" — they are not an invoice. Configure a [LiteLLM gateway](#optional-integrations) to see real billed amounts instead.
+- ❌ **Claude.ai web / desktop chat usage** — that's server-side per-conversation and never written to `~/.claude`.
+- ❌ **Cowork sessions running in full-VM sandbox mode** — their transcripts stay inside the VM, so there's nothing on disk to read.
 
-You *can* set a personal token cap in ⚙ Settings to see a "% used" gauge — that compares your real measured usage against a number you enter.
+You can also set your own USD **spending caps** in ⚙ Settings to get gauges and budget alerts against those estimates.
 
 ## Privacy & telemetry
 

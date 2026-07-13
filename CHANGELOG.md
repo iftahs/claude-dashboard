@@ -5,15 +5,7 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.1.17] - 2026-07-12
-
-### Fixed
-- Auto-refreshes macOS Keychain OAuth token to prevent live usage from expiring.
-- Introduces a token-sync agent for automatic Keychain synchronization every 15 minutes.
-- Improves credential reading logic to prefer the latest expiration date for OAuth tokens.
-- Classifies upstream 401 errors as expired tokens for clearer error messaging.
-
-## [Unreleased]
+## [0.1.18] - 2026-07-13
 
 ### Fixed
 - Docker on macOS no longer degrades to "OAuth token expired" a few hours after `docker:up`: a new token-sync LaunchAgent (auto-installed by `npm run docker:up`, managed via `npm run token-sync:install|status|uninstall`) re-copies the Keychain OAuth token into the cache file the container reads every 15 minutes — the running container heals without a rebuild.
@@ -22,6 +14,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - `npm run token-sync` one-shot Keychain → cache sync, plus `token-sync:install` / `token-sync:status` / `token-sync:uninstall` for the LaunchAgent; sync log at `~/Library/Logs/claude-dashboard/token-sync.log`. The sync script now writes atomically (0600) and skips no-op/regressive writes.
+
+## [0.1.17] - 2026-07-13
+
+### Added
+- Introduced Auto-Resume feature to automatically resume interrupted sessions after a usage-limit reset.
+- Added Claude Sonnet 5 pricing and AI model option to the pricing table and model picker.
+- Updated README with accurate feature descriptions and new screenshots for all major components.
+- Documented additional features including Extra Usage, limits-contributors panel, project tagging, and more.
+
+### Changed
+- Enhanced plan-usage display to show exact reset countdown and absolute reset times.
+- Updated the user interface for Auto-Resume, including a new page and status indicators.
+- Improved screenshot quality and updated images to reflect the latest app design.
+- Revised documentation to correct inaccuracies about features and app behavior.
+
+### Fixed
+- Corrected the formatting for reset countdowns to accurately reflect remaining time.
+- Fixed issues with the README that contained false statements regarding data availability and file references.
 
 ## [0.1.16] - 2026-07-09
 
@@ -210,6 +220,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Live-API fallback to the local logs when there is no active block
   (`resets_at = null`).
 
+[0.1.18]: https://github.com/iftahs/claude-dashboard/releases/tag/v0.1.18
 [0.1.17]: https://github.com/iftahs/claude-dashboard/releases/tag/v0.1.17
 [0.1.16]: https://github.com/iftahs/claude-dashboard/releases/tag/v0.1.16
 [0.1.15]: https://github.com/iftahs/claude-dashboard/releases/tag/v0.1.15
