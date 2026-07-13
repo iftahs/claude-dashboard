@@ -17,10 +17,12 @@ export function ToggleGroup<T extends string>({
       {options.map((opt: ToggleOption<T>) => (
         <button
           key={opt.value}
-          onClick={() => onChange(opt.value)}
+          onClick={() => !opt.disabled && onChange(opt.value)}
+          disabled={opt.disabled}
+          title={opt.title}
           className={`${toggleButtonVariants({ active: value === opt.value, uppercase })} ${
             grow ? 'flex-1 py-1.5 text-center' : ''
-          }`}
+          } ${opt.disabled ? 'cursor-not-allowed opacity-40 hover:text-zinc-500' : ''}`}
         >
           {opt.label}
         </button>

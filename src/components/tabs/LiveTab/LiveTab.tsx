@@ -4,6 +4,7 @@ import { Section } from '@/components/design-system/molecules/Section/Section';
 import { PlanUsage } from '@/components/design-system/molecules/PlanUsage/PlanUsage';
 import { ExtraUsageCard } from '@/components/design-system/molecules/ExtraUsageCard/ExtraUsageCard';
 import { LimitsContributors } from '@/components/design-system/organisms/LimitsContributors/LimitsContributors';
+import { AutoResumeCard } from '@/components/design-system/organisms/AutoResumeCard/AutoResumeCard';
 import { SpendingLimits } from '@/components/design-system/molecules/SpendingLimits/SpendingLimits';
 import { GaugeSkeleton, ChartSkeleton } from '@/components/design-system/atoms/Skeleton/Skeleton';
 import { hourLabel } from '@/lib/format';
@@ -91,6 +92,9 @@ export function LiveTab({ limits }: LiveTabProps) {
           tier={configData.subscriptionType ?? configData.rateLimitTier ?? null}
         />
       )}
+
+      {/* Auto-resume status — self-hides unless armed or recently fired. */}
+      <AutoResumeCard />
 
       {/* Extra usage — Anthropic's "pay once you hit your plan limit" overage/credit pool. */}
       {configData && !isApi && liveUsage.data?.extra_usage && (

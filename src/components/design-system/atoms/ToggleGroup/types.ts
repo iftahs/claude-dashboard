@@ -4,6 +4,10 @@ import type { toggleButtonVariants } from './ToggleGroup.variants';
 export interface ToggleOption<T extends string> {
   value: T;
   label: string;
+  /** Not selectable; renders dimmed. Pair with `title` to explain why. */
+  disabled?: boolean;
+  /** Native tooltip shown on hover. */
+  title?: string;
 }
 
 export interface ToggleGroupProps<T extends string> extends VariantProps<typeof toggleButtonVariants> {

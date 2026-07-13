@@ -578,3 +578,61 @@ export interface SearchResult {
   matches: number;
 }
 
+
+// ── Auto-resume after usage-limit reset (mirrors server/auto-resume.ts) ─────
+
+export type AutoResumeMode = 'off' | 'once' | 'always';
+export type AutoResumePermission = 'inherit' | 'plan' | 'acceptEdits' | 'auto' | 'bypassPermissions';
+export type ResumeJobStatus = 'pending' | 'claimed' | 'done' | 'failed' | 'skipped' | 'cancelled';
+export type ResumeWindowKind = 'session' | 'weekly';
+
+export interface ResumeJob {
+  /** `${windowKind}:${resetsAtMs}:${sessionId}` — one job per interrupted session. */
+  id: string;
+  windowKind: ResumeWindowKind;
+  sessionId: string;
+  projectPath: string;
+  sessionFile: string;
+  prompt: string;
+  permission: AutoResumePermission;
+  /** Extra --allowedTools grants for the headless run ('' = none). */
+  allowedTools: string;
+  resetsAt: number;
+  resumeAt: number;
+  createdAt: number;
+  status: ResumeJobStatus;
+  claimedAt: number | null;
+  claimedBy: string | null;
+  finishedAt: number | null;
+  exitCode: number | null;
+  message: string | null;
+}
+
+export interface AutoResumeLimitSnapshot {
+  utilization: number | null;
+  resetsAt: string | null;
+  checkedAt: number;
+}
+
+export interface AutoResumeState {
+  configured: boolean;
+  mode: AutoResumeMode;
+  prompt: string;
+  armed: boolean;
+  triggerWeekly: boolean;
+  permission: AutoResumePermission;
+  allowedTools: string;
+  limit: AutoResumeLimitSnapshot | null;
+  weeklyLimit: AutoResumeLimitSnapshot | null;
+  /** Active (pending/claimed) jobs — one per interrupted session, soonest first. */
+  jobs: ResumeJob[];
+  /** Terminal jobs, newest first (capped at 20). */
+  history: ResumeJob[];
+  watcher: { online: boolean; lastSeenAt: number | null; id: string | null };
+  internalExecutor: boolean;
+  /** Host path of the repo (dev: backend cwd; Docker: HOST_REPO_DIR or null). */
+  repoDir: string | null;
+  /** bypassPermissions usable? true/false, or null = can't determine. */
+  bypassAvailable: boolean | null;
+  serverNow: number;
+}

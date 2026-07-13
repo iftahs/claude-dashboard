@@ -23,6 +23,11 @@ services:
       # nested .claude/projects transcripts at the scanned depth → zero cowork
       # events (harmless) and the container still boots. See .env.example.
       - "${COWORK_DIR_HOST:-${CLAUDE_DIR_HOST}}:/data/cowork:ro"
+      # ~/.claude.json (bypassPermissionsModeAccepted etc.), read-only. Optional:
+      # CLAUDE_JSON_HOST is written to .env automatically by `npm run docker:up`;
+      # when unset this falls back to mounting the .claude DIR here, which the
+      # backend detects (not a file) and treats as "can't determine".
+      - "${CLAUDE_JSON_HOST:-${CLAUDE_DIR_HOST}}:/data/claude-json:ro"
     environment:
       - CLAUDE_DIR=/data/.claude
       - COWORK_DIR=/data/cowork
@@ -45,6 +50,12 @@ services:
       # ANTHROPIC_AUTH_TOKEN; set these only if the spend-read key/url differs.
       - LITELLM_BASE_URL=${LITELLM_BASE_URL:-}
       - LITELLM_API_KEY=${LITELLM_API_KEY:-}
+      # OPTIONAL — absolute HOST path of this repo (e.g. E:\dev-projects\claude-dashboard).
+      # Auto-resume uses it to render a copy-paste `node .../resume-watcher.mjs` command
+      # on the Auto-Resume page. The container can't discover the host path itself.
+      - HOST_REPO_DIR=${HOST_REPO_DIR:-}
+      # Container path of the ~/.claude.json mount above (bypass detection).
+      - CLAUDE_JSON=/data/claude-json
       # Day buckets follow the container clock — pin it to your local timezone
       # (override TZ in .env if you are not in Asia/Jerusalem).
       - TZ=${TZ:-Asia/Jerusalem}
