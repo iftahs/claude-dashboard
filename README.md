@@ -218,6 +218,17 @@ If the dashboard backend runs directly on your host (`npm run dev`) with the `cl
 - Arm-state persists on the backend (a small file in the container/host home dir), so restarts re-arm automatically — no browser tab needed. A full image rebuild wipes it; the next opened dashboard tab re-arms from your browser's saved settings. A restart in the ~1-minute window between the reset and the scheduled resume can drop that round's jobs.
 - The dashboard backend must be running at reset time (in Docker it always is — `restart: unless-stopped`); the browser tab does **not** need to be open.
 
+### macOS: keeping the OAuth token fresh
+
+On macOS, Claude Code stores its OAuth token in the **Keychain**, which a Docker container can't reach. `npm run docker:up` therefore copies the token into `~/.claude/.dashboard-oauth-cache.json` (read by the container) *and* installs a small launchd agent (`com.claude-dashboard.token-sync`) that re-syncs it every 15 minutes — otherwise the snapshot's access token expires within hours and the Live tab degrades to "OAuth token expired". The running container picks up the refreshed file automatically; no rebuild or restart needed.
+
+- `npm run token-sync:status` — check the agent + cached-token health
+- `npm run token-sync` — one-shot manual sync
+- `npm run token-sync:uninstall` — remove the agent (the Live tab will then show "OAuth token expired" a few hours after each `docker:up`)
+- Log: `~/Library/Logs/claude-dashboard/token-sync.log`
+
+The agent bakes in the absolute paths of your `node` binary and this repo, so re-run `npm run token-sync:install` (or just `npm run docker:up`, which self-heals it) after upgrading/removing that Node version or moving the repo. If you have several checkouts, the last one to install wins — harmless, they all write the same cache file. **Linux/Windows are unaffected**: there Claude Code keeps `~/.claude/.credentials.json` fresh itself and the container reads it directly.
+
 ## Changing the Claude data folder
 
 By default the backend reads from your home directory:

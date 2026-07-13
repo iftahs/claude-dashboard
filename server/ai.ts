@@ -11,7 +11,7 @@
  */
 
 import { execFile, spawn } from 'node:child_process';
-import { readCredentials, oauthHeaders } from './scan.ts';
+import { readCredentials, oauthHeaders, expiredTokenMessage } from './scan.ts';
 
 export type AiProvider = 'claude' | 'openai' | 'gemini';
 export type AiBackend = 'cli' | 'api' | 'apikey' | 'claude' | 'openai' | 'gemini' | 'none';
@@ -102,7 +102,7 @@ export async function resolveBackend(): Promise<AiStatus> {
   const expiresAt = creds?.claudeAiOauth?.expiresAt;
   if (token && !(expiresAt && Date.now() >= expiresAt)) return { available: 'api', model: DEFAULT_MODEL };
   if (token && expiresAt && Date.now() >= expiresAt)
-    return { available: 'none', model: DEFAULT_MODEL, reason: 'OAuth token expired — run any Claude Code command to refresh it.' };
+    return { available: 'none', model: DEFAULT_MODEL, reason: expiredTokenMessage() };
   return { available: 'none', model: DEFAULT_MODEL, reason: 'No Claude CLI and no Claude.ai token found. Install Claude Code, or set ANTHROPIC_AUTH_TOKEN (+ ANTHROPIC_BASE_URL for a proxy) or ANTHROPIC_API_KEY.' };
 }
 

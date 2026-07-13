@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { createInterface } from 'node:readline';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
+import { isDocker } from './version.ts';
 
 const execFileAsync = promisify(execFile);
 
@@ -330,15 +331,38 @@ export async function readCredentials(): Promise<any> {
     console.error('[server] failed to read .credentials.json:', e);
   }
 
-  if (fileCredentials?.claudeAiOauth?.accessToken) return fileCredentials;
-
   const cachedCredentials = await readCachedKeychainCredentials();
-  if (cachedCredentials?.claudeAiOauth?.accessToken) return cachedCredentials;
+  const fileOauth = fileCredentials?.claudeAiOauth;
+  const cachedOauth = cachedCredentials?.claudeAiOauth;
+
+  // When both on-disk sources hold a token, prefer whichever expires LATEST: a
+  // stale .credentials.json must not shadow a cache the token-sync LaunchAgent
+  // just refreshed — and vice versa. Ties keep the historical file precedence.
+  if (fileOauth?.accessToken && cachedOauth?.accessToken) {
+    return (cachedOauth.expiresAt ?? 0) > (fileOauth.expiresAt ?? 0)
+      ? cachedCredentials
+      : fileCredentials;
+  }
+  if (fileOauth?.accessToken) return fileCredentials;
+  if (cachedOauth?.accessToken) return cachedCredentials;
 
   if (platform() !== 'darwin') return fileCredentials;
 
   const keychainCredentials = await readKeychainCredentials();
   return keychainCredentials?.claudeAiOauth ? keychainCredentials : fileCredentials;
+}
+
+/**
+ * User-facing "token expired" advice differs by runtime: on the host, running
+ * any Claude Code command refreshes the Keychain/.credentials.json in place —
+ * but the Docker container reads a host-written snapshot, so only re-syncing
+ * that file helps. Keep the word "expired" in both: the frontend classifies
+ * this state by matching it.
+ */
+export function expiredTokenMessage(): string {
+  return isDocker()
+    ? 'OAuth token expired — the cached token the container reads is stale. On your Mac run `npm run token-sync`, or `npm run docker:up` (which installs the auto-refresh agent).'
+    : 'OAuth token expired — run any Claude Code command in your terminal to refresh it automatically.';
 }
 
 export async function readStatsSummary(): Promise<any> {
@@ -432,13 +456,18 @@ export async function fetchLiveUsage(): Promise<any> {
 
   const expiresAt = credentials.claudeAiOauth.expiresAt;
   if (expiresAt && Date.now() >= expiresAt) {
-    throw new Error('OAuth token expired — run any Claude Code command in your terminal to refresh it automatically.');
+    throw new Error(expiredTokenMessage());
   }
 
   // OAUTH_API_BASE: test-only override so the auto-resume detection loop can be
   // driven end-to-end by a local mock without exhausting a real limit.
   const url = `${process.env.OAUTH_API_BASE || 'https://api.anthropic.com'}/api/oauth/usage`;
   const res = await oauthGet(url, credentials.claudeAiOauth.accessToken);
+  if (res.status === 401) {
+    // Expiry the local expiresAt check misses (clock skew, server-side
+    // revocation) — word it as "expired" so the frontend classifies it right.
+    throw new Error(`OAuth token expired or revoked (401). ${expiredTokenMessage()}`);
+  }
   if (res.status === 403) {
     throw new Error('OAuth token invalid (403). Please run any command in Claude CLI to refresh.');
   }
@@ -473,7 +502,7 @@ export async function fetchLiveProfile(): Promise<any> {
 
   const expiresAt = credentials.claudeAiOauth.expiresAt;
   if (expiresAt && Date.now() >= expiresAt) {
-    throw new Error('OAuth token expired');
+    throw new Error(expiredTokenMessage());
   }
 
   const res = await oauthGet('https://api.anthropic.com/api/oauth/profile', accessToken);
