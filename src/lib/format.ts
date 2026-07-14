@@ -40,6 +40,17 @@ export function ago(ms: number): string {
   return `${Math.round(m / 60)}h ago`;
 }
 
+/** Relative inside 24h, absolute date+time beyond it — "385h ago" is unreadable. */
+export function timeAgoOrDate(ms: number): string {
+  const s = Math.max(0, Math.round((Date.now() - ms) / 1000));
+  if (s < 60) return `${s}s ago`;
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m}m ago`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h ${m % 60}m ago`;
+  return dateTimeLabel(ms);
+}
+
 export function untilLabel(ms: number): string {
   const s = Math.max(0, Math.round((ms - Date.now()) / 1000));
   const h = Math.floor(s / 3600);
