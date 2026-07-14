@@ -3,7 +3,7 @@ import { Section } from '@/components/design-system/molecules/Section/Section';
 import { InfoTip } from '@/components/design-system/atoms/InfoTip/InfoTip';
 import { Skeleton } from '@/components/design-system/atoms/Skeleton/Skeleton';
 import type { StatCardProps } from '@/components/design-system/atoms/StatCard/types';
-import { compact, usd, shortModel, dayLabel } from '@/lib/format';
+import { compact, usd, shortModel, dayLabel, timeAgoOrDate } from '@/lib/format';
 import { modelColor } from '@/lib/palette';
 import { useConfigMode } from '@/hooks/useConfigMode';
 import { elapsedSec, formatElapsed, displayModel } from '@/components/design-system/organisms/AgentActivity/utils';
@@ -262,7 +262,7 @@ const STATUS_PILL: Record<WorkflowRun['status'], string> = {
 
 function RecentWorkflowRow({ run }: WorkflowCardProps) {
   const [open, setOpen] = useState(false);
-  const ago = formatElapsed(elapsedSec(run.lastActivity));
+  const when = timeAgoOrDate(run.lastActivity);
   const hasDetail = run.agents.length > 0 || (run.logsTail?.length ?? 0) > 0;
   const showModel = run.defaultModel && run.defaultModel !== 'inherit' && run.defaultModel !== 'unknown';
   return (
@@ -276,7 +276,7 @@ function RecentWorkflowRow({ run }: WorkflowCardProps) {
         <span className={`flex-none rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider ${STATUS_PILL[run.status]}`}>
           {run.status}
         </span>
-        <span className="flex-none font-mono text-[11px] text-zinc-600">{ago} ago</span>
+        <span className="flex-none font-mono text-[11px] text-zinc-600">{when}</span>
       </div>
       {run.summary && run.summary !== run.name && (
         <p className="truncate text-xs text-zinc-500" title={run.summary}>{run.summary}</p>
@@ -286,6 +286,18 @@ function RecentWorkflowRow({ run }: WorkflowCardProps) {
         <span>{formatElapsed(Math.floor(run.durationMs / 1000))}</span>
         <span>{run.agentCount} agents</span>
         <span>{compact(run.tokens)} tok</span>
+        {run.cost > 0 && (
+          <span
+            className="text-amber-500/70"
+            title={
+              run.costBasis === 'per-agent'
+                ? 'Estimated equivalent-API cost, priced per subagent model.'
+                : 'Estimated equivalent-API cost at one blended rate for the whole run — coarse.'
+            }
+          >
+            ~{usd(run.cost)}
+          </span>
+        )}
         {run.toolCalls > 0 && <span>{run.toolCalls} tool calls</span>}
         {run.phaseTotal != null && <span>{run.phaseTotal} phases</span>}
         {hasDetail && (

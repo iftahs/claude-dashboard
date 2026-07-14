@@ -39,6 +39,9 @@ export interface WorkflowAgentInfo {
   lastToolName?: string;
 }
 
+/** How a run's cost was priced — `per-agent` is materially more accurate. */
+export type WorkflowCostBasis = 'per-agent' | 'blended-run';
+
 export interface WorkflowRun {
   runId: string;
   name: string;
@@ -55,6 +58,8 @@ export interface WorkflowRun {
   agentCount: number;
   runningAgents: number;
   tokens: number;
+  cost: number; // estimated equivalent-API cost
+  costBasis: WorkflowCostBasis;
   toolCalls: number;
   defaultModel: string;
   project: string;
@@ -65,6 +70,21 @@ export interface WorkflowRun {
 export interface WorkflowsData {
   live: WorkflowRun[];
   recent: WorkflowRun[];
+}
+
+/** Path-free row safe to hand to the UI or a model. */
+export interface WorkflowRunSummary {
+  name: string;
+  project: string;
+  status: 'completed' | 'failed' | 'unknown';
+  tokens: number;
+  cost: number;
+  costBasis: WorkflowCostBasis;
+  agentCount: number;
+  toolCalls: number;
+  durationMs: number;
+  startedAt: number;
+  defaultModel: string;
 }
 
 /** All-time aggregate over every final workflow journal on disk. */
@@ -80,6 +100,27 @@ export interface WorkflowStats {
   estCostUsd: number; // rough blended equivalent-API estimate
   totalToolCalls: number;
   busiestDay: { day: number; count: number } | null; // day = local-midnight ms
+  topRunsByCost: WorkflowRunSummary[]; // all-time, cost desc — `recent` only covers 90d/200 runs
+  recentRuns: WorkflowRunSummary[]; // all-time, newest first — same rows, no full journal parse
+}
+
+/**
+ * Price a run per-subagent when `agents` actually covers it, else fall back to one
+ * blended rate for the whole run. `agents` is capped (RECENT_AGENT_CAP / LIVE_AGENT_PARSE),
+ * so only trust the per-agent sum when the cap did not bite.
+ */
+export function computeRunCost(
+  tokens: number,
+  defaultModel: string,
+  agents: WorkflowAgentInfo[],
+): { cost: number; costBasis: WorkflowCostBasis } {
+  const agentTokens = agents.reduce((s, a) => s + a.tokens, 0);
+  if (agents.length > 0 && tokens > 0 && agentTokens >= tokens * 0.9) {
+    let cost = 0;
+    for (const a of agents) cost += (a.tokens / 1_000_000) * blendedRatePerMillion(a.model || defaultModel);
+    return { cost, costBasis: 'per-agent' };
+  }
+  return { cost: (tokens / 1_000_000) * blendedRatePerMillion(defaultModel), costBasis: 'blended-run' };
 }
 
 // ── Tunables ─────────────────────────────────────────────────────────────────
@@ -408,6 +449,7 @@ async function buildLiveRun(d: DiscoveredDir, probe: DirProbe): Promise<Workflow
     agentCount,
     runningAgents,
     tokens,
+    ...computeRunCost(tokens, defaultModel, agents),
     toolCalls: 0, // not tracked incrementally for live runs
     defaultModel,
     project,
@@ -461,6 +503,8 @@ async function parseFinalJournalUncached(j: DiscoveredJournal): Promise<Workflow
       agentCount: 0,
       runningAgents: 0,
       tokens: 0,
+      cost: 0,
+      costBasis: 'blended-run',
       toolCalls: 0,
       defaultModel: 'inherit',
       project,
@@ -503,6 +547,7 @@ async function parseFinalJournalUncached(j: DiscoveredJournal): Promise<Workflow
 
   const tokens =
     num(o.totalTokens) > 0 ? num(o.totalTokens) : agentEntries.reduce((s, a) => s + num(a.tokens), 0);
+  const defaultModel = String(o.defaultModel || 'inherit');
   const lastActivity = Date.parse(o.timestamp) || j.mtime;
   const logs: string[] = Array.isArray(o.logs) ? o.logs.filter((l: any) => typeof l === 'string') : [];
 
@@ -524,8 +569,9 @@ async function parseFinalJournalUncached(j: DiscoveredJournal): Promise<Workflow
     agentCount: num(o.agentCount) || agentEntries.length,
     runningAgents: 0,
     tokens,
+    ...computeRunCost(tokens, defaultModel, agents),
     toolCalls: num(o.totalToolCalls) || agentEntries.reduce((s, a) => s + num(a.toolCalls), 0),
-    defaultModel: String(o.defaultModel || 'inherit'),
+    defaultModel,
     project,
     resultStats: extractStats(o.result),
     logsTail: logs.slice(-8),
@@ -576,6 +622,8 @@ async function computeWorkflows(): Promise<WorkflowsData> {
 // the all-time stats aggregate. Memoized by (path, mtime); journals are write-once
 // so the cache is effectively permanent after first warm-up.
 interface JournalSummary {
+  name: string;
+  project: string;
   status: 'completed' | 'failed' | 'unknown';
   startedAt: number;
   durationMs: number;
@@ -590,7 +638,10 @@ const summaryCache = new Map<string, { mtime: number; summary: JournalSummary }>
 async function peekSummary(j: DiscoveredJournal): Promise<JournalSummary> {
   const cached = summaryCache.get(j.path);
   if (cached && cached.mtime === j.mtime) return cached.summary;
+  const project = projectNameFromPath(projectPathFromFile(j.path));
   let summary: JournalSummary = {
+    name: j.runId,
+    project,
     status: 'unknown',
     startedAt: j.mtime,
     durationMs: 0,
@@ -606,6 +657,8 @@ async function peekSummary(j: DiscoveredJournal): Promise<JournalSummary> {
       const agentEntries = wp.filter((x) => x?.type === 'workflow_agent');
       const lastActivity = Date.parse(o.timestamp) || j.mtime;
       summary = {
+        name: String(o.workflowName || basename(o.scriptPath || '').replace(`-${j.runId}.js`, '') || j.runId),
+        project,
         status: o.status === 'completed' ? 'completed' : o.status ? 'failed' : 'unknown',
         startedAt: num(o.startTime) || lastActivity,
         durationMs: num(o.durationMs),
@@ -643,6 +696,7 @@ async function computeWorkflowStats(): Promise<WorkflowStats> {
   let estCostUsd = 0;
   const modelFreq = new Map<string, number>();
   const dayFreq = new Map<number, number>();
+  const rows: WorkflowRunSummary[] = [];
 
   for (const s of summaries) {
     if (s.status === 'completed') completed++;
@@ -654,7 +708,24 @@ async function computeWorkflowStats(): Promise<WorkflowStats> {
       durSum += s.durationMs;
       durCount++;
     }
-    estCostUsd += (s.tokens / 1_000_000) * blendedRatePerMillion(s.defaultModel);
+    // The summary carries no per-agent models, so every all-time row is necessarily
+    // priced `blended-run`. Route it through computeRunCost so the scalar total and
+    // the rows can never drift apart.
+    const { cost, costBasis } = computeRunCost(s.tokens, s.defaultModel, []);
+    estCostUsd += cost;
+    rows.push({
+      name: s.name,
+      project: s.project,
+      status: s.status,
+      tokens: s.tokens,
+      cost,
+      costBasis,
+      agentCount: s.agentCount,
+      toolCalls: s.toolCalls,
+      durationMs: s.durationMs,
+      startedAt: s.startedAt,
+      defaultModel: s.defaultModel,
+    });
     if (s.defaultModel && s.defaultModel !== 'inherit') {
       modelFreq.set(s.defaultModel, (modelFreq.get(s.defaultModel) ?? 0) + 1);
     }
@@ -681,6 +752,8 @@ async function computeWorkflowStats(): Promise<WorkflowStats> {
     estCostUsd,
     totalToolCalls,
     busiestDay,
+    recentRuns: [...rows].sort((a, b) => b.startedAt - a.startedAt).slice(0, 10),
+    topRunsByCost: rows.sort((a, b) => b.cost - a.cost).slice(0, 10),
   };
 }
 

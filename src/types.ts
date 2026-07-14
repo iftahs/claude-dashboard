@@ -432,6 +432,9 @@ export interface WorkflowAgentInfo {
   lastToolName?: string;
 }
 
+/** How a run's cost was priced — `per-agent` is materially more accurate. */
+export type WorkflowCostBasis = 'per-agent' | 'blended-run';
+
 export interface WorkflowRun {
   runId: string;
   name: string;
@@ -448,6 +451,8 @@ export interface WorkflowRun {
   agentCount: number;
   runningAgents: number;
   tokens: number;
+  cost: number; // estimated equivalent-API cost
+  costBasis: WorkflowCostBasis;
   toolCalls: number;
   defaultModel: string;
   project: string;
@@ -458,6 +463,21 @@ export interface WorkflowRun {
 export interface WorkflowsData {
   live: WorkflowRun[];
   recent: WorkflowRun[];
+}
+
+/** Path-free row safe to hand to the UI or a model. */
+export interface WorkflowRunSummary {
+  name: string;
+  project: string;
+  status: 'completed' | 'failed' | 'unknown';
+  tokens: number;
+  cost: number;
+  costBasis: WorkflowCostBasis;
+  agentCount: number;
+  toolCalls: number;
+  durationMs: number;
+  startedAt: number;
+  defaultModel: string;
 }
 
 /** All-time aggregate over every final workflow journal on disk (`/api/workflows/stats`). */
@@ -473,6 +493,8 @@ export interface WorkflowStats {
   estCostUsd: number; // rough blended equivalent-API estimate
   totalToolCalls: number;
   busiestDay: { day: number; count: number } | null; // day = local-midnight ms
+  topRunsByCost: WorkflowRunSummary[]; // all-time, cost desc — `recent` only covers 90d/200 runs
+  recentRuns: WorkflowRunSummary[]; // all-time, newest first — same rows, no full journal parse
 }
 
 // ── AI Insights ──────────────────────────────────────────────────────────────
