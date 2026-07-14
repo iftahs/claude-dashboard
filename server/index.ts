@@ -20,7 +20,8 @@ import { getWorkspaceTasks, getInventory } from './workspace.ts';
 import { getLiveSubagents } from './subagents-live.ts';
 import { getWorkflows, getWorkflowStats } from './workflows.ts';
 import { runAi, runAiStream, resolveBackend, AiUnavailableError, AiTokenRejectedError, AiCallError, type AiCreds } from './ai.ts';
-import { buildAiContext, buildChatUserMessage, CHAT_SYSTEM, buildSectionUserMessage, SECTION_SYSTEM, SUGGEST_SYSTEM, buildSuggestMessage, type ChatTurn } from './ai-context.ts';
+import { buildAiPayload, buildChatUserMessage, CHAT_SYSTEM, buildSectionUserMessage, SECTION_SYSTEM, SUGGEST_SYSTEM, buildSuggestMessage, type AiScope, type ChatTurn } from './ai-context.ts';
+import { routeDatasets } from './ai-router.ts';
 import { getVersionInfo, isDocker } from './version.ts';
 import {
   getState as getAutoResumeState,
@@ -753,6 +754,24 @@ function parseSuggestions(text: string): string[] {
   return out.map((s) => s.trim()).filter(Boolean).slice(0, 4);
 }
 
+/**
+ * The chat answers over ONE window on ONE surface, both taken from what the user
+ * is actually looking at. Every overview number then shares a window, so the model
+ * can never "notice" a phantom inconsistency between two differently-scoped figures.
+ */
+function parseAiScope(body: any): AiScope {
+  return { source: parseSource(body?.source), days: clampDays(body?.days, 30) };
+}
+
+/**
+ * Full detail (branch names, file paths) only goes to a backend the user already
+ * trusts with their code — the local `claude` CLI, their Claude.ai OAuth token, or
+ * their own Anthropic key. An OpenAI/Gemini key from Settings gets those redacted.
+ */
+function shouldRedact(creds: AiCreds | null): boolean {
+  return !!creds && creds.provider !== 'claude';
+}
+
 /** Validate client-supplied AI credentials (Settings → AI Insights). */
 function parseAiCreds(raw: any): AiCreds | null {
   if (!raw || typeof raw !== 'object') return null;
@@ -781,15 +800,21 @@ app.post('/api/ai/chat', async (req, res) => {
       return;
     }
     const history = parseHistory(req.body?.history);
-    const ctx = await buildAiContext();
     const creds = parseAiCreds(req.body?.config);
+    const scope = parseAiScope(req.body);
+    const route = await routeDatasets(question, history, creds);
+    const payload = await buildAiPayload(scope, route.ids, { redact: shouldRedact(creds) });
     // Stream the answer as chunked text/plain. Headers flush on the first delta;
     // an error before any delta is still sent as JSON (headers not yet sent).
     res.setHeader('Content-Type', 'text/plain; charset=utf-8');
     res.setHeader('Cache-Control', 'no-cache, no-transform');
     res.setHeader('X-Accel-Buffering', 'no');
+    // With no tests and no HMR, these two headers are the whole debugging surface
+    // for "why did it answer from that?". They must be set before the first write.
+    res.setHeader('X-AI-Route', route.via);
+    res.setHeader('X-AI-Datasets', route.ids.join(','));
     await runAiStream(
-      { system: CHAT_SYSTEM, user: buildChatUserMessage(ctx, question, history) },
+      { system: CHAT_SYSTEM, user: buildChatUserMessage(payload, question, history), maxTokens: 1200 },
       creds,
       {
         onStart: (backend) => res.setHeader('X-AI-Backend', backend),
@@ -838,13 +863,28 @@ app.post('/api/ai/suggestions', async (req, res) => {
       res.json(wrap({ suggestions: [] }, Date.now()));
       return;
     }
-    const ctx = await buildAiContext();
     const creds = parseAiCreds(req.body?.config);
+    // Overview only: the chips just need the catalog to know what is askable.
+    const payload = await buildAiPayload(parseAiScope(req.body), [], { redact: shouldRedact(creds) });
     const { text } = await runAi(
-      { system: SUGGEST_SYSTEM, user: buildSuggestMessage(ctx, history), maxTokens: 200 },
+      { system: SUGGEST_SYSTEM, user: buildSuggestMessage(payload, history), maxTokens: 200 },
       creds,
     );
     res.json(wrap({ suggestions: parseSuggestions(text) }, Date.now()));
+  } catch (e) {
+    sendAiError(res, e);
+  }
+});
+
+/**
+ * The privacy disclosure: exactly what the chat would send to the model, before
+ * sending it. The AI tab also pings this on mount to warm the aggregate caches so
+ * the first question doesn't pay for a cold insights scan.
+ */
+app.get('/api/ai/context', async (req, res) => {
+  try {
+    const payload = await buildAiPayload(parseAiScope(req.query), []);
+    res.json(wrap(payload, Date.now()));
   } catch (e) {
     sendAiError(res, e);
   }

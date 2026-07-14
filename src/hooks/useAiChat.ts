@@ -1,11 +1,21 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { AiConfig } from '../types';
+import type { SourceFilter } from './useSource';
 
 export interface ChatMessage {
+  id: string;
   role: 'user' | 'assistant';
   content: string;
   ts: number;
   error?: boolean;
+  /** Which datasets the backend routed this answer to (X-AI-Datasets), for the footnote. */
+  datasets?: string[];
+}
+
+/** The window + surface the chat answers over — mirrors what the user is looking at. */
+export interface AiScope {
+  source: SourceFilter;
+  days: number;
 }
 
 const STORE_KEY = 'claude-dashboard-ai-chat-v1';
@@ -16,7 +26,9 @@ function loadMessages(): ChatMessage[] {
     const raw = localStorage.getItem(STORE_KEY);
     if (!raw) return [];
     const a = JSON.parse(raw);
-    return Array.isArray(a) ? a : [];
+    if (!Array.isArray(a)) return [];
+    // transcripts persisted before `id` existed get one backfilled on load
+    return (a as ChatMessage[]).map((m) => (m.id ? m : { ...m, id: crypto.randomUUID() }));
   } catch {
     return [];
   }
@@ -34,6 +46,7 @@ export function useAiChat() {
   const [loading, setLoading] = useState(false);
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const abort = useRef<AbortController | null>(null);
+  const sending = useRef(false); // synchronous re-entrancy guard — `loading` state lags a fast double-click
 
   useEffect(() => {
     try {
@@ -46,12 +59,12 @@ export function useAiChat() {
   // Ask the model for conversation-aware follow-up chips. Best-effort: failures
   // just leave the static fallback suggestions in place.
   const fetchSuggestions = useCallback(
-    async (history: Turn[], config: AiConfig | undefined, ac: AbortController) => {
+    async (history: Turn[], config: AiConfig | undefined, scope: AiScope, ac: AbortController) => {
       try {
         const res = await fetch('/api/ai/suggestions', {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ history, config: config?.apiKey ? config : undefined }),
+          body: JSON.stringify({ history, ...scope, config: config?.apiKey ? config : undefined }),
           signal: ac.signal,
         });
         if (!res.ok) return;
@@ -66,16 +79,16 @@ export function useAiChat() {
   );
 
   const send = useCallback(
-    async (question: string, config?: AiConfig) => {
+    async (question: string, config: AiConfig | undefined, scope: AiScope) => {
       const q = question.trim();
-      if (!q || loading) return;
-      const history = messages.filter((m) => !m.error).map((m) => ({ role: m.role, content: m.content }));
-      const assistantTs = Date.now() + 1; // distinct from the user message ts
-      setMessages((m) => [
-        ...m,
-        { role: 'user', content: q, ts: Date.now() },
-        { role: 'assistant', content: '', ts: assistantTs },
-      ]);
+      if (!q || sending.current) return;
+      sending.current = true;
+      // an empty assistant turn is garbage context — never send it back to the model
+      const history = messages.filter((m) => !m.error && m.content).map((m) => ({ role: m.role, content: m.content }));
+      const now = Date.now(); // hoisted: the setMessages updater must stay pure (StrictMode double-invokes it)
+      const user: ChatMessage = { id: crypto.randomUUID(), role: 'user', content: q, ts: now };
+      const assistant: ChatMessage = { id: crypto.randomUUID(), role: 'assistant', content: '', ts: now + 1 };
+      setMessages((m) => [...m, user, assistant]);
       setLoading(true);
       setSuggestions([]); // clear stale chips while the next answer streams
       abort.current?.abort();
@@ -85,7 +98,7 @@ export function useAiChat() {
       const patchAssistant = (fn: (a: ChatMessage) => ChatMessage) =>
         setMessages((m) => {
           const c = [...m];
-          const i = c.findIndex((x) => x.role === 'assistant' && x.ts === assistantTs);
+          const i = c.findIndex((x) => x.id === assistant.id);
           if (i >= 0) c[i] = fn(c[i]);
           return c;
         });
@@ -94,7 +107,7 @@ export function useAiChat() {
         const res = await fetch('/api/ai/chat', {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ question: q, history, config: config?.apiKey ? config : undefined }),
+          body: JSON.stringify({ question: q, history, ...scope, config: config?.apiKey ? config : undefined }),
           signal: ac.signal,
         });
         if (!res.ok) {
@@ -107,6 +120,10 @@ export function useAiChat() {
           }
           throw new Error(msg);
         }
+        // Which datasets the router pulled — the only way to see why an answer
+        // came out the way it did (there is no HMR and no test suite here).
+        const routed = (res.headers.get('X-AI-Datasets') ?? '').split(',').filter(Boolean);
+        if (routed.length > 0) patchAssistant((a) => ({ ...a, datasets: routed }));
         const reader = res.body?.getReader();
         if (!reader) throw new Error('No response stream');
         const dec = new TextDecoder();
@@ -126,17 +143,22 @@ export function useAiChat() {
           patchAssistant((a) => ({ ...a, content: 'Empty response from the model.', error: true }));
         } else {
           const finalHistory: Turn[] = [...history, { role: 'user', content: q }, { role: 'assistant', content: acc }];
-          void fetchSuggestions(finalHistory, config, ac);
+          void fetchSuggestions(finalHistory, config, scope, ac);
         }
       } catch (e) {
-        if ((e as { name?: string })?.name === 'AbortError') return;
+        if ((e as { name?: string })?.name === 'AbortError') {
+          // drop the orphaned bubble — an empty assistant message renders as a stuck "thinking…"
+          setMessages((m) => m.filter((x) => x.id !== assistant.id || x.content));
+          return;
+        }
         const msg = e instanceof Error ? e.message : String(e);
         patchAssistant((a) => ({ ...a, content: msg, error: true }));
       } finally {
+        sending.current = false;
         setLoading(false);
       }
     },
-    [messages, loading, fetchSuggestions],
+    [messages, fetchSuggestions],
   );
 
   const reset = useCallback(() => {
