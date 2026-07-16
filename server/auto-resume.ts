@@ -18,7 +18,7 @@
  */
 
 import { spawn } from 'node:child_process';
-import { readFileSync, writeFileSync } from 'node:fs';
+import { readFileSync, unlinkSync, writeFileSync } from 'node:fs';
 import { open, readFile, stat } from 'node:fs/promises';
 import os from 'node:os';
 import { basename, join } from 'node:path';
@@ -46,8 +46,8 @@ export interface ResumeJob {
   sessionFile: string;
   prompt: string;
   permission: AutoResumePermission;
-  /** Extra --allowedTools grants for the headless run ('' = none). */
-  allowedTools: string;
+  /** Tool rules auto-approved for the headless run (delivered via a temp --settings file). */
+  allowedTools: string[];
   resetsAt: number;
   resumeAt: number;
   createdAt: number;
@@ -72,7 +72,7 @@ export interface AutoResumeState {
   armed: boolean;
   triggerWeekly: boolean;
   permission: AutoResumePermission;
-  allowedTools: string;
+  allowedTools: string[];
   limit: LimitSnapshot | null;
   weeklyLimit: LimitSnapshot | null;
   /** Active (pending/claimed) jobs — one per interrupted session, soonest resumeAt first. */
@@ -122,7 +122,7 @@ let mode: AutoResumeMode = 'off';
 let prompt = DEFAULT_RESUME_PROMPT;
 let triggerWeekly = false;
 let permission: AutoResumePermission = 'inherit';
-let allowedTools = '';
+let allowedTools: string[] = [];
 let sessionSnapshot: LimitSnapshot | null = null;
 let weeklySnapshot: LimitSnapshot | null = null;
 let jobs: ResumeJob[] = []; // active only (pending/claimed)
@@ -205,7 +205,31 @@ export interface ClientPrefs {
   prompt: string;
   triggerWeekly: boolean;
   permission: AutoResumePermission;
-  allowedTools: string;
+  allowedTools: string[];
+}
+
+/**
+ * Split a legacy space-joined rule string into whole rules, paren-aware:
+ * `Edit Bash(npm run:*) Write` → ['Edit', 'Bash(npm run:*)', 'Write'].
+ * Spaces inside (...) belong to the rule; best-effort for legacy payloads only —
+ * new clients send arrays with exact boundaries.
+ */
+export function tokenizeRules(text: string): string[] {
+  const out: string[] = [];
+  let cur = '';
+  let depth = 0;
+  for (const ch of text) {
+    if (ch === '(') depth++;
+    else if (ch === ')') depth = Math.max(0, depth - 1);
+    if (/\s/.test(ch) && depth === 0) {
+      if (cur) out.push(cur);
+      cur = '';
+    } else {
+      cur += ch;
+    }
+  }
+  if (cur) out.push(cur);
+  return out;
 }
 
 export function validPrefs(body: any): ClientPrefs | null {
@@ -214,11 +238,15 @@ export function validPrefs(body: any): ClientPrefs | null {
   const p = body?.permission ?? 'inherit';
   if (!PERMISSIONS.includes(p)) return null;
   const raw = String(body?.prompt ?? '').slice(0, MAX_PROMPT_LEN).trim();
-  // Tool grants are a space-separated list of rule names passed as one --allowedTools
-  // argv element. Strip only newlines (never quotes — many rules legitimately contain
-  // them, e.g. Bash(grep -r "x")); collapse whitespace. Cap well under the Windows cmd
-  // line limit (~8191) so a multi-rule selection round-trips intact.
-  const tools = String(body?.allowedTools ?? '').replace(/[\r\n]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 4000);
+  // Tool grants arrive as an ARRAY of whole rules (the client knows the exact
+  // boundaries). Rules may contain any characters — quotes, pipes, spaces — and
+  // are NEVER placed on a command line; executors deliver them via a temp
+  // --settings JSON file. Legacy string payloads are tokenized paren-aware.
+  const rawTools = body?.allowedTools;
+  const list: string[] = Array.isArray(rawTools)
+    ? rawTools.map((r: unknown) => String(r))
+    : tokenizeRules(String(rawTools ?? ''));
+  const tools = list.map((r) => r.trim()).filter(Boolean).map((r) => r.slice(0, 500)).slice(0, 200);
   return { mode: m, prompt: raw || DEFAULT_RESUME_PROMPT, triggerWeekly: !!body?.triggerWeekly, permission: p, allowedTools: tools };
 }
 
@@ -699,11 +727,32 @@ async function maybeExecuteInternally(): Promise<void> {
   }
 }
 
+/**
+ * Tool grants travel via a temp `--settings` JSON file, NEVER as command-line
+ * text: on Windows the spawn goes through `cmd /c`, which re-parses the whole
+ * line — a rule containing `|` or `"` (e.g. Bash(grep -r "a\|b" …)) breaks out
+ * and cmd executes the fragment ("'…' is not recognized as an internal or
+ * external command"). A temp file path contains no cmd metacharacters.
+ */
+function writeGrantsFile(rules: string[]): string {
+  const file = join(os.tmpdir(), `claude-resume-grants-${process.pid}-${Date.now()}.json`);
+  writeFileSync(file, JSON.stringify({ permissions: { allow: rules } }));
+  return file;
+}
+
 /** Spawn `claude -p --resume <sessionId>` with the prompt on stdin. Mirrors ai.ts cliInvocation(). */
 function spawnResume(j: ResumeJob): Promise<{ ok: boolean; exitCode?: number; message?: string }> {
   return new Promise((resolve) => {
     const cliArgs = ['-p', '--resume', j.sessionId, ...permissionArgs(j.permission)];
-    if (j.allowedTools) cliArgs.push('--allowedTools', j.allowedTools);
+    let grantsFile: string | null = null;
+    if (j.allowedTools.length) {
+      try {
+        grantsFile = writeGrantsFile(j.allowedTools);
+        cliArgs.push('--settings', grantsFile);
+      } catch {
+        /* grants are an enhancement — resume without them beats not resuming */
+      }
+    }
     const file = process.platform === 'win32' ? process.env.ComSpec || 'cmd.exe' : 'claude';
     const args = process.platform === 'win32' ? ['/c', 'claude', ...cliArgs] : cliArgs;
     const opts: Parameters<typeof spawn>[2] = { windowsHide: true };
@@ -712,6 +761,13 @@ function spawnResume(j: ResumeJob): Promise<{ ok: boolean; exitCode?: number; me
     try {
       child = spawn(file, args, opts);
     } catch (e: any) {
+      if (grantsFile) {
+        try {
+          unlinkSync(grantsFile);
+        } catch {
+          /* already gone */
+        }
+      }
       resolve({ ok: false, message: `spawn failed: ${String(e?.message ?? e)}` });
       return;
     }
@@ -719,10 +775,24 @@ function spawnResume(j: ResumeJob): Promise<{ ok: boolean; exitCode?: number; me
     const cap = (chunk: Buffer) => {
       if (out.length < 64 * 1024) out += chunk.toString('utf8');
     };
+    const cleanup = () => {
+      if (grantsFile) {
+        try {
+          unlinkSync(grantsFile);
+        } catch {
+          /* already gone */
+        }
+        grantsFile = null;
+      }
+    };
     child.stdout?.on('data', cap);
     child.stderr?.on('data', cap);
-    child.on('error', (e) => resolve({ ok: false, message: `spawn error: ${e.message}` }));
+    child.on('error', (e) => {
+      cleanup();
+      resolve({ ok: false, message: `spawn error: ${e.message}` });
+    });
     child.on('close', (code) => {
+      cleanup();
       resolve({ ok: code === 0, exitCode: code ?? -1, message: out.slice(-4000) });
     });
     child.stdin?.end(j.prompt);

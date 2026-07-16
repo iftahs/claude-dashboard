@@ -617,8 +617,8 @@ export interface ResumeJob {
   sessionFile: string;
   prompt: string;
   permission: AutoResumePermission;
-  /** Extra --allowedTools grants for the headless run ('' = none). */
-  allowedTools: string;
+  /** Tool rules auto-approved for the headless run (delivered via a temp --settings file). */
+  allowedTools: string[];
   resetsAt: number;
   resumeAt: number;
   createdAt: number;
@@ -643,7 +643,7 @@ export interface AutoResumeState {
   armed: boolean;
   triggerWeekly: boolean;
   permission: AutoResumePermission;
-  allowedTools: string;
+  allowedTools: string[];
   limit: AutoResumeLimitSnapshot | null;
   weeklyLimit: AutoResumeLimitSnapshot | null;
   /** Active (pending/claimed) jobs — one per interrupted session, soonest first. */

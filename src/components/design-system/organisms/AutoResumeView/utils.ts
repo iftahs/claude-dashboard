@@ -29,28 +29,23 @@ function scriptCommand(repoDir: string | null, origin: string, script: string): 
 }
 
 /**
- * The `--allowedTools` string is space-separated, but a single rule may contain
- * internal spaces (e.g. `Bash(npm run:*)`). So we never `.split(' ')` — instead
- * each rule is matched/added/removed as a whole literal bounded by spaces.
+ * Grants are an ARRAY of whole rules (a rule may contain spaces, quotes, pipes —
+ * `Bash(grep -r "a\|b" src)` is one rule). Arrays keep the boundaries exact;
+ * they are delivered to the CLI via a temp --settings file, never a command line.
  */
-export function hasAllowRule(tools: string, rule: string): boolean {
-  return ` ${tools.trim()} `.includes(` ${rule} `);
+export function hasAllowRule(tools: string[], rule: string): boolean {
+  return tools.includes(rule);
 }
 
-/** Add (`on`) or remove (`!on`) one rule, returning the normalized new string. */
-export function toggleAllowRule(tools: string, rule: string, on: boolean): string {
-  const has = hasAllowRule(tools, rule);
-  if (on) {
-    if (has) return tools.trim();
-    const t = tools.trim();
-    return t ? `${t} ${rule}` : rule;
-  }
-  return ` ${tools.trim()} `.split(` ${rule} `).join(' ').replace(/\s+/g, ' ').trim();
+/** Add (`on`) or remove (`!on`) one rule, returning the new array. */
+export function toggleAllowRule(tools: string[], rule: string, on: boolean): string[] {
+  if (on) return tools.includes(rule) ? tools : [...tools, rule];
+  return tools.filter((t) => t !== rule);
 }
 
-/** Whatever remains after stripping every known settings rule — the user's own extra rules. */
-export function extraAllowRules(tools: string, known: string[]): string {
-  return known.reduce((acc, r) => toggleAllowRule(acc, r, false), tools).trim();
+/** Whatever remains after stripping every known settings rule — the user's own extra rules, as editable text. */
+export function extraAllowRules(tools: string[], known: string[]): string {
+  return tools.filter((t) => !known.includes(t)).join(' ');
 }
 
 /**
