@@ -5,6 +5,24 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.20] - 2026-07-16
+
+### Added
+- Introduced per-agent detail and phase/label attribution for live runs.
+- Added a new route to fetch detailed agent information lazily during workflows.
+- Enhanced `WorkflowAgentInfo` to include additional fields for better agent tracking.
+- Implemented UUID filter for session files during auto-resume.
+- Added grant arrays to job types and state schema.
+
+### Changed
+- Improved model color assignment per family in the palette, ensuring consistent representation across tabs.
+- Updated the AutoResumeView to reflect asynchronous spawn behavior accurately.
+- Refactored session file processing for better handling of temporary JSON settings. 
+
+### Fixed
+- Addressed issues with array grants in the auto-resume feature.
+- Fixed session transcript handling to skip non-UUID files.
+
 ## [0.1.19] - 2026-07-14
 
 ### Added
@@ -231,6 +249,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Live-API fallback to the local logs when there is no active block
   (`resets_at = null`).
 
+[0.1.20]: https://github.com/iftahs/claude-dashboard/releases/tag/v0.1.20
 [0.1.19]: https://github.com/iftahs/claude-dashboard/releases/tag/v0.1.19
 [0.1.18]: https://github.com/iftahs/claude-dashboard/releases/tag/v0.1.18
 [0.1.17]: https://github.com/iftahs/claude-dashboard/releases/tag/v0.1.17
