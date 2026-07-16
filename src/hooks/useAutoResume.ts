@@ -17,8 +17,12 @@ export interface AutoResumePrefs {
   prompt: string;
   triggerWeekly: boolean;
   permission: AutoResumePermission;
-  /** Space/comma list of tool rules granted to the headless run (--allowedTools). */
-  allowedTools: string;
+  /**
+   * Whole tool rules granted to the headless run — an ARRAY so rule boundaries
+   * survive rules that contain spaces/quotes/pipes. Delivered to the CLI via a
+   * temp --settings file, never as command-line text.
+   */
+  allowedTools: string[];
 }
 
 const KEY = 'claude-dashboard-auto-resume-v1';
@@ -28,12 +32,40 @@ const DEFAULTS: AutoResumePrefs = {
   prompt: DEFAULT_RESUME_PROMPT,
   triggerWeekly: false,
   permission: 'inherit',
-  allowedTools: '',
+  allowedTools: [],
 };
+
+/**
+ * Split free-typed rule text into whole rules, paren-aware:
+ * `Edit Bash(npm run:*)` → ['Edit', 'Bash(npm run:*)'] — spaces inside (...)
+ * belong to the rule. Also migrates legacy space-joined stored strings.
+ */
+export function tokenizeRules(text: string): string[] {
+  const out: string[] = [];
+  let cur = '';
+  let depth = 0;
+  for (const ch of text) {
+    if (ch === '(') depth++;
+    else if (ch === ')') depth = Math.max(0, depth - 1);
+    if (/\s/.test(ch) && depth === 0) {
+      if (cur) out.push(cur);
+      cur = '';
+    } else {
+      cur += ch;
+    }
+  }
+  if (cur) out.push(cur);
+  return out;
+}
 
 function load(): AutoResumePrefs {
   try {
-    return { ...DEFAULTS, ...(JSON.parse(localStorage.getItem(KEY) ?? 'null') ?? {}) };
+    const p = { ...DEFAULTS, ...(JSON.parse(localStorage.getItem(KEY) ?? 'null') ?? {}) };
+    // v1 stored a space-joined string — migrate to the array shape.
+    if (typeof (p.allowedTools as unknown) === 'string') {
+      p.allowedTools = tokenizeRules(p.allowedTools as unknown as string);
+    }
+    return p;
   } catch {
     return DEFAULTS;
   }

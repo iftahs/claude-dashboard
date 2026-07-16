@@ -21,6 +21,7 @@ import { basename, join } from 'node:path';
 import { createInterface } from 'node:readline';
 import { claudeDir } from './scan.ts';
 import { blendedRatePerMillion } from './pricing.ts';
+import { readScriptInfo, matchCall, commonPrefixLen, stripBoilerplate } from './workflow-script.ts';
 
 // ── Public shapes (mirror src/types.ts) ──────────────────────────────────────
 
@@ -30,13 +31,21 @@ export interface WorkflowAgentInfo {
   agentId: string;
   label: string;
   phaseTitle: string;
+  /** Subagent type the script asked for (`frontend-dev`, `code-reviewer`, …). */
+  agentType: string;
   model: string;
   state: WorkflowAgentState;
   tokens: number;
   toolCalls: number;
   durationMs: number;
   startedAt: number;
+  /** Spawn order within the run — rows are sorted by tokens, so this is the only trace of it. */
+  index: number;
+  attempt: number;
+  /** How long the agent sat behind the concurrency cap before starting. */
+  queuedMs: number;
   lastToolName?: string;
+  lastToolSummary?: string;
 }
 
 /** How a run's cost was priced — `per-agent` is materially more accurate. */
@@ -132,6 +141,9 @@ const STATS_TTL = 30_000; // all-time stats move slowly; don't recompute on the 
 const MAX_JOURNAL = 8 * 1024 * 1024; // skip absurd final journals (the `script` field is large)
 const MAX_AGENT_FILE = 50 * 1024 * 1024;
 const LIVE_AGENT_PARSE = 24; // parse at most N newest agent transcripts per live run
+const PROMPT_CAP = 24_000; // keep enough rendered prompt to match the script's templates
+const LABEL_CAP = 120; // what actually reaches the UI
+const SUMMARY_CAP = 140; // lastToolSummary on a list row — the panel shows the full result
 const RECENT_AGENT_CAP = 40; // cap agents emitted per recent run (payload hygiene)
 const TTL = 3_000;
 
@@ -175,7 +187,13 @@ function agentIdFromFileName(name: string): string | undefined {
   return m ? m[1] : undefined;
 }
 
-function coerceState(s: unknown): WorkflowAgentState {
+/** Queue wait from a journal entry — never ship the raw timestamps, only the delta. */
+export function queuedMs(a: { startedAt?: unknown; queuedAt?: unknown }): number {
+  const wait = num(a.startedAt) - num(a.queuedAt);
+  return num(a.queuedAt) > 0 && wait > 0 ? wait : 0;
+}
+
+export function coerceState(s: unknown): WorkflowAgentState {
   return typeof s === 'string' && ALLOWED_STATES.has(s as WorkflowAgentState)
     ? (s as WorkflowAgentState)
     : 'done';
@@ -256,12 +274,27 @@ async function discover(): Promise<{ dirs: DiscoveredDir[]; journals: Discovered
   return { dirs, journals };
 }
 
+/**
+ * Resolve a runId to its on-disk locations. Callers must never build these paths
+ * from a request param — `discover()` only ever returns dirs it actually walked.
+ */
+export async function locateRun(
+  runId: string,
+): Promise<{ dir: string; sessionDir: string; journalPath: string | null } | null> {
+  const { dirs, journals } = await discover();
+  const d = dirs.find((x) => x.runId === runId);
+  if (!d) return null;
+  return { dir: d.dir, sessionDir: d.sessionDir, journalPath: journals.find((j) => j.runId === runId)?.path ?? null };
+}
+
 interface DirProbe {
   dirMtime: number;
   journalMtime: number;
   newestAgentMtime: number;
   startedKeys: Set<string>;
   resultKeys: Set<string>;
+  /** agentIds the journal already logged a `result` for — exact, unlike mtime freshness. */
+  doneAgentIds: Set<string>;
   agentFiles: { agentId: string; path: string; mtime: number; size: number }[];
 }
 
@@ -272,6 +305,7 @@ async function probeRunDir(dir: string): Promise<DirProbe> {
     newestAgentMtime: 0,
     startedKeys: new Set(),
     resultKeys: new Set(),
+    doneAgentIds: new Set(),
     agentFiles: [],
   };
   try {
@@ -325,7 +359,10 @@ async function probeRunDir(dir: string): Promise<DirProbe> {
           continue;
         }
         if (obj?.type === 'started' && typeof obj.key === 'string') probe.startedKeys.add(obj.key);
-        else if (obj?.type === 'result' && typeof obj.key === 'string') probe.resultKeys.add(obj.key);
+        else if (obj?.type === 'result' && typeof obj.key === 'string') {
+          probe.resultKeys.add(obj.key);
+          if (typeof obj.agentId === 'string') probe.doneAgentIds.add(obj.agentId);
+        }
       }
     }
   } catch {
@@ -339,6 +376,7 @@ interface AgentParse {
   model: string;
   firstTs: number;
   lastTs: number;
+  /** Rendered prompt, kept long enough to match against the script's templates. */
   firstUserText: string;
 }
 
@@ -361,11 +399,11 @@ async function parseAgentFile(path: string): Promise<AgentParse> {
       }
       if (!out.firstUserText && obj.type === 'user' && obj.message) {
         const c = obj.message.content;
-        if (typeof c === 'string') out.firstUserText = c.slice(0, 120);
+        if (typeof c === 'string') out.firstUserText = c.slice(0, PROMPT_CAP);
         else if (Array.isArray(c)) {
           for (const b of c) {
             if (b?.type === 'text' && typeof b.text === 'string') {
-              out.firstUserText = b.text.slice(0, 120);
+              out.firstUserText = b.text.slice(0, PROMPT_CAP);
               break;
             }
           }
@@ -384,7 +422,7 @@ async function parseAgentFile(path: string): Promise<AgentParse> {
   return out;
 }
 
-function scriptNameForRun(sessionDir: string, runId: string): Promise<string | null> {
+function scriptForRun(sessionDir: string, runId: string): Promise<{ name: string; path: string } | null> {
   const scriptsDir = join(sessionDir, 'workflows', 'scripts');
   return readdir(scriptsDir)
     .then((files) => {
@@ -392,9 +430,22 @@ function scriptNameForRun(sessionDir: string, runId: string): Promise<string | n
       // substring fallback, so runId `wf_12` can't match `…-wf_123.js`.
       const hit = files.find((f) => f.endsWith(`-${runId}.js`)) ?? files.find((f) => f.includes(runId));
       if (!hit) return null;
-      return hit.replace(`-${runId}.js`, '').replace(/\.js$/, '');
+      return { name: hit.replace(`-${runId}.js`, '').replace(/\.js$/, ''), path: join(scriptsDir, hit) };
     })
     .catch(() => null);
+}
+
+/** Read `agent-<id>.meta.json` — the only per-agent sidecar a live run writes. */
+async function readAgentMeta(dir: string, agentId: string): Promise<{ agentType: string; model: string }> {
+  try {
+    const raw = JSON.parse(await readFile(join(dir, `agent-${agentId}.meta.json`), 'utf8'));
+    return {
+      agentType: typeof raw?.agentType === 'string' ? raw.agentType : '',
+      model: typeof raw?.model === 'string' ? raw.model : '',
+    };
+  } catch {
+    return { agentType: '', model: '' };
+  }
 }
 
 async function buildLiveRun(d: DiscoveredDir, probe: DirProbe): Promise<WorkflowRun> {
@@ -405,20 +456,42 @@ async function buildLiveRun(d: DiscoveredDir, probe: DirProbe): Promise<Workflow
   const sorted = [...probe.agentFiles].sort((a, b) => b.mtime - a.mtime);
   const toParse = sorted.filter((f) => f.size <= MAX_AGENT_FILE).slice(0, LIVE_AGENT_PARSE);
   const parsed = await Promise.all(toParse.map((f) => parseAgentFile(f.path)));
+  const metas = await Promise.all(toParse.map((f) => readAgentMeta(d.dir, f.agentId)));
+
+  // The generated script is the only on-disk source of phases + labels while a run
+  // is in flight — the final journal that carries them isn't written until it ends.
+  const script = await scriptForRun(d.sessionDir, d.runId);
+  const info = script ? await readScriptInfo(script.path) : null;
+
+  // Agents whose script label is dynamic (`fix:${g.scope}`) fall back to their prompt,
+  // which usually opens with a shared `${COMMON}` preamble. Strip it two ways: the
+  // script's own resolved const blocks, then whatever prefix the prompts still share.
+  const prompts = parsed.map((p) => stripBoilerplate(p.firstUserText, info?.boilerplate ?? []).trim());
+  const preamble = commonPrefixLen(prompts);
 
   const agents: WorkflowAgentInfo[] = toParse.map((f, i) => {
     const p = parsed[i];
+    const meta = metas[i];
+    const call = info ? matchCall(p.firstUserText, info.calls) : null;
+    const own = prompts[i].slice(preamble);
+    const firstLine = own.split('\n').find((l) => l.trim().length > 0)?.trim() ?? '';
     const isFresh = Date.now() - f.mtime < LIVE_WINDOW;
+    const model = p.model !== 'inherit' ? p.model : call?.model || meta.model || 'inherit';
     return {
       agentId: f.agentId,
-      label: p.firstUserText || 'agent',
-      phaseTitle: '',
-      model: p.model,
-      state: isFresh ? 'running' : 'stalled',
+      label: (call?.label || firstLine || call?.agentType || meta.agentType || 'agent').slice(0, LABEL_CAP),
+      phaseTitle: call?.phase ?? '',
+      agentType: meta.agentType || call?.agentType || '',
+      model,
+      state: probe.doneAgentIds.has(f.agentId) ? 'done' : isFresh ? 'running' : 'stalled',
       tokens: p.effectiveTokens,
       toolCalls: 0, // not parsed for live agents (cost bound)
       durationMs: p.lastTs && p.firstTs ? Math.max(0, p.lastTs - p.firstTs) : 0,
       startedAt: p.firstTs || f.mtime,
+      // A live run's queue wait / retry count / spawn order only land in the final journal.
+      index: 0,
+      attempt: 1,
+      queuedMs: 0,
     };
   });
 
@@ -427,7 +500,7 @@ async function buildLiveRun(d: DiscoveredDir, probe: DirProbe): Promise<Workflow
   const earliestStart = agents.reduce((min, a) => (a.startedAt > 0 ? Math.min(min, a.startedAt) : min), Infinity);
   const startedAt = earliestStart === Infinity ? probe.dirMtime : earliestStart;
   const tokens = agents.reduce((s, a) => s + a.tokens, 0);
-  const name = (await scriptNameForRun(d.sessionDir, d.runId)) || '(workflow)';
+  const name = info?.name || script?.name || '(workflow)';
   const defaultModel =
     agents.find((a) => a.model && a.model !== 'inherit' && a.model !== 'unknown')?.model ?? 'inherit';
 
@@ -436,15 +509,15 @@ async function buildLiveRun(d: DiscoveredDir, probe: DirProbe): Promise<Workflow
   return {
     runId: d.runId,
     name,
-    summary: '',
+    summary: info?.description ?? '',
     status: 'running',
     isLive: true,
     startedAt,
     durationMs: Math.max(0, Date.now() - startedAt),
     lastActivity: newest,
-    phaseDone: null,
-    phaseTotal: null,
-    phases: [],
+    phaseDone: null, // planned per-phase agent counts aren't knowable mid-run
+    phaseTotal: info?.phases.length || null,
+    phases: info?.phases ?? [],
     agents,
     agentCount,
     runningAgents,
@@ -534,15 +607,21 @@ async function parseFinalJournalUncached(j: DiscoveredJournal): Promise<Workflow
     .slice(0, RECENT_AGENT_CAP)
     .map((a) => ({
       agentId: String(a.agentId ?? ''),
-      label: String(a.label ?? 'agent').slice(0, 120),
+      label: String(a.label ?? 'agent').slice(0, LABEL_CAP),
       phaseTitle: String(a.phaseTitle ?? ''),
+      agentType: String(a.agentType ?? ''),
       model: String(a.model ?? 'inherit'),
       state: coerceState(a.state),
       tokens: num(a.tokens),
       toolCalls: num(a.toolCalls),
       durationMs: num(a.durationMs),
       startedAt: num(a.startedAt),
+      index: num(a.index),
+      attempt: Math.max(1, num(a.attempt)),
+      queuedMs: queuedMs(a),
       lastToolName: typeof a.lastToolName === 'string' ? a.lastToolName : undefined,
+      lastToolSummary:
+        typeof a.lastToolSummary === 'string' ? a.lastToolSummary.slice(0, SUMMARY_CAP) : undefined,
     }));
 
   const tokens =

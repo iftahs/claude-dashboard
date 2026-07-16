@@ -21,8 +21,9 @@
  */
 
 import { spawn } from 'node:child_process';
-import { existsSync } from 'node:fs';
+import { existsSync, unlinkSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
+import { join } from 'node:path';
 
 // --url flag beats DASHBOARD_URL — one syntax across cmd/PowerShell/bash.
 const urlFlagIdx = process.argv.indexOf('--url');
@@ -65,7 +66,25 @@ function permissionArgs(permission) {
 function runResume(job, useCwd) {
   return new Promise((resolve) => {
     const cliArgs = ['-p', '--resume', job.sessionId, ...permissionArgs(job.permission)];
-    if (job.allowedTools) cliArgs.push('--allowedTools', job.allowedTools);
+    // Tool grants travel via a temp --settings JSON file, NEVER as command-line
+    // text: `cmd /c` re-parses the flattened line, so a rule containing `|` or `"`
+    // (e.g. Bash(grep -r "a\|b" …)) breaks out and cmd executes the fragment.
+    let grantsFile = null;
+    if (Array.isArray(job.allowedTools) && job.allowedTools.length) {
+      try {
+        grantsFile = join(os.tmpdir(), `claude-resume-grants-${process.pid}-${Date.now()}.json`);
+        writeFileSync(grantsFile, JSON.stringify({ permissions: { allow: job.allowedTools } }));
+        cliArgs.push('--settings', grantsFile);
+      } catch {
+        grantsFile = null; // grants are an enhancement — resume without them
+      }
+    }
+    const cleanup = () => {
+      if (grantsFile) {
+        try { unlinkSync(grantsFile); } catch { /* already gone */ }
+        grantsFile = null;
+      }
+    };
     const { file, args } = cliInvocation(cliArgs);
     const opts = { windowsHide: true };
     if (useCwd && job.projectPath) opts.cwd = job.projectPath;
@@ -73,6 +92,7 @@ function runResume(job, useCwd) {
     try {
       child = spawn(file, args, opts);
     } catch (e) {
+      cleanup();
       resolve({ ok: false, message: `spawn failed: ${e.message}` });
       return;
     }
@@ -82,8 +102,8 @@ function runResume(job, useCwd) {
     };
     child.stdout?.on('data', cap);
     child.stderr?.on('data', cap);
-    child.on('error', (e) => resolve({ ok: false, message: `spawn error: ${e.message}` }));
-    child.on('close', (code) => resolve({ ok: code === 0, exitCode: code ?? -1, message: out.slice(-4000) }));
+    child.on('error', (e) => { cleanup(); resolve({ ok: false, message: `spawn error: ${e.message}` }); });
+    child.on('close', (code) => { cleanup(); resolve({ ok: code === 0, exitCode: code ?? -1, message: out.slice(-4000) }); });
     // Prompt via stdin — never an argv element, so no cmd.exe quoting hazards.
     child.stdin?.end(job.prompt);
   });

@@ -18,6 +18,13 @@ export function shortModel(model: string): string {
     .replace(/-(\d)-(\d)$/, ' $1.$2');
 }
 
+/** `mcp__chrome-devtools__click` → `chrome-devtools · click`; builtin names unchanged. */
+export function toolLabel(name: string): string {
+  const m = name.match(/^mcp__(.+)__([^_]+(?:_[^_]+)*)$/);
+  if (!m) return name;
+  return `${m[1].replace(/^claude_ai_/, '').replace(/_/g, ' ')} · ${m[2]}`;
+}
+
 export function hourLabel(ms: number): string {
   return new Date(ms).toLocaleTimeString('en-US', { hour: 'numeric' });
 }
