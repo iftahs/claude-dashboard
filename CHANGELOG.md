@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Enhanced `WorkflowAgentInfo` to include additional fields for better agent tracking.
 - Implemented UUID filter for session files during auto-resume.
 - Added grant arrays to job types and state schema.
+- Surfaced the current 5-hour limit utilization in the browser tab title.
 
 ### Changed
 - Improved model color assignment per family in the palette, ensuring consistent representation across tabs.

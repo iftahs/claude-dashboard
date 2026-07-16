@@ -20,6 +20,7 @@ import { useLiveData } from './hooks/useLiveData';
 import { useLimits } from './hooks/useLimits';
 import { useSidebarTabs } from './hooks/useSidebarTabs';
 import { useDashboardNotifications } from './hooks/useDashboardNotifications';
+import { useDocumentTitle } from './hooks/useDocumentTitle';
 
 type Tab = 'live' | 'agents' | 'workflows' | 'trends' | 'models' | 'insights' | 'workspace' | 'ai' | 'sessions' | 'autoresume' | 'settings';
 
@@ -51,6 +52,7 @@ export default function App() {
   const [limits, setLimits] = useLimits();
   const sidebarTabs = useSidebarTabs(TABS);
   useDashboardNotifications(activeTab, limits);
+  useDocumentTitle();
 
   const error = recent.error || weekly.error;
   const empty =
