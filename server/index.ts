@@ -19,6 +19,7 @@ import { getCommandUsage } from './history.ts';
 import { getWorkspaceTasks, getInventory } from './workspace.ts';
 import { getLiveSubagents } from './subagents-live.ts';
 import { getWorkflows, getWorkflowStats } from './workflows.ts';
+import { getAgentDetail } from './workflow-agent-detail.ts';
 import { runAi, runAiStream, resolveBackend, AiUnavailableError, AiTokenRejectedError, AiCallError, type AiCreds } from './ai.ts';
 import { buildAiPayload, buildChatUserMessage, CHAT_SYSTEM, buildSectionUserMessage, SECTION_SYSTEM, SUGGEST_SYSTEM, buildSuggestMessage, type AiScope, type ChatTurn } from './ai-context.ts';
 import { routeDatasets } from './ai-router.ts';
@@ -696,6 +697,18 @@ app.get('/api/workflows', async (_req, res) => {
 app.get('/api/workflows/stats', async (_req, res) => {
   try {
     const data = await getWorkflowStats();
+    res.json(wrap(data, Date.now()));
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+// One agent's detail — parses its whole transcript, so it is fetched on expand
+// only, never by the /api/workflows list poll.
+app.get('/api/workflows/:runId/agents/:agentId', async (req, res) => {
+  try {
+    const data = await getAgentDetail(req.params.runId, req.params.agentId);
+    if (!data) return res.status(404).json({ error: 'Agent not found' });
     res.json(wrap(data, Date.now()));
   } catch (e) {
     res.status(500).json({ error: String(e) });

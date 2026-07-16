@@ -1,13 +1,16 @@
 import { useEffect, useState } from 'react';
 import { Section } from '@/components/design-system/molecules/Section/Section';
 import { InfoTip } from '@/components/design-system/atoms/InfoTip/InfoTip';
-import { Skeleton } from '@/components/design-system/atoms/Skeleton/Skeleton';
+import { Badge } from '@/components/design-system/atoms/Badge/Badge';
+import { ProgressBar } from '@/components/design-system/atoms/ProgressBar/ProgressBar';
+import { Skeleton, BarsSkeleton } from '@/components/design-system/atoms/Skeleton/Skeleton';
 import type { StatCardProps } from '@/components/design-system/atoms/StatCard/types';
-import { compact, usd, shortModel, dayLabel, timeAgoOrDate } from '@/lib/format';
+import { compact, usd, shortModel, dayLabel, timeAgoOrDate, toolLabel } from '@/lib/format';
 import { modelColor } from '@/lib/palette';
 import { useConfigMode } from '@/hooks/useConfigMode';
+import { useAgentDetail } from '@/hooks/useAgentDetail';
 import { elapsedSec, formatElapsed, displayModel } from '@/components/design-system/organisms/AgentActivity/utils';
-import type { WorkflowAgentInfo, WorkflowRun, WorkflowStats } from '@/types';
+import type { WorkflowAgentDetail, WorkflowAgentInfo, WorkflowRun, WorkflowStats } from '@/types';
 import type { WorkflowsViewProps, WorkflowCardProps } from './types';
 import { buildPhaseGroups, defaultActivePhaseIndex, doneAgentCount, agentMetrics, groupRunsByDate } from './utils';
 import type { PhaseGroup } from './utils';
@@ -82,27 +85,206 @@ function StateDot({ state }: { state: WorkflowAgentInfo['state'] }) {
 
 // ── TUI: phases (left) + agents of the selected phase (right) ────────────────
 
+/** Sub-second waits are noise; anything longer means the concurrency cap bit. */
+function queueLabel(ms: number): string {
+  if (ms < 1000) return `${Math.round(ms)}ms`;
+  return `${(ms / 1000).toFixed(1)}s`;
+}
+
+/** Labelled row of the detail panel — "Queued · 6.7s". */
+function DetailStat({ label, value, accent }: { label: string; value: string; accent?: string }) {
+  return (
+    <span className="flex-none text-[11px] text-zinc-600">
+      {label} <span className={`tabular-nums ${accent ?? 'text-zinc-400'}`}>{value}</span>
+    </span>
+  );
+}
+
+/** Tool histogram: name · bar · count, with failures called out in red. */
+function ToolBars({ tools }: { tools: WorkflowAgentDetail['tools'] }) {
+  const max = tools.reduce((m, t) => Math.max(m, t.count), 0) || 1;
+  return (
+    <div className="flex flex-col gap-1">
+      {tools.map((t) => (
+        <div key={t.name} className="flex items-center gap-2 text-[11px]">
+          <span className="w-40 flex-none truncate text-zinc-400" title={t.name}>
+            {toolLabel(t.name)}
+          </span>
+          <ProgressBar pct={(t.count / max) * 100} className="min-w-0 flex-1" />
+          <span className="w-8 flex-none text-right tabular-nums text-zinc-500">{t.count}</span>
+          <span className="w-16 flex-none text-right tabular-nums text-red-400/80">
+            {t.failed > 0 ? `${t.failed} failed` : ''}
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/**
+ * Expanded agent detail. Fetches on mount (mount == first expand, since the parent
+ * gates it behind `open`), and re-fetches while the agent is still running.
+ */
+function AgentDetailPanel({
+  runId,
+  agent,
+  state,
+  onFetch,
+}: {
+  runId: string;
+  agent: WorkflowAgentInfo;
+  state?: { data: WorkflowAgentDetail | null; loading: boolean; error: string | null };
+  onFetch: (runId: string, agentId: string, force?: boolean) => void;
+}) {
+  const running = agent.state === 'running';
+  useEffect(() => {
+    onFetch(runId, agent.agentId);
+    if (!running) return;
+    const id = setInterval(() => onFetch(runId, agent.agentId, true), 10_000);
+    return () => clearInterval(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [runId, agent.agentId, running]);
+
+  const d = state?.data;
+  if (!d && state?.loading) return <BarsSkeleton rows={4} />;
+  if (state?.error) return <p className="px-2 py-3 text-[11px] text-red-400">Failed to load: {state.error}</p>;
+  if (!d) return <p className="px-2 py-3 text-[11px] text-zinc-600">No detail available.</p>;
+
+  const { input, output, cacheCreate, cacheRead } = d.tokens;
+  return (
+    <div className="flex flex-col gap-2.5 border-t border-white/10 bg-ink-900/40 px-3 py-2.5">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+        {d.index > 0 && <DetailStat label="Agent" value={`#${d.index}`} />}
+        {d.queuedMs > 0 && (
+          <DetailStat
+            label="Queued"
+            value={queueLabel(d.queuedMs)}
+            accent={d.queuedMs > 1000 ? 'text-amber-500/80' : undefined}
+          />
+        )}
+        <DetailStat label="Turns" value={String(d.turns)} />
+        {d.attempt > 1 && <DetailStat label="Attempt" value={String(d.attempt)} accent="text-amber-500/80" />}
+        {d.toolFailures > 0 && (
+          <DetailStat label="Tool errors" value={String(d.toolFailures)} accent="text-red-400/80" />
+        )}
+      </div>
+
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+        <DetailStat label="In" value={compact(input)} />
+        <DetailStat label="Out" value={compact(output)} />
+        <DetailStat label="Cache write" value={compact(cacheCreate)} />
+        <span className="flex-none text-[11px] text-zinc-600">
+          Cache read <span className="tabular-nums text-zinc-500">{compact(cacheRead)}</span>
+        </span>
+        <InfoTip text="Cache reads are excluded from effective tokens — they don't count toward rate limits." />
+      </div>
+
+      {(d.skills.length > 0 || d.mcpServers.length > 0) && (
+        <div className="flex flex-wrap items-center gap-1.5">
+          {d.skills.map((s) => (
+            <Badge key={`skill-${s}`}>{`skill: ${s}`}</Badge>
+          ))}
+          {d.mcpServers.map((s) => (
+            <Badge key={`mcp-${s}`}>{`mcp: ${s}`}</Badge>
+          ))}
+        </div>
+      )}
+
+      {d.prompt && (
+        <div>
+          <GroupLabel>Prompt</GroupLabel>
+          <pre className="mt-1 max-h-32 overflow-auto whitespace-pre-wrap break-words rounded-md bg-ink-800/60 p-2 font-mono text-[10px] leading-relaxed text-zinc-500">
+            {d.prompt}
+          </pre>
+        </div>
+      )}
+
+      {d.resultSummary && (
+        <div>
+          <GroupLabel>Result</GroupLabel>
+          <p className="mt-1 max-h-24 overflow-auto whitespace-pre-wrap text-[11px] text-zinc-400">
+            {d.resultSummary}
+          </p>
+        </div>
+      )}
+
+      {d.resultFiles.length > 0 && (
+        <div>
+          <GroupLabel>{`Files touched (${d.resultFiles.length})`}</GroupLabel>
+          <div className="mt-1 flex flex-col gap-0.5">
+            {d.resultFiles.map((f) => (
+              <span key={f} className="truncate font-mono text-[10px] text-zinc-500" title={f}>
+                {f.split(/[\\/]/).pop()}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {d.tools.length > 0 && (
+        <div>
+          <GroupLabel>Tools</GroupLabel>
+          <div className="mt-1">
+            <ToolBars tools={d.tools} />
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 /** One agent row in the right pane: state · label · model · "28.6K tok · 1 tool · 20s". */
-function AgentTuiRow({ agent }: { agent: WorkflowAgentInfo }) {
+function AgentTuiRow({
+  agent,
+  runId,
+  detailState,
+  onFetch,
+}: {
+  agent: WorkflowAgentInfo;
+  runId: string;
+  detailState?: { data: WorkflowAgentDetail | null; loading: boolean; error: string | null };
+  onFetch: (runId: string, agentId: string, force?: boolean) => void;
+}) {
+  const [open, setOpen] = useState(false);
   const running = agent.state === 'running';
   // When running, drop the static elapsed (override 0) and render a live ticker instead.
   const metrics = agentMetrics(agent, running ? 0 : undefined);
   return (
-    <div className="flex items-center gap-2 px-2 py-1.5 text-xs">
-      <StateDot state={agent.state} />
-      <span className="min-w-0 flex-1 truncate text-zinc-300" title={agent.label}>
-        {agent.label || 'agent'}
-      </span>
-      <ModelChip model={agent.model} />
-      <span className="flex-none tabular-nums text-[11px] text-zinc-500">
-        {metrics}
-        {running && (
-          <>
-            {metrics && ' · '}
-            <LiveSeconds startedAt={agent.startedAt} />
-          </>
+    <div className="flex flex-col">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="flex items-center gap-2 px-2 py-1.5 text-left text-xs transition-colors hover:bg-ink-700/40"
+      >
+        <StateDot state={agent.state} />
+        <span className="min-w-0 flex-none truncate text-zinc-300" title={agent.label}>
+          {agent.label || 'agent'}
+        </span>
+        {agent.agentType && (
+          <span className="min-w-0 flex-1 truncate text-[11px] text-zinc-600">{agent.agentType}</span>
         )}
-      </span>
+        {agent.attempt > 1 && (
+          <span className="flex-none rounded bg-amber-500/10 px-1 text-[10px] font-semibold tabular-nums text-amber-500/90">
+            ×{agent.attempt}
+          </span>
+        )}
+        <ModelChip model={agent.model} />
+        <span className="flex-none tabular-nums text-[11px] text-zinc-500">
+          {metrics}
+          {running && (
+            <>
+              {metrics && ' · '}
+              <LiveSeconds startedAt={agent.startedAt} />
+            </>
+          )}
+        </span>
+        <span className={`w-2 flex-none font-mono text-[10px] ${open ? 'text-clay-400' : 'text-zinc-600'}`}>
+          {open ? '▾' : '▸'}
+        </span>
+      </button>
+      {open && (
+        <AgentDetailPanel runId={runId} agent={agent} state={detailState} onFetch={onFetch} />
+      )}
     </div>
   );
 }
@@ -119,7 +301,8 @@ function PhaseRow({
   active: boolean;
   onSelect: (i: number) => void;
 }) {
-  const complete = group.total > 0 && group.done === group.total;
+  const running = group.agents.some((a) => a.state === 'running');
+  const complete = !running && group.total > 0 && group.done === group.total;
   const started = group.total > 0;
   return (
     <button
@@ -132,9 +315,11 @@ function PhaseRow({
       }`}
     >
       <span className={`w-2 flex-none font-mono ${active ? 'text-clay-400' : 'text-transparent'}`}>›</span>
-      <span className="w-4 flex-none text-center font-mono tabular-nums">
+      <span className="inline-flex w-4 flex-none items-center justify-center font-mono tabular-nums">
         {complete ? (
           <span className="text-emerald-500">✓</span>
+        ) : running ? (
+          <span className="pulse-dot" />
         ) : (
           <span className="text-zinc-500">{index + 1}</span>
         )}
@@ -157,6 +342,7 @@ function WorkflowTui({ run, hideHeader }: { run: WorkflowRun; hideHeader?: boole
   const autoIndex = defaultActivePhaseIndex(groups);
   const [selected, setSelected] = useState(autoIndex);
   const [pinned, setPinned] = useState(false);
+  const { getAgentDetail, states: detailStates } = useAgentDetail();
   // Auto-follow the active phase on each poll until the user manually picks one.
   useEffect(() => {
     if (!pinned) setSelected(autoIndex);
@@ -231,7 +417,13 @@ function WorkflowTui({ run, hideHeader }: { run: WorkflowRun; hideHeader?: boole
               ) : (
                 <div className="flex flex-col divide-y divide-white/10">
                   {sel.agents.map((a) => (
-                    <AgentTuiRow key={a.agentId} agent={a} />
+                    <AgentTuiRow
+                      key={a.agentId}
+                      agent={a}
+                      runId={run.runId}
+                      detailState={detailStates.get(`${run.runId}:${a.agentId}`)}
+                      onFetch={getAgentDetail}
+                    />
                   ))}
                 </div>
               )}

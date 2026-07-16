@@ -423,13 +423,46 @@ export interface WorkflowAgentInfo {
   agentId: string;
   label: string;
   phaseTitle: string;
+  /** Subagent type the script asked for (`frontend-dev`, `code-reviewer`, …). */
+  agentType: string;
   model: string;
   state: WorkflowAgentState;
   tokens: number;
   toolCalls: number;
   durationMs: number;
   startedAt: number;
+  /** Spawn order within the run — rows are sorted by tokens, so this is the only trace of it. */
+  index: number;
+  attempt: number;
+  /** How long the agent sat behind the concurrency cap before starting. */
+  queuedMs: number;
   lastToolName?: string;
+  lastToolSummary?: string;
+}
+
+/** Lazily fetched from `/api/workflows/:runId/agents/:agentId` when a row is expanded. */
+export interface WorkflowAgentDetail {
+  agentId: string;
+  agentType: string;
+  label: string;
+  phaseTitle: string;
+  index: number;
+  attempt: number;
+  state: WorkflowAgentState;
+  prompt: string;
+  resultSummary: string;
+  resultFiles: string[];
+  tools: { name: string; count: number; failed: number }[];
+  toolFailures: number;
+  turns: number;
+  /** cacheRead is excluded from effective tokens — it doesn't count toward rate limits. */
+  tokens: { input: number; output: number; cacheCreate: number; cacheRead: number };
+  models: string[];
+  skills: string[];
+  mcpServers: string[];
+  queuedMs: number;
+  startedAt: number;
+  durationMs: number;
 }
 
 /** How a run's cost was priced — `per-agent` is materially more accurate. */
