@@ -5,6 +5,17 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.21] - 2026-07-18
+
+### Added
+- Allow forks to redirect analytics to their own PostHog project by passing the VITE_POSTHOG_TOKEN and VITE_POSTHOG_HOST through build arguments, enabling custom reporting.
+- Tag analytics events with `app_version` and add an `app_opened` event to improve product analytics and ensure each session is reliably segmented.
+
+### Changed
+- Update .env.example to include documentation for new environment variables related to PostHog configuration.
+- Modify the Dockerfile and docker-compose.yml to support passing new build arguments for analytics customization.
+- Enhance the analytics module to fire new events with improved attributes, ensuring better data quality without collecting new user information.
+
 ## [0.1.20] - 2026-07-16
 
 ### Added
@@ -250,6 +261,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Live-API fallback to the local logs when there is no active block
   (`resets_at = null`).
 
+[0.1.21]: https://github.com/iftahs/claude-dashboard/releases/tag/v0.1.21
 [0.1.20]: https://github.com/iftahs/claude-dashboard/releases/tag/v0.1.20
 [0.1.19]: https://github.com/iftahs/claude-dashboard/releases/tag/v0.1.19
 [0.1.18]: https://github.com/iftahs/claude-dashboard/releases/tag/v0.1.18

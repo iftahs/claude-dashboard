@@ -48,8 +48,17 @@ export function useDashboardNotifications(activeTab: string, limits: Limits) {
   useEffect(() => {
     track('tab_viewed', { tab: activeTab });
   }, [activeTab]);
+  // Register coarse segmentation as super-props once config loads, then emit one
+  // `app_opened` per session. Because `$pageview` fires at init (before config),
+  // this guarantees a plan/usage_mode-tagged event for reliable segmentation.
+  const appOpenedSent = useRef(false);
   useEffect(() => {
-    if (configData) setUserContext({ plan: configData.subscriptionType, usageMode: effectiveMode });
+    if (!configData) return;
+    setUserContext({ plan: configData.subscriptionType, usageMode: effectiveMode });
+    if (!appOpenedSent.current) {
+      appOpenedSent.current = true;
+      track('app_opened');
+    }
   }, [configData, effectiveMode]);
 
   // Claude.ai offline / expired token (subscription mode only). Reactive: shows
