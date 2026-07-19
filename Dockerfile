@@ -1,5 +1,5 @@
 # ---- build stage: compile the Vite frontend ----
-FROM node:20-alpine AS build
+FROM node:24-alpine AS build
 WORKDIR /app
 COPY package*.json ./
 RUN npm ci
@@ -16,12 +16,18 @@ ENV VITE_POSTHOG_HOST=$VITE_POSTHOG_HOST
 RUN npm run build
 
 # ---- runtime stage: Express serving API + static dist ----
-FROM node:20-alpine AS runtime
+FROM node:24-alpine AS runtime
 WORKDIR /app
 ENV NODE_ENV=production
 ENV SERVER_PORT=8787
 ENV CLAUDE_DIR=/data/.claude
 ENV APP_RUNTIME=docker
+# Parsed-scan cache (SQLite via the built-in node:sqlite, hence node 24). Backed by
+# a named volume in docker-compose so it survives `docker compose up --build` —
+# without that the container would re-parse ~1.1 GB of JSONL on every restart.
+ENV DASHBOARD_CACHE_DIR=/cache
+# node:sqlite is still flagged experimental and prints a warning on every boot.
+ENV NODE_NO_WARNINGS=1
 
 # tzdata so the TZ env var (day bucketing) works on alpine.
 RUN apk add --no-cache tzdata

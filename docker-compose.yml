@@ -32,6 +32,13 @@ services:
       # when unset this falls back to mounting the .claude DIR here, which the
       # backend detects (not a file) and treats as "can't determine".
       - "${CLAUDE_JSON_HOST:-${CLAUDE_DIR_HOST}}:/data/claude-json:ro"
+      # Parsed-scan cache. MUST be a named volume, not a bind or an anonymous one:
+      # `npm run docker:up` runs `up -d --build`, which replaces the container, and
+      # anything on the container filesystem is discarded with it. This volume is
+      # what makes a restart cost ~1s instead of re-parsing ~1.1 GB of JSONL (~10s).
+      # Safe to delete at any time — it is a cache and rebuilds itself:
+      #   docker compose down && docker volume rm claude-dashboard-cache
+      - "claude-dashboard-cache:/cache"
     environment:
       - CLAUDE_DIR=/data/.claude
       - COWORK_DIR=/data/cowork
@@ -66,3 +73,7 @@ services:
     # Always available: restarts on crash and on machine reboot
     # (as long as Docker Desktop is set to start at login).
     restart: unless-stopped
+
+volumes:
+  # Named so it persists across `docker compose up --build`. See the mount above.
+  claude-dashboard-cache:
