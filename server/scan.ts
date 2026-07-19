@@ -1,8 +1,6 @@
-import { createReadStream } from 'node:fs';
-import { readdir, stat, readFile } from 'node:fs/promises';
+import { readdir, readFile } from 'node:fs/promises';
 import { homedir, platform } from 'node:os';
 import { join } from 'node:path';
-import { createInterface } from 'node:readline';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { isDocker } from './version.ts';
@@ -93,186 +91,12 @@ export function keepScanFile(file: string, source: UsageSource): boolean {
   return /[\\/]\.claude[\\/]projects[\\/]/.test(file);
 }
 
-async function listJsonl(dir: string, source: UsageSource = 'code'): Promise<string[]> {
-  let entries: string[] = [];
-  let dirents;
-  try {
-    dirents = await readdir(dir, { withFileTypes: true });
-  } catch {
-    return [];
-  }
-  for (const d of dirents) {
-    const full = join(dir, d.name);
-    if (d.isDirectory()) {
-      entries = entries.concat(await listJsonl(full, source));
-    } else if (d.isFile() && d.name.endsWith('.jsonl') && keepScanFile(full, source)) {
-      entries.push(full);
-    }
-  }
-  return entries;
-}
-
-/** Newest mtime across all scanned jsonl files — a cheap cache-invalidation signal. */
-export async function projectsFingerprint(): Promise<number> {
-  const fileLists = await Promise.all(scanRoots().map((r) => listJsonl(r.dir, r.source)));
-  const files = fileLists.flat();
-  let newest = 0;
-  await Promise.all(
-    files.map(async (f) => {
-      try {
-        const s = await stat(f);
-        if (s.mtimeMs > newest) newest = s.mtimeMs;
-      } catch {
-        /* ignore */
-      }
-    })
-  );
-  return newest;
-}
+// The recursive walk, the fingerprint and the JSONL parser that used to live here
+// now belong to scan-pass.ts, which does one pass feeding both usage and insights.
+// This module keeps the path/root helpers above and the sidecar/network readers below.
 
 function num(v: unknown): number {
   return typeof v === 'number' && Number.isFinite(v) ? v : 0;
-}
-
-async function parseFile(
-  file: string,
-  seen: Map<string, number>,
-  out: UsageEvent[],
-  sessionPathMap?: Map<string, string>,
-  source: UsageSource = 'code'
-): Promise<void> {
-  // Derive the OS path from the JSONL file path.
-  // Claude encodes project dirs as: <drive-letter>--<path-segments-joined-by-->
-  // e.g.  E--dev-projects-claude-dashboard  →  e:\dev-projects\claude-dashboard
-  //       C--Users-Iftah-Saar-Desktop--Dev-Projects-my-landing-page-2026  →  c:\...
-  // Rule: '--' is the OS path separator; single '-' stays as a literal dash.
-  // Cowork transcripts encode a sandbox-internal path that is meaningless on the
-  // host, so we leave projectPath empty for them (keeps them out of the Projects tab).
-  let projectPath = '';
-  if (source === 'cowork') {
-    // skip decoding — sandbox path is not a real host project
-  } else try {
-    const parts = file.replace(/\\/g, '/').split('/');
-    const projIdx = parts.lastIndexOf('projects');
-    if (projIdx !== -1 && parts[projIdx + 1]) {
-      const encoded = decodeURIComponent(parts[projIdx + 1]);
-      // Detect Windows-style encoding: starts with a drive letter followed by '--'
-      if (/^[A-Za-z]--/.test(encoded)) {
-        // Replace '--' with '\' and prefix with drive letter
-        const letter = encoded[0].toLowerCase();
-        const rest = encoded.slice(3).replace(/--/g, '\\');
-        projectPath = `${letter}:\\${rest}`;
-      } else {
-        // Unix-style: '--' → '/', single '-' stays
-        projectPath = '/' + encoded.replace(/--/g, '/');
-      }
-    }
-  } catch { /* keep empty */ }
-  // A file under a `subagents/` segment is a subagent (Task) transcript — mirrors
-  // insights-scan's isSubagentFile(). Used to attribute cost to subagent usage.
-  const fileIsSidechain = /(^|[\\/])subagents([\\/])/.test(file);
-  // The parent that spawned these subagents is the path segment before `subagents/`
-  // (…/<parentSessionId>/subagents/…) — lets us roll subagent cost up to its session.
-  const parentFromPath = file.replace(/\\/g, '/').match(/\/([^/]+)\/subagents\//)?.[1] ?? '';
-  const rl = createInterface({
-    input: createReadStream(file, { encoding: 'utf8' }),
-    crlfDelay: Infinity,
-  });
-  for await (const line of rl) {
-    if (!line || line.length < 2) continue;
-    let obj: any;
-    try {
-      obj = JSON.parse(line);
-    } catch {
-      continue;
-    }
-    if (obj?.type !== 'assistant') continue;
-    const usage = obj?.message?.usage;
-    if (!usage) continue;
-
-    const key = `${obj.requestId ?? ''}:${obj.message?.id ?? ''}`;
-
-    const ts = Date.parse(obj.timestamp);
-    if (Number.isNaN(ts)) continue;
-
-    const tools: string[] = [];
-    const content = obj.message?.content;
-    if (Array.isArray(content)) {
-      for (const block of content) {
-        if (block?.type === 'tool_use' && typeof block.name === 'string') tools.push(block.name);
-      }
-    }
-
-    const attrStr = (v: unknown): string => (typeof v === 'string' ? v : '');
-
-    const sessionId = obj.sessionId ?? obj.session_id ?? '';
-    const resolvedProjectPath = (source === 'code' && sessionPathMap && sessionId)
-      ? (sessionPathMap.get(sessionId) ?? projectPath)
-      : projectPath;
-    const gitBranch: string = typeof obj.gitBranch === 'string' ? obj.gitBranch : '';
-
-    const event: UsageEvent = {
-      ts,
-      sessionId,
-      model: obj.message?.model ?? 'unknown',
-      inputTokens: num(usage.input_tokens),
-      outputTokens: num(usage.output_tokens),
-      cacheCreateTokens: num(usage.cache_creation_input_tokens),
-      cacheReadTokens: num(usage.cache_read_input_tokens),
-      tools,
-      isSidechain: fileIsSidechain || obj.isSidechain === true,
-      rootSessionId: (fileIsSidechain && parentFromPath) ? parentFromPath : sessionId,
-      attributionAgent: attrStr(obj.attributionAgent),
-      attributionSkill: attrStr(obj.attributionSkill),
-      attributionMcpServer: attrStr(obj.attributionMcpServer),
-      attributionPlugin: attrStr(obj.attributionPlugin),
-      projectPath: resolvedProjectPath,
-      gitBranch,
-      source,
-    };
-
-    // Dedup: same logical response can appear multiple times (retries/streaming).
-    // Early duplicates carry placeholder usage; keep whichever reports the most
-    // effective tokens (input + output + cacheCreate), not the first seen.
-    if (key !== ':') {
-      const existingIdx = seen.get(key);
-      if (existingIdx !== undefined) {
-        const prev = out[existingIdx];
-        const prevEff = prev.inputTokens + prev.outputTokens + prev.cacheCreateTokens;
-        const nextEff = event.inputTokens + event.outputTokens + event.cacheCreateTokens;
-        if (nextEff > prevEff) out[existingIdx] = event;
-        continue;
-      }
-      seen.set(key, out.length);
-    }
-
-    out.push(event);
-  }
-}
-
-/** Scan all session JSONL, dedup, return events sorted ascending by time. */
-export async function scanEvents(): Promise<UsageEvent[]> {
-  const sessions = await readSessionMetas();
-  const sessionPathMap = new Map<string, string>();
-  for (const s of sessions) {
-    if (s?.session_id && s?.project_path) {
-      sessionPathMap.set(s.session_id, s.project_path);
-    }
-  }
-
-  // Shared dedup map across all roots: a session's cliSessionId can write to both
-  // the global projects dir and a cowork root, and the requestId:message.id key
-  // collapses those into one event regardless of which root it came from.
-  const seen = new Map<string, number>();
-  const out: UsageEvent[] = [];
-  for (const root of scanRoots()) {
-    const files = await listJsonl(root.dir, root.source);
-    for (const f of files) {
-      await parseFile(f, seen, out, sessionPathMap, root.source);
-    }
-  }
-  out.sort((a, b) => a.ts - b.ts);
-  return out;
 }
 
 export async function readConfig(): Promise<any> {

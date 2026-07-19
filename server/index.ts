@@ -9,6 +9,7 @@ import { getEvents, eventsFingerprint } from './cache.ts';
 import { buildRecent, buildWeekly, buildModels, buildActivity, buildTools, buildHourlyHeatmap, buildProjectStats, filterSource, type SourceFilter } from './aggregate.ts';
 import { claudeDir, readConfig, readCredentials, readStatsSummary, readSessionMetas, fetchLiveUsage, fetchLiveProfile, detectLitellm, fetchLiteLlmSpend } from './scan.ts';
 import { getInsights, insightsFingerprint } from './insights-scan.ts';
+import { primeData } from './data.ts';
 import { memoBuilder } from './builder-cache.ts';
 import {
   buildErrors, buildRetries, buildLanguages, buildBranches, buildMcp,
@@ -1110,10 +1111,11 @@ if (existsSync(distDir)) {
 
 app.listen(PORT, () => {
   console.log(`[server] listening on http://localhost:${PORT} (claudeDir=${claudeDir()})`);
-  // Prime the event + insights caches in the background so the first request
-  // (often /api/sessions, which needs both) doesn't pay the full cold-scan cost
-  // — that scan of ~100MB+ of JSONL can take several seconds. Errors are ignored;
-  // the endpoints will simply scan on demand if this fails.
-  void getEvents().catch(() => {});
-  void getInsights().catch(() => {});
+  // Prime the data layer in the background. This used to be two calls that each
+  // kicked off a full independent scan of the same files, concurrently — they
+  // fought over the disk and the libuv threadpool and doubled the cold-start cost.
+  // One pass now feeds both, and the on-disk row cache means a restart usually
+  // only re-parses the handful of files that changed. Errors are ignored; the
+  // endpoints scan on demand if this fails.
+  void primeData().catch(() => {});
 });
