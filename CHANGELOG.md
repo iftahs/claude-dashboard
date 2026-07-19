@@ -5,6 +5,24 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.22] - 2026-07-19
+
+### Added
+- Documents the scan pipeline and its parser pitfalls for better user understanding.
+- Introduces a cache named volume to persist scan data, enhancing performance during restarts.
+- Adds endpoint snapshot and cold-start measurement tools to ensure output consistency.
+
+### Changed
+- Optimizes tab loading by implementing code-splitting and deferring non-essential components, improving initial load times.
+- Refactors the scan process to cache parsed rows across restarts, significantly reducing cold start times.
+- Updates the Docker setup to use the latest node base image, improving compatibility with SQLite.
+- Changes JSON line splitting logic to prevent data loss in parsing, enhancing reliability.
+
+### Fixed
+- Corrects the insights deduplication guard logic, ensuring accurate counting of tool calls.
+- Resolves issues with JSON parsing that caused records containing special characters to fail.
+- Fixes session identification logic to ensure accurate UUID resolution for auto-resume functionality.
+
 ## [0.1.21] - 2026-07-18
 
 ### Added
@@ -261,6 +279,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Live-API fallback to the local logs when there is no active block
   (`resets_at = null`).
 
+[0.1.22]: https://github.com/iftahs/claude-dashboard/releases/tag/v0.1.22
 [0.1.21]: https://github.com/iftahs/claude-dashboard/releases/tag/v0.1.21
 [0.1.20]: https://github.com/iftahs/claude-dashboard/releases/tag/v0.1.20
 [0.1.19]: https://github.com/iftahs/claude-dashboard/releases/tag/v0.1.19
