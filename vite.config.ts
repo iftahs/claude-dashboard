@@ -21,6 +21,21 @@ export default defineConfig({
       '@': fileURLToPath(new URL('./src', import.meta.url)),
     },
   },
+  build: {
+    rollupOptions: {
+      output: {
+        // Split the heavy third-party libs out of the entry chunk. recharts is only
+        // needed once a chart-bearing tab mounts, and posthog only for analytics —
+        // neither should block first paint. The tabs themselves are code-split via
+        // React.lazy in App.tsx, which Vite turns into per-tab chunks automatically.
+        manualChunks: {
+          recharts: ['recharts'],
+          posthog: ['posthog-js', '@posthog/react'],
+          react: ['react', 'react-dom', 'react-router-dom'],
+        },
+      },
+    },
+  },
   server: {
     port: 5180,
     proxy: {
