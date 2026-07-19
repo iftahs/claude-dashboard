@@ -7,7 +7,7 @@
   "license": "MIT",
   "author": "Iftah Saar (https://iftah.dev)",
   "engines": {
-    "node": ">=20"
+    "node": ">=22.5"
   },
   "homepage": "https://github.com/iftahs/claude-dashboard",
   "repository": {
