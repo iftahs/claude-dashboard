@@ -2,6 +2,7 @@ import { BlockGauge } from '@/components/design-system/organisms/BlockGauge/Bloc
 import { UsageBarChart } from '@/components/design-system/organisms/UsageBarChart/UsageBarChart';
 import { Section } from '@/components/design-system/molecules/Section/Section';
 import { PlanUsage } from '@/components/design-system/molecules/PlanUsage/PlanUsage';
+import { AccountsLivePanel } from '@/components/design-system/organisms/AccountsLivePanel/AccountsLivePanel';
 import { ExtraUsageCard } from '@/components/design-system/molecules/ExtraUsageCard/ExtraUsageCard';
 import { LimitsContributors } from '@/components/design-system/organisms/LimitsContributors/LimitsContributors';
 import { AutoResumeCard } from '@/components/design-system/organisms/AutoResumeCard/AutoResumeCard';
@@ -13,6 +14,8 @@ import { useLiveData } from '@/hooks/useLiveData';
 import { useConfigMode } from '@/hooks/useConfigMode';
 import { useCostMetrics } from '@/hooks/useCostMetrics';
 import { useLiteLlmActual } from '@/hooks/useLiteLlmActual';
+import { usePolling } from '@/hooks/usePolling';
+import type { AccountsLiveData } from '@/types';
 import type { LiveTabProps } from './types';
 
 export function LiveTab({ limits }: LiveTabProps) {
@@ -20,6 +23,13 @@ export function LiveTab({ limits }: LiveTabProps) {
   const { configData, isApi, weekStart } = useConfigMode();
   const { costPerDay } = useCostMetrics();
   const { litellmActual } = useLiteLlmActual();
+
+  // Live plan/limits per logged-in account (only polled while the Live tab is
+  // mounted). >1 account swaps the single card for the side-by-side panel; with
+  // one account this stays empty and the dashboard is byte-identical to before.
+  const accountsLive = usePolling<AccountsLiveData>('/api/accounts/live', 15000);
+  const accounts = accountsLive.data?.accounts ?? [];
+  const multiAccount = accounts.length > 1;
 
   const block = recent.data?.activeBlock ?? null;
   const hasSpendingLimits =
@@ -82,15 +92,20 @@ export function LiveTab({ limits }: LiveTabProps) {
         </div>
       </div>
 
-      {/* Subscription rate-limit bars — only meaningful with a plan. */}
+      {/* Subscription rate-limit bars — only meaningful with a plan. With more
+          than one logged-in account, show each account's limits side-by-side. */}
       {configData && !isApi && (
-        <PlanUsage
-          block={block}
-          weekly={weekly.data}
-          liveUsage={liveUsage.data}
-          weekStart={weekStart}
-          tier={configData.subscriptionType ?? configData.rateLimitTier ?? null}
-        />
+        multiAccount ? (
+          <AccountsLivePanel accounts={accounts} weekStart={weekStart} />
+        ) : (
+          <PlanUsage
+            block={block}
+            weekly={weekly.data}
+            liveUsage={liveUsage.data}
+            weekStart={weekStart}
+            tier={configData.subscriptionType ?? configData.rateLimitTier ?? null}
+          />
+        )
       )}
 
       {/* Auto-resume status — self-hides unless armed or recently fired. */}

@@ -242,6 +242,26 @@ export interface LiveUsageData {
   error?: string;
 }
 
+/** One logged-in account's live plan/limits, from GET /api/accounts/live. Claude
+ *  Code shares one credential slot, so these are snapshotted per account as each
+ *  becomes active; an idle account's token expires within hours (`expired`). */
+export interface AccountLive {
+  key: string;                       // organizationUuid (or 'default')
+  organizationUuid: string | null;
+  email: string | null;             // from the live profile; null when unavailable
+  label: string;                    // email, else "<plan> · <key prefix>"
+  subscriptionType: string | null;
+  rateLimitTier: string | null;
+  live: LiveUsageData;              // per-account usage, or { error } (incl. stale)
+  expired: boolean;                 // token past its expiresAt — data is a marker
+  isActive: boolean;                // the account currently in the shared slot
+  capturedAt: number;
+}
+
+export interface AccountsLiveData {
+  accounts: AccountLive[];
+}
+
 // "What's contributing to your limits usage?" — cost-weighted Day/Week breakdown.
 export interface ContribBehavior {
   key: string; // 'long_context' | 'subagent_heavy' | … | 'mcp:<server>' | 'skill:<name>'

@@ -22,13 +22,40 @@ const MODEL_COLORS: Record<string, string> = {
 };
 const DEFAULT_MODEL_COLOR = '#22d3ee';
 
-export function PlanUsage({ block, weekly, liveUsage, weekStart, tier }: PlanUsageProps) {
+export function PlanUsage({ block, weekly, liveUsage, weekStart, tier, accountLabel, stale, active }: PlanUsageProps) {
   const [, forceUpdate] = useState(0);
 
   useEffect(() => {
     const timer = setInterval(() => forceUpdate((n) => n + 1), 60000); // refresh every minute for timers
     return () => clearInterval(timer);
   }, []);
+
+  const tierLabel = tier ? tier.replace(/_/g, ' ').toUpperCase() : null;
+  const cardClass = `card p-5 flex flex-col justify-between flex-none${active ? ' ring-1 ring-clay-500/40' : ''}`;
+  const title = accountLabel ?? 'Plan usage';
+  const titleSpanClass = accountLabel ? 'truncate normal-case' : 'uppercase';
+
+  // Idle account whose snapshotted token expired — the live bars would read a
+  // misleading 0%, so show a refresh hint instead.
+  if (stale) {
+    return (
+      <div className={cardClass}>
+        <div className="flex items-center justify-between gap-2">
+          <h3 className="flex min-w-0 items-center gap-1.5 text-sm font-bold tracking-wider text-zinc-300">
+            <span className={titleSpanClass}>{title}</span>
+          </h3>
+          {tierLabel && (
+            <span className="shrink-0 rounded-full bg-white/5 px-2 py-0.5 font-mono text-[10px] uppercase tracking-wide text-zinc-400 ring-1 ring-white/10">
+              {tierLabel}
+            </span>
+          )}
+        </div>
+        <p className="mt-3 text-xs leading-relaxed text-zinc-500">
+          Token stale — open this account in Claude Code to refresh its live usage.
+        </p>
+      </div>
+    );
+  }
 
   const now = Date.now();
 
@@ -96,17 +123,15 @@ export function PlanUsage({ block, weekly, liveUsage, weekStart, tier }: PlanUsa
 
   const modelLimits: WeeklyModelBar[] = scopedFromLimits.length ? scopedFromLimits : legacyModelLimits;
 
-  const tierLabel = tier ? tier.replace(/_/g, ' ').toUpperCase() : null;
-
   return (
-    <div className="card p-5 flex flex-col justify-between flex-none">
-      <div className="mb-4 flex items-center justify-between">
-        <h3 className="flex items-center gap-1.5 text-sm font-bold uppercase tracking-wider text-zinc-300">
-          Plan usage
+    <div className={cardClass}>
+      <div className="mb-4 flex items-center justify-between gap-2">
+        <h3 className="flex min-w-0 items-center gap-1.5 text-sm font-bold tracking-wider text-zinc-300">
+          <span className={titleSpanClass}>{title}</span>
           <InfoTip text="Your live subscription rate-limit ceilings from Claude.ai: the 5-hour window plus the weekly all-models, per-model and Cowork caps, each with % used and time to reset. Pulled from Anthropic's usage API — these are surfaced for awareness, not enforced." />
         </h3>
         {tierLabel ? (
-          <span className="rounded-full bg-white/5 px-2 py-0.5 font-mono text-[10px] uppercase tracking-wide text-zinc-400 ring-1 ring-white/10">
+          <span className="shrink-0 rounded-full bg-white/5 px-2 py-0.5 font-mono text-[10px] uppercase tracking-wide text-zinc-400 ring-1 ring-white/10">
             {tierLabel}
           </span>
         ) : (

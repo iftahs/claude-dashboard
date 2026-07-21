@@ -33,6 +33,45 @@ async function readDotEnvVar(name) {
   }
 }
 
+const MAX_RECORDED_TOKENS = 8; // a few distinct logins is plenty; bounds growth
+
+/**
+ * Accumulate distinct OAuth tokens into `~/.claude/.dashboard-accounts.json` so
+ * the dashboard can show every logged-in account's live limits. Claude Code
+ * shares a single Keychain slot, so each account switch is our one chance to
+ * snapshot it. The token blob carries NO stable account id (no org/account/email
+ * — those only come from the OAuth profile endpoint), so this stays a plain
+ * network-free ring of tokens deduped by accessToken; the backend resolves
+ * identity and dedups accounts via the profile it fetches anyway. Atomic write,
+ * 0600 — it holds access tokens.
+ */
+async function recordToken(claudeDir, keychainJson) {
+  const oauth = keychainJson.claudeAiOauth;
+  const accountsPath = join(claudeDir, '.dashboard-accounts.json');
+
+  let tokens = [];
+  try {
+    const parsed = JSON.parse(await readFile(accountsPath, 'utf8'));
+    if (Array.isArray(parsed?.tokens)) tokens = parsed.tokens;
+  } catch {
+    // Missing or corrupt file — start fresh.
+  }
+
+  // Already have this exact token (unchanged since the last tick) — nothing to do.
+  if (tokens.some((t) => t?.claudeAiOauth?.accessToken === oauth.accessToken)) {
+    if (verbose) log('token already recorded');
+    return;
+  }
+
+  tokens.unshift({ claudeAiOauth: oauth, capturedAt: Date.now() });
+  tokens = tokens.slice(0, MAX_RECORDED_TOKENS);
+
+  const tmpPath = `${accountsPath}.tmp`;
+  await writeFile(tmpPath, JSON.stringify({ tokens }, null, 2), { encoding: 'utf8', mode: 0o600 });
+  await rename(tmpPath, accountsPath);
+  log(`recorded account token (${tokens.length} known) in ${accountsPath}`);
+}
+
 async function main() {
   if (process.platform !== 'darwin') return;
 
@@ -58,6 +97,13 @@ async function main() {
     if (verbose) log('Keychain item has no claudeAiOauth.accessToken — nothing to sync');
     return;
   }
+
+  // Record this token into the ring that powers the multi-account live view.
+  // Done BEFORE the single-cache regression check below: the shared Keychain slot
+  // only ever holds the currently-active account, so each account switch is our
+  // one chance to capture it — even when its token expires sooner than what the
+  // single cache already holds (which would short-circuit below).
+  await recordToken(claudeDir, keychainJson);
 
   // Never regress the cache: skip when it already holds this token, or one
   // that outlives what the Keychain has (the container re-reads the file on
