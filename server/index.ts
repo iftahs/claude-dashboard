@@ -429,9 +429,15 @@ app.get('/api/accounts/live', async (_req, res) => {
       }),
     );
 
+    // Only surface accounts with live usage right now — an idle account whose
+    // snapshot expired (or a token that errored) carries no quota signal, so
+    // showing it would just be an empty card. When this leaves ≤1 account the
+    // frontend falls back to the original single-account view.
+    const liveAccounts = accounts.filter((a) => !a.expired && !(a.live as any)?.error);
+
     // Active account first, then most-recently captured.
-    accounts.sort((a, b) => Number(b.isActive) - Number(a.isActive) || b.capturedAt - a.capturedAt);
-    res.json(wrap({ accounts }, Date.now()));
+    liveAccounts.sort((a, b) => Number(b.isActive) - Number(a.isActive) || b.capturedAt - a.capturedAt);
+    res.json(wrap({ accounts: liveAccounts }, Date.now()));
   } catch (e) {
     res.status(500).json({ error: String(e) });
   }

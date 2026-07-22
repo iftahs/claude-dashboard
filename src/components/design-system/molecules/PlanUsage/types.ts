@@ -11,8 +11,6 @@ export interface PlanUsageProps {
   tier?: string | null;
   /** Multi-account mode: the account's email/label, shown as the card title. */
   accountLabel?: string | null;
-  /** Render a muted "token stale" card — an idle account whose snapshot expired. */
-  stale?: boolean;
   /** Highlight ring for the account currently in the shared credential slot. */
   active?: boolean;
 }

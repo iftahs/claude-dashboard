@@ -2,10 +2,10 @@ import { PlanUsage } from '@/components/design-system/molecules/PlanUsage/PlanUs
 import type { AccountsLivePanelProps } from './types';
 
 /**
- * Side-by-side live plan/limits for every logged-in account (see
- * /api/accounts/live). Reuses the single-account PlanUsage card per account —
- * `block`/`weekly` are null because the live payload drives the bars. An idle
- * account whose token snapshot expired renders the muted "stale" card.
+ * Side-by-side live plan/limits for every logged-in account with live usage
+ * (see /api/accounts/live, which already drops expired/idle accounts). Reuses
+ * the single-account PlanUsage card per account — `block`/`weekly` are null
+ * because the live payload drives the bars.
  */
 export function AccountsLivePanel({ accounts, weekStart }: AccountsLivePanelProps) {
   return (
@@ -20,7 +20,6 @@ export function AccountsLivePanel({ accounts, weekStart }: AccountsLivePanelProp
           tier={acc.subscriptionType ?? acc.rateLimitTier ?? null}
           accountLabel={acc.label}
           active={acc.isActive}
-          stale={acc.expired || !!acc.live?.error}
         />
       ))}
     </div>

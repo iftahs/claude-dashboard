@@ -22,7 +22,7 @@ const MODEL_COLORS: Record<string, string> = {
 };
 const DEFAULT_MODEL_COLOR = '#22d3ee';
 
-export function PlanUsage({ block, weekly, liveUsage, weekStart, tier, accountLabel, stale, active }: PlanUsageProps) {
+export function PlanUsage({ block, weekly, liveUsage, weekStart, tier, accountLabel, active }: PlanUsageProps) {
   const [, forceUpdate] = useState(0);
 
   useEffect(() => {
@@ -34,28 +34,6 @@ export function PlanUsage({ block, weekly, liveUsage, weekStart, tier, accountLa
   const cardClass = `card p-5 flex flex-col justify-between flex-none${active ? ' ring-1 ring-clay-500/40' : ''}`;
   const title = accountLabel ?? 'Plan usage';
   const titleSpanClass = accountLabel ? 'truncate normal-case' : 'uppercase';
-
-  // Idle account whose snapshotted token expired — the live bars would read a
-  // misleading 0%, so show a refresh hint instead.
-  if (stale) {
-    return (
-      <div className={cardClass}>
-        <div className="flex items-center justify-between gap-2">
-          <h3 className="flex min-w-0 items-center gap-1.5 text-sm font-bold tracking-wider text-zinc-300">
-            <span className={titleSpanClass}>{title}</span>
-          </h3>
-          {tierLabel && (
-            <span className="shrink-0 rounded-full bg-white/5 px-2 py-0.5 font-mono text-[10px] uppercase tracking-wide text-zinc-400 ring-1 ring-white/10">
-              {tierLabel}
-            </span>
-          )}
-        </div>
-        <p className="mt-3 text-xs leading-relaxed text-zinc-500">
-          Token stale — open this account in Claude Code to refresh its live usage.
-        </p>
-      </div>
-    );
-  }
 
   const now = Date.now();
 
