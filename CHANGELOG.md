@@ -11,8 +11,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Claude Opus 5 support across pricing, colors, labels and the Models tab. It was
   previously falling through to the legacy-Opus row and billing at $15/$75 instead of
   $5/$25, overstating every cost figure in the app by 3×.
-- `docs/adding-a-model.md` — a checklist for adding a future model, covering every table
-  a new model touches and the trap in each.
 - Busiest-hour and busiest-day summaries above the two Trends heatmaps.
 
 ### Changed
