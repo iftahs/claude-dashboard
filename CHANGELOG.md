@@ -5,6 +5,18 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.24] - 2026-07-24
+
+### Added
+- Added Claude Opus 5 to the model tables for improved pricing accuracy.
+
+### Changed
+- Updated pricing logic to correctly identify Opus 5 without legacy billing.
+- Adjusted amber color code for Opus 5, enhancing visual accessibility in light and dark modes.
+- Modified the PRICING_DATA to reflect Opus 5 as the newest popular model.
+- Updated default model tracking to include Opus 5 in AI Insights configuration.
+- Reflected Opus 5 updates in example environment configuration and documentation.
+
 ## [0.1.23] - 2026-07-21
 
 ### Added
@@ -287,6 +299,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Live-API fallback to the local logs when there is no active block
   (`resets_at = null`).
 
+[0.1.24]: https://github.com/iftahs/claude-dashboard/releases/tag/v0.1.24
 [0.1.23]: https://github.com/iftahs/claude-dashboard/releases/tag/v0.1.23
 [0.1.22]: https://github.com/iftahs/claude-dashboard/releases/tag/v0.1.22
 [0.1.21]: https://github.com/iftahs/claude-dashboard/releases/tag/v0.1.21
