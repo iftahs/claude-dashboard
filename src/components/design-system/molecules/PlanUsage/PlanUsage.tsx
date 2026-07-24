@@ -22,6 +22,15 @@ const MODEL_COLORS: Record<string, string> = {
 };
 const DEFAULT_MODEL_COLOR = '#22d3ee';
 
+// Anthropic's display_name is a plain family word today ("Opus"), but a generation
+// may get appended ("Opus 5") — match the family out of it rather than keying on the
+// whole string, which would silently drop every bar to DEFAULT_MODEL_COLOR.
+function modelBarColor(displayName: string): string {
+  const family = displayName.match(/fable|mythos|opus|sonnet|haiku/i)?.[0].toLowerCase();
+  const key = family && family[0].toUpperCase() + family.slice(1);
+  return (key && MODEL_COLORS[key]) || DEFAULT_MODEL_COLOR;
+}
+
 export function PlanUsage({ block, weekly, liveUsage, weekStart, tier }: PlanUsageProps) {
   const [, forceUpdate] = useState(0);
 
@@ -80,7 +89,7 @@ export function PlanUsage({ block, weekly, liveUsage, weekStart, tier }: PlanUsa
         .filter((l) => l.group === 'weekly' && l.kind === 'weekly_scoped' && l.scope?.model?.display_name)
         .map((l) => {
           const name = l.scope!.model!.display_name!;
-          return { label: `Weekly · ${name}`, pct: Math.round(l.percent), resetsAt: l.resets_at, color: MODEL_COLORS[name] ?? DEFAULT_MODEL_COLOR };
+          return { label: `Weekly · ${name}`, pct: Math.round(l.percent), resetsAt: l.resets_at, color: modelBarColor(name) };
         })
     : [];
 

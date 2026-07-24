@@ -8,12 +8,18 @@
  * server/pricing.ts):
  *
  *   fable / mythos   10/50  → red     ── hottest
- *   opus             5/25   → amber      (legacy opus 15/75 takes the brighter step)
+ *   opus             5/25   → amber
  *   sonnet           3/15   → green
  *   haiku            1/5    → blue    ── coldest
  *
  * Within a family the hue is constant and the version picks a step, so the family
- * stays readable at a glance.
+ * stays readable at a glance. The amber steps are ordered by generation, not by
+ * price: opus 5 takes the canonical hue, opus 4.5–4.8 the brighter step, legacy
+ * opus (3.0/4.0/4.1) the deep step. That ordering is measured, not aesthetic —
+ * the deep amber sits at ΔE 1.2 from sonnet-5 green under protanopia, so it has
+ * to land on the tier that essentially never appears in a modern transcript.
+ * opus-5 ↔ opus-4.x (#c98500 ↔ #eda100) separates at ΔE 9.6 normal / 9.3 CVD,
+ * better than the fable↔mythos and haiku-4↔haiku-3 pairs already shipping here.
  *
  * The four family hues are validated (dataviz validate_palette.js, all-pairs, both
  * modes, surfaces #1c1c24 / #ffffff): lightness band, chroma floor, normal-vision
@@ -27,8 +33,9 @@ const MODEL_TABLE: Array<[RegExp, string]> = [
   // (mirrors the TABLE in server/pricing.ts).
   [/fable/i, '#e5484d'], // red
   [/mythos/i, '#b93b3f'], // red, deeper step — same price tier as fable
-  [/opus-4-[5-8]|opus-4\.[5-8]/i, '#c98500'], // amber
-  [/opus/i, '#eda100'], // legacy opus (15/75) — brighter amber, it costs more
+  [/opus-5/i, '#c98500'], // amber
+  [/opus-4-[5-8]|opus-4\.[5-8]/i, '#eda100'], // amber, brighter step
+  [/opus/i, '#a86e00'], // legacy opus (3.0/4.0/4.1) — deep amber, see the note above
   [/sonnet-5/i, '#008300'], // green
   [/sonnet/i, '#199e70'], // older sonnets — green family, aqua step
   [/haiku-4/i, '#3987e5'], // blue

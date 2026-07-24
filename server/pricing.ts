@@ -12,8 +12,8 @@ const TABLE: Array<[RegExp, Price]> = [
   [/fable/i, { input: 10, output: 50, cacheWrite: 12.50, cacheRead: 1.0 }],
   // Claude Mythos
   [/mythos/i, { input: 10, output: 50, cacheWrite: 12.50, cacheRead: 1.0 }],
-  // Claude Opus: 4.5, 4.6, 4.7, 4.8 are priced at 5 / 25
-  [/opus-4-[5-8]|opus-4\.[5-8]/i, { input: 5, output: 25, cacheWrite: 6.25, cacheRead: 0.5 }],
+  // Claude Opus: 5 and 4.5, 4.6, 4.7, 4.8 are priced at 5 / 25
+  [/opus-5|opus-4-[5-8]|opus-4\.[5-8]/i, { input: 5, output: 25, cacheWrite: 6.25, cacheRead: 0.5 }],
   // Legacy Claude Opus (3.0, 4.0, 4.1) priced at 15 / 75
   [/opus/i, { input: 15, output: 75, cacheWrite: 18.75, cacheRead: 1.5 }],
   // Claude Sonnet (all versions: 3.0, 3.5, 4.5, 4.6, 5) priced at 3 / 15
