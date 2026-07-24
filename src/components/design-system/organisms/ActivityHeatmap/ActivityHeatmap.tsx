@@ -3,7 +3,7 @@ import { HoverTooltip } from '@/components/design-system/molecules/HoverTooltip/
 import type { DailyActivity } from '@/types';
 import { compact } from '@/lib/format';
 import type { ActivityHeatmapProps } from './types';
-import { MONTHS, WEEKS, color, localKey, weekdayLabels } from './utils';
+import { MONTHS, WEEKS, color, fullDate, localKey, peakDay, weekdayLabels } from './utils';
 
 export function ActivityHeatmap({ days, weekStart }: ActivityHeatmapProps) {
   const [hoveredDate, setHoveredDate] = useState<string | null>(null);
@@ -44,12 +44,20 @@ export function ActivityHeatmap({ days, weekStart }: ActivityHeatmapProps) {
   });
 
   const isFuture = (key: string) => key > localKey(today);
+  const peak = peakDay(cells);
 
   return (
     <div>
-      <p className="mb-4 text-xs text-zinc-500">
+      <p className={`${peak ? 'mb-1' : 'mb-4'} text-xs text-zinc-500`}>
         Each square is one day · darker = more effective tokens used. Numbers show day of month and effective tokens; hover a square for details.
       </p>
+      {peak && (
+        <p className="mb-4 text-xs text-zinc-500">
+          Your busiest day was{' '}
+          <span className="font-semibold text-zinc-300">{fullDate(peak.date)}</span> —{' '}
+          <span className="font-mono text-clay-400">{compact(peak.effectiveTokens)}</span> effective tokens.
+        </p>
+      )}
       <div className="overflow-x-auto">
         <div className="grid grid-cols-[auto_repeat(18,1fr)] gap-1.5 w-full min-w-[900px]">
           {/* Row 0: Month labels */}
