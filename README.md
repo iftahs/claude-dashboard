@@ -289,7 +289,7 @@ The AI Insights tab and the per-section "✨ AI" buttons call a model **only whe
 
 - **What's *never* sent:** transcripts or message contents, full file/project paths, session IDs, or your OAuth token.
 - **Which backend serves the call** (first available wins): an API key you set in **⚙ Settings → AI Insights** (Claude / OpenAI / Gemini, stored only in your browser) → a server-side `ANTHROPIC_API_KEY` → the local `claude` CLI (`claude -p`, uses your subscription) → your Claude.ai OAuth token → otherwise the feature shows setup instructions and does nothing.
-- **Server-side defaults** for Docker/self-host live in [`.env.example`](.env.example): `WITH_CLAUDE_CLI=1`, `ANTHROPIC_API_KEY`, and `AI_MODEL` (default `claude-opus-4-8`).
+- **Server-side defaults** for Docker/self-host live in [`.env.example`](.env.example): `WITH_CLAUDE_CLI=1`, `ANTHROPIC_API_KEY`, and `AI_MODEL` (default `claude-opus-5`).
 - If you never open the AI tab or click "✨ AI", **no aggregates are ever sent.**
 
 ## Contributing

@@ -21,14 +21,25 @@
  * floor band — which is legal only because identity never rests on color alone: every
  * chart with ≥2 series ships a legend and names the model in its tooltip. Keep that
  * pairing if you touch these values, and re-run the validator.
+ *
+ * The amber family is pinched and its steps run LIGHTER, never darker: dark mode's
+ * lightness band tops out at L 0.67 and #c98500 already sits at that ceiling, while
+ * every amber darker than it collapses onto sonnet green under deutan/protan
+ * (#a86a00 ΔE 2.3, #8f6300 ΔE 1.3 — at or below the palette's worst cross-family
+ * pair, #008300↔#b93b3f at 3.1). So each superseded opus generation steps up in
+ * lightness instead: #c98500 (0.65, in band) → #db9200 (0.716) → #eda100 (0.764).
+ * The two lighter steps exit the dark band and warn on light-mode contrast; that is
+ * the accepted trade, carried by the legend and tooltip. #db9200's worst
+ * cross-family separation is ΔE 8.9, well clear of the 3.1 floor.
  */
 const MODEL_TABLE: Array<[RegExp, string]> = [
   // Order matters: specific patterns before generic fallbacks, first match wins
   // (mirrors the TABLE in server/pricing.ts).
   [/fable/i, '#e5484d'], // red
   [/mythos/i, '#b93b3f'], // red, deeper step — same price tier as fable
-  [/opus-4-[5-8]|opus-4\.[5-8]/i, '#c98500'], // amber
-  [/opus/i, '#eda100'], // legacy opus (15/75) — brighter amber, it costs more
+  [/opus-5/i, '#c98500'], // amber — newest opus holds the family's canonical hue
+  [/opus-4-[5-8]|opus-4\.[5-8]/i, '#db9200'], // amber, lighter step — superseded by opus 5
+  [/opus/i, '#eda100'], // legacy opus (15/75) — brightest amber, it costs more
   [/sonnet-5/i, '#008300'], // green
   [/sonnet/i, '#199e70'], // older sonnets — green family, aqua step
   [/haiku-4/i, '#3987e5'], // blue

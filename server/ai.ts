@@ -40,7 +40,7 @@ export class AiUnavailableError extends Error {}
 export class AiTokenRejectedError extends Error {}
 export class AiCallError extends Error {}
 
-const DEFAULT_MODEL = process.env.AI_MODEL || 'claude-opus-4-8';
+const DEFAULT_MODEL = process.env.AI_MODEL || 'claude-opus-5';
 const CALL_TIMEOUT_MS = Number(process.env.AI_TIMEOUT_MS || 60_000);
 const MAX_OUTPUT_TOKENS = 1024;
 const CLI_PROBE_TTL = 5 * 60_000;
