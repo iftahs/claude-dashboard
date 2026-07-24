@@ -1,4 +1,4 @@
-import { readdir, readFile } from 'node:fs/promises';
+import { readdir, readFile, writeFile, rename } from 'node:fs/promises';
 import { homedir, platform } from 'node:os';
 import { join } from 'node:path';
 import { execFile } from 'node:child_process';
@@ -177,6 +177,80 @@ export async function readCredentials(): Promise<any> {
 }
 
 /**
+ * One captured token from the ring, plus whether it's the account currently in
+ * the shared Keychain/cache slot (what `readCredentials()` returns). The token
+ * blob carries NO stable account id — org/account/email come only from the OAuth
+ * profile — so identity resolution + per-account dedup happens at serve time in
+ * the `/api/accounts/live` handler, not here.
+ */
+export interface CapturedToken {
+  claudeAiOauth: any;
+  capturedAt: number;
+  isActive: boolean;
+}
+
+const ACCOUNTS_FILE = '.dashboard-accounts.json';
+const MAX_RECORDED_TOKENS = 8;
+
+async function readTokenRing(): Promise<any[]> {
+  try {
+    const parsed = JSON.parse(await readFile(join(claudeDir(), ACCOUNTS_FILE), 'utf8'));
+    return Array.isArray(parsed?.tokens)
+      ? parsed.tokens.filter((t: any) => t?.claudeAiOauth?.accessToken)
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Host-only: append the currently-active token to the ring so an account keeps
+ * showing after you switch away from it (Claude Code shares one Keychain slot,
+ * so the next login overwrites it). Deduped by accessToken, capped, network-free
+ * — mirrors `recordToken()` in `sync-macos-keychain.mjs`. Skipped in Docker: the
+ * `~/.claude` mount is read-only there, so the host sync script owns capture,
+ * exactly like `.dashboard-oauth-cache.json`. Best-effort — never throws.
+ */
+async function captureActiveToken(primary: any): Promise<void> {
+  if (isDocker()) return;
+  const oauth = primary?.claudeAiOauth;
+  if (!oauth?.accessToken) return;
+  try {
+    const tokens = await readTokenRing();
+    if (tokens.some((t) => t.claudeAiOauth.accessToken === oauth.accessToken)) return;
+    tokens.unshift({ claudeAiOauth: oauth, capturedAt: Date.now() });
+    const filePath = join(claudeDir(), ACCOUNTS_FILE);
+    const tmp = `${filePath}.tmp`;
+    await writeFile(tmp, JSON.stringify({ tokens: tokens.slice(0, MAX_RECORDED_TOKENS) }, null, 2), { encoding: 'utf8', mode: 0o600 });
+    await rename(tmp, filePath);
+  } catch {
+    // best-effort — never break the request path over a token snapshot
+  }
+}
+
+/**
+ * Every captured token the dashboard knows about (the ring) plus the
+ * currently-active one folded in, so the active account shows even before the
+ * ring is first written (e.g. Docker before the first sync captures it). The
+ * `/api/accounts/live` handler resolves identity and dedups these into accounts.
+ */
+export async function readAccountCredentials(): Promise<CapturedToken[]> {
+  const primary = await readCredentials();
+  await captureActiveToken(primary);
+
+  const primaryToken = primary?.claudeAiOauth?.accessToken;
+  const list: CapturedToken[] = (await readTokenRing()).map((t) => ({
+    claudeAiOauth: t.claudeAiOauth,
+    capturedAt: t.capturedAt ?? 0,
+    isActive: t.claudeAiOauth.accessToken === primaryToken,
+  }));
+  if (primaryToken && !list.some((t) => t.isActive)) {
+    list.unshift({ claudeAiOauth: primary.claudeAiOauth, capturedAt: Date.now(), isActive: true });
+  }
+  return list;
+}
+
+/**
  * User-facing "token expired" advice differs by runtime: on the host, running
  * any Claude Code command refreshes the Keychain/.credentials.json in place —
  * but the Docker container reads a host-written snapshot, so only re-syncing
@@ -228,15 +302,10 @@ export async function readSessionMetas(): Promise<any[]> {
   }
 }
 
-let cachedLiveUsage: {
-  data: any;
-  fetchedAt: number;
-} | null = null;
-
-let cachedLiveProfile: {
-  data: any;
-  fetchedAt: number;
-} | null = null;
+// Keyed by account (organizationUuid) so a second account can be cached
+// alongside the first — the multi-account live view fetches one entry per token.
+const liveUsageCache = new Map<string, { data: any; fetchedAt: number }>();
+const liveProfileCache = new Map<string, { data: any; fetchedAt: number }>();
 
 const CACHE_TTL = 30000; // 30 seconds local cache to avoid rate limit issues
 const PROFILE_TTL = 30 * 60 * 1000; // 30 min — the plan changes rarely
@@ -268,17 +337,20 @@ async function oauthGet(url: string, accessToken: string): Promise<Response> {
   return res;
 }
 
-export async function fetchLiveUsage(): Promise<any> {
-  if (cachedLiveUsage && (Date.now() - cachedLiveUsage.fetchedAt < CACHE_TTL)) {
-    return cachedLiveUsage.data;
+/**
+ * Live usage for a specific token, cached per `key` (an account/org id). The
+ * no-arg `fetchLiveUsage()` below wraps this for the currently-active account so
+ * `/api/usage/live` behaves exactly as before; `/api/accounts/live` calls it
+ * once per captured account.
+ */
+export async function fetchLiveUsageFor(accessToken: string, key: string, expiresAt?: number): Promise<any> {
+  const cached = liveUsageCache.get(key);
+  if (cached && (Date.now() - cached.fetchedAt < CACHE_TTL)) {
+    return cached.data;
   }
-
-  const credentials = await readCredentials();
-  if (!credentials?.claudeAiOauth?.accessToken) {
+  if (!accessToken) {
     throw new Error('No access token found in credentials');
   }
-
-  const expiresAt = credentials.claudeAiOauth.expiresAt;
   if (expiresAt && Date.now() >= expiresAt) {
     throw new Error(expiredTokenMessage());
   }
@@ -286,7 +358,7 @@ export async function fetchLiveUsage(): Promise<any> {
   // OAUTH_API_BASE: test-only override so the auto-resume detection loop can be
   // driven end-to-end by a local mock without exhausting a real limit.
   const url = `${process.env.OAUTH_API_BASE || 'https://api.anthropic.com'}/api/oauth/usage`;
-  const res = await oauthGet(url, credentials.claudeAiOauth.accessToken);
+  const res = await oauthGet(url, accessToken);
   if (res.status === 401) {
     // Expiry the local expiresAt check misses (clock skew, server-side
     // revocation) — word it as "expired" so the frontend classifies it right.
@@ -300,11 +372,17 @@ export async function fetchLiveUsage(): Promise<any> {
   }
 
   const data = await res.json();
-  cachedLiveUsage = {
-    data,
-    fetchedAt: Date.now(),
-  };
+  liveUsageCache.set(key, { data, fetchedAt: Date.now() });
   return data;
+}
+
+export async function fetchLiveUsage(): Promise<any> {
+  const credentials = await readCredentials();
+  const oauth = credentials?.claudeAiOauth;
+  if (!oauth?.accessToken) {
+    throw new Error('No access token found in credentials');
+  }
+  return fetchLiveUsageFor(oauth.accessToken, oauth.accessToken, oauth.expiresAt);
 }
 
 /**
@@ -313,18 +391,15 @@ export async function fetchLiveUsage(): Promise<any> {
  * `.credentials.json`, which goes stale after a plan change until the next login.
  * Cached 30 min; throws (caller falls back to the local file) when offline/expired.
  */
-export async function fetchLiveProfile(): Promise<any> {
-  if (cachedLiveProfile && (Date.now() - cachedLiveProfile.fetchedAt < PROFILE_TTL)) {
-    return cachedLiveProfile.data;
+/** Live profile for a specific token, cached per `key`. See `fetchLiveUsageFor`. */
+export async function fetchLiveProfileFor(accessToken: string, key: string, expiresAt?: number): Promise<any> {
+  const cached = liveProfileCache.get(key);
+  if (cached && (Date.now() - cached.fetchedAt < PROFILE_TTL)) {
+    return cached.data;
   }
-
-  const credentials = await readCredentials();
-  const accessToken = credentials?.claudeAiOauth?.accessToken;
   if (!accessToken) {
     throw new Error('No access token found in credentials');
   }
-
-  const expiresAt = credentials.claudeAiOauth.expiresAt;
   if (expiresAt && Date.now() >= expiresAt) {
     throw new Error(expiredTokenMessage());
   }
@@ -335,8 +410,17 @@ export async function fetchLiveProfile(): Promise<any> {
   }
 
   const data = await res.json();
-  cachedLiveProfile = { data, fetchedAt: Date.now() };
+  liveProfileCache.set(key, { data, fetchedAt: Date.now() });
   return data;
+}
+
+export async function fetchLiveProfile(): Promise<any> {
+  const credentials = await readCredentials();
+  const oauth = credentials?.claudeAiOauth;
+  if (!oauth?.accessToken) {
+    throw new Error('No access token found in credentials');
+  }
+  return fetchLiveProfileFor(oauth.accessToken, oauth.accessToken, oauth.expiresAt);
 }
 
 // ── LiteLLM gateway: actual billed cost ──────────────────────────────────────

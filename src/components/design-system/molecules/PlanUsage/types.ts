@@ -9,4 +9,8 @@ export interface PlanUsageProps {
   weekStart: WeekStart;
   /** Plan / rate-limit tier label (e.g. "max_20x") shown as the source of these ceilings. */
   tier?: string | null;
+  /** Multi-account mode: the account's email/label, shown as the card title. */
+  accountLabel?: string | null;
+  /** Highlight ring for the account currently in the shared credential slot. */
+  active?: boolean;
 }

@@ -7,7 +7,7 @@ import { promisify } from 'node:util';
 import express from 'express';
 import { getEvents, eventsFingerprint } from './cache.ts';
 import { buildRecent, buildWeekly, buildModels, buildActivity, buildTools, buildHourlyHeatmap, buildProjectStats, filterSource, type SourceFilter } from './aggregate.ts';
-import { claudeDir, readConfig, readCredentials, readStatsSummary, readSessionMetas, fetchLiveUsage, fetchLiveProfile, detectLitellm, fetchLiteLlmSpend } from './scan.ts';
+import { claudeDir, readConfig, readCredentials, readStatsSummary, readSessionMetas, fetchLiveUsage, fetchLiveProfile, fetchLiveUsageFor, fetchLiveProfileFor, readAccountCredentials, expiredTokenMessage, detectLitellm, fetchLiteLlmSpend } from './scan.ts';
 import { getInsights, insightsFingerprint } from './insights-scan.ts';
 import { primeData } from './data.ts';
 import { memoBuilder } from './builder-cache.ts';
@@ -80,18 +80,54 @@ app.post('/api/update/pull', async (_req, res) => {
   }
 });
 
+interface SubscriptionInfo {
+  subscriptionType: string | null;
+  rateLimitTier: string | null;
+  seatTier: string | null;
+  hasExtraUsageEnabled: boolean;
+  email: string | null;
+}
+
+/**
+ * Classify a live OAuth `/profile` response into plan/tier fields, falling back
+ * to the values baked into the local credential blob when the profile is
+ * unavailable (offline / expired token → pass `null`). Shared by `/api/config`
+ * and `/api/accounts/live` so the has_claude_max / 5x / team / … rules live once.
+ */
+function classifySubscription(
+  profile: any,
+  fallback: { subscriptionType?: string | null; rateLimitTier?: string | null },
+): SubscriptionInfo {
+  let subscriptionType: string | null = fallback.subscriptionType ?? null;
+  let rateLimitTier: string | null = fallback.rateLimitTier ?? null;
+  const account = profile?.account ?? {};
+  const org = profile?.organization ?? {};
+  const tier = String(org.rate_limit_tier ?? '');
+  if (account.has_claude_max) {
+    subscriptionType = /20x/.test(tier) ? 'max_20x' : /5x/.test(tier) ? 'max_5x' : 'max';
+  } else if (account.has_claude_pro) {
+    subscriptionType = 'pro';
+  } else if (/team/i.test(String(org.organization_type))) {
+    subscriptionType = 'team';
+  } else if (/enterprise/i.test(String(org.organization_type))) {
+    subscriptionType = 'enterprise';
+  } else if (account.uuid) {
+    subscriptionType = 'free';
+  }
+  if (org.rate_limit_tier) rateLimitTier = org.rate_limit_tier;
+  return {
+    subscriptionType,
+    rateLimitTier,
+    seatTier: org.seat_tier ?? null,
+    hasExtraUsageEnabled: !!org.has_extra_usage_enabled,
+    email: account.email ?? account.email_address ?? null,
+  };
+}
+
 app.get('/api/config', async (_req, res) => {
   try {
     const config = await readConfig();
     const credentials = await readCredentials();
-
-    // Start from the local credentials file, then override with the live profile
-    // from Anthropic — `.credentials.json` keeps a stale `subscriptionType` after
-    // a plan change until the next login, whereas the profile endpoint is current.
-    let subscriptionType: string | null = credentials?.claudeAiOauth?.subscriptionType ?? null;
-    let rateLimitTier: string | null = credentials?.claudeAiOauth?.rateLimitTier ?? null;
-    let seatTier: string | null = null;
-    let hasExtraUsageEnabled = false;
 
     // Auth mode — a Claude.ai subscription stores an OAuth token under
     // `claudeAiOauth` (used for live usage/profile); API / pay-as-you-go users
@@ -100,33 +136,33 @@ app.get('/api/config', async (_req, res) => {
     const authMode: 'api' | 'subscription' = credentials?.claudeAiOauth?.accessToken
       ? 'subscription'
       : 'api';
+
+    // Start from the local credentials file, then override with the live profile
+    // from Anthropic — `.credentials.json` keeps a stale `subscriptionType` after
+    // a plan change until the next login, whereas the profile endpoint is current.
+    let profile: any = null;
     try {
-      const profile = await fetchLiveProfile();
-      const account = profile?.account ?? {};
-      const org = profile?.organization ?? {};
-      const tier = String(org.rate_limit_tier ?? '');
-      if (account.has_claude_max) {
-        subscriptionType = /20x/.test(tier) ? 'max_20x' : /5x/.test(tier) ? 'max_5x' : 'max';
-      } else if (account.has_claude_pro) {
-        subscriptionType = 'pro';
-      } else if (/team/i.test(String(org.organization_type))) {
-        subscriptionType = 'team';
-      } else if (/enterprise/i.test(String(org.organization_type))) {
-        subscriptionType = 'enterprise';
-      } else if (account.uuid) {
-        subscriptionType = 'free';
-      }
-      if (org.rate_limit_tier) rateLimitTier = org.rate_limit_tier;
-      seatTier = org.seat_tier ?? null;
-      hasExtraUsageEnabled = !!org.has_extra_usage_enabled;
+      profile = await fetchLiveProfile();
     } catch {
       // Offline or expired token — keep the values read from the local file.
     }
+    const sub = classifySubscription(profile, {
+      subscriptionType: credentials?.claudeAiOauth?.subscriptionType ?? null,
+      rateLimitTier: credentials?.claudeAiOauth?.rateLimitTier ?? null,
+    });
 
     // LiteLLM gateway detection (pure env read) — gates the "Actual billed" cost UI.
     const litellm = detectLitellm();
 
-    const merged = { ...config, subscriptionType, rateLimitTier, seatTier, hasExtraUsageEnabled, authMode, litellm };
+    const merged = {
+      ...config,
+      subscriptionType: sub.subscriptionType,
+      rateLimitTier: sub.rateLimitTier,
+      seatTier: sub.seatTier,
+      hasExtraUsageEnabled: sub.hasExtraUsageEnabled,
+      authMode,
+      litellm,
+    };
     res.json(wrap(merged, Date.now()));
   } catch (e) {
     res.status(500).json({ error: String(e) });
@@ -315,6 +351,95 @@ app.get('/api/usage/live', async (_req, res) => {
     res.json(wrap(liveUsage, Date.now()));
   } catch (e: any) {
     res.json(wrap({ error: e.message || String(e) }, Date.now()));
+  }
+});
+
+// Live plan/limits for EVERY logged-in account, so the Live tab can show which
+// account still has quota. The token blob has no stable account id (org/account/
+// email come only from the profile), so we resolve identity per captured token
+// via the profile fetch, dedup to one entry per account (keeping the freshest /
+// active token), then fetch each account's usage. Each token is failure-isolated:
+// an expired/idle one yields an error marker instead of sinking the response. The
+// frontend gates the multi-account UI on accounts.length > 1, so single-account
+// users see no change.
+app.get('/api/accounts/live', async (_req, res) => {
+  try {
+    const tokens = await readAccountCredentials();
+    const now = Date.now();
+
+    // 1. Resolve identity per token (profile is cached 30 min; expired tokens
+    //    skip the network entirely).
+    const resolved = await Promise.all(
+      tokens.map(async (t) => {
+        const oauth = t.claudeAiOauth;
+        const expiresAt: number | undefined = oauth.expiresAt;
+        const expired = !!expiresAt && now >= expiresAt;
+        const profile = expired
+          ? null
+          : await fetchLiveProfileFor(oauth.accessToken, oauth.accessToken, expiresAt).catch(() => null);
+        const account = profile?.account ?? {};
+        const org = profile?.organization ?? {};
+        // Stable identity when the profile resolves; otherwise a token-stable
+        // fallback so the same token maps consistently while offline.
+        const identity =
+          account.uuid || org.uuid || account.email || account.email_address ||
+          `token:${String(oauth.accessToken).slice(-12)}`;
+        return { token: t, oauth, expiresAt, expired, profile, identity: String(identity) };
+      }),
+    );
+
+    // 2. Dedup to one token per account — prefer the active token, else the
+    //    freshest — so a refreshed/duplicate token doesn't create a second card.
+    const byId = new Map<string, typeof resolved[number]>();
+    for (const r of resolved) {
+      const cur = byId.get(r.identity);
+      const better =
+        !cur ||
+        (r.token.isActive && !cur.token.isActive) ||
+        (r.token.isActive === cur.token.isActive && (r.oauth.expiresAt ?? 0) > (cur.oauth.expiresAt ?? 0));
+      if (better) byId.set(r.identity, r);
+    }
+
+    // 3. Fetch usage per account and shape the response.
+    const accounts = await Promise.all(
+      [...byId.values()].map(async (r) => {
+        const sub = classifySubscription(r.profile, {
+          subscriptionType: r.oauth.subscriptionType ?? null,
+          rateLimitTier: r.oauth.rateLimitTier ?? null,
+        });
+        const live = r.expired
+          ? { error: expiredTokenMessage() }
+          : await fetchLiveUsageFor(r.oauth.accessToken, r.oauth.accessToken, r.expiresAt).catch((e: any) => ({ error: e?.message || String(e) }));
+        // Real accounts resolve to their email; only a profile-less token (offline
+        // / invalid) falls back to plan + a short token discriminator.
+        const shortId = r.identity.startsWith('token:') ? r.identity.slice(6, 12) : r.identity.slice(0, 6);
+        const label = sub.email ?? (sub.subscriptionType ? `${sub.subscriptionType} · ${shortId}` : shortId);
+        return {
+          key: r.identity,
+          organizationUuid: r.profile?.organization?.uuid ?? null,
+          email: sub.email,
+          label,
+          subscriptionType: sub.subscriptionType,
+          rateLimitTier: sub.rateLimitTier,
+          live,
+          expired: r.expired,
+          isActive: r.token.isActive,
+          capturedAt: r.token.capturedAt,
+        };
+      }),
+    );
+
+    // Only surface accounts with live usage right now — an idle account whose
+    // snapshot expired (or a token that errored) carries no quota signal, so
+    // showing it would just be an empty card. When this leaves ≤1 account the
+    // frontend falls back to the original single-account view.
+    const liveAccounts = accounts.filter((a) => !a.expired && !(a.live as any)?.error);
+
+    // Active account first, then most-recently captured.
+    liveAccounts.sort((a, b) => Number(b.isActive) - Number(a.isActive) || b.capturedAt - a.capturedAt);
+    res.json(wrap({ accounts: liveAccounts }, Date.now()));
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
   }
 });
 
