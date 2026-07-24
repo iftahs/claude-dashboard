@@ -32,8 +32,12 @@ WebFetch both:
 
 **These two pages are the only source of truth.** Never invent a model ID, a price,
 or a date suffix, and never carry one over from memory — model strings released
-after your training cutoff are real, and ones you "remember" may not be. If both
-fetches fail, **stop**: no commit, no PR, no Slack.
+after your training cutoff are real, and ones you "remember" may not be.
+
+**If *either* page fails to fetch or parse, stop**: no commit, no PR, no Slack. Both
+are load-bearing and neither substitutes for the other — with the overview alone you
+have an ID and no price, which is precisely the mispricing this playbook exists to
+prevent. A half-informed PR is worse than no PR, because it looks reviewed.
 
 ## 3. Decide
 
@@ -64,7 +68,7 @@ Follow the existing patterns exactly. Each of these has a trap:
 If you touch `src/lib/palette.ts`, run the `dataviz` skill's validator before
 committing:
 
-```
+```shell
 node scripts/validate_palette.js "<all hues, comma-separated>" --mode dark  --surface "#1c1c24" --pairs all
 node scripts/validate_palette.js "<all hues, comma-separated>" --mode light --surface "#ffffff" --pairs all
 ```
@@ -84,14 +88,16 @@ Opus-tier** model. Do **not** point it at Fable/Mythos (priced above Opus tier) 
 limited-availability model. If you do bump it, also update `.env.example`,
 `docker-compose.yml` and `README.md`, which all name the default.
 
-Also check `THINKS_BY_DEFAULT` in the same file: if the new model **thinks by default**
-when `thinking` is omitted, add it to that regex — otherwise thinking eats the 1024-token
-`max_tokens` budget and the visible answer truncates. Do **not** add Fable/Mythos-class
-models, which reject `thinking: {type: 'disabled'}` with a 400.
+Also check the `THINKS_BY_DEFAULT` set in the same file: if the new model **thinks by
+default** when `thinking` is omitted, add its exact alias — otherwise thinking eats the
+1024-token `max_tokens` budget and the visible answer truncates. Add the bare alias only
+(`claude-opus-5`, not a dated or gateway-prefixed form); `thinksByDefault` strips both.
+Do **not** add Fable/Mythos-class models, which reject `thinking: {type: 'disabled'}`
+with a 400.
 
 ## 5. Verify
 
-```
+```shell
 npx tsc -b
 ```
 
@@ -100,7 +106,7 @@ fails, fix it; do not open a PR on a red typecheck.
 
 ## 6. Branch, commit, PR
 
-```
+```shell
 git checkout -b model/<model-id>
 git commit -m "feat: add <Model Name> support"
 git push -u origin model/<model-id>

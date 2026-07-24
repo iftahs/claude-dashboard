@@ -157,11 +157,24 @@ function runViaCli(input: AiCallInput, model: string): Promise<string> {
  * Models that think by default when `thinking` is omitted. They share `max_tokens`
  * between the thinking and the visible answer, so at our small budget the reply
  * would truncate — we turn thinking off instead, which is legal at effort ≤ high
- * (the default). Deliberately narrow: fable/mythos reject `{type:'disabled'}` with
- * a 400, and proxied or unknown ids may not accept the field at all, so both keep
- * today's request shape byte-for-byte.
+ * (the default). Fable and Mythos are deliberately absent: they reject
+ * `thinking:{type:'disabled'}` with a 400.
  */
-const THINKS_BY_DEFAULT = /(?:opus|sonnet)-5(?![\d-])/i;
+const THINKS_BY_DEFAULT = new Set(['claude-opus-5', 'claude-sonnet-5']);
+
+/**
+ * Exact alias match, not a substring test. Gateway and provider prefixes are stripped
+ * first — LiteLLM and Vertex serve "vertex_ai/claude-opus-5" and Bedrock adds
+ * "anthropic." (the same normalisation scan.ts does for spend) — so a real Opus 5
+ * behind a proxy is covered. A custom gateway alias that merely *contains* "opus-5" is
+ * not: an unknown id may not accept the field at all and must keep today's request
+ * shape byte-for-byte.
+ */
+function thinksByDefault(model: string): boolean {
+  const bare = model.includes('/') ? model.slice(model.lastIndexOf('/') + 1) : model;
+  const alias = bare.trim().toLowerCase().replace(/^anthropic\./, '').replace(/-\d{8}$/, '');
+  return THINKS_BY_DEFAULT.has(alias);
+}
 
 /**
  * One body builder for both the buffered and streaming callers so they can't drift.
@@ -170,7 +183,7 @@ const THINKS_BY_DEFAULT = /(?:opus|sonnet)-5(?![\d-])/i;
  * generically and never tells the model not to think, which makes leakage worse.
  */
 function messagesBody(input: AiCallInput, model: string, extra?: Record<string, unknown>) {
-  const thinkingOff = THINKS_BY_DEFAULT.test(model);
+  const thinkingOff = thinksByDefault(model);
   return {
     model,
     max_tokens: input.maxTokens ?? MAX_OUTPUT_TOKENS,
