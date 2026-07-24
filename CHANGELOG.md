@@ -5,6 +5,23 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.24] - 2026-07-25
+
+### Added
+- Claude Opus 5 support across pricing, colors, labels and the Models tab. It was
+  previously falling through to the legacy-Opus row and billing at $15/$75 instead of
+  $5/$25, overstating every cost figure in the app by 3×.
+- Busiest-hour and busiest-day summaries above the two Trends heatmaps.
+
+### Changed
+- Default AI Insights model is now Claude Opus 5. Because it thinks by default and
+  `max_tokens` covers thinking plus the answer, requests to models in that class now
+  disable thinking so short replies don't truncate.
+- Amber palette steps are ordered by generation rather than price, so Opus 5 and Opus
+  4.8 are distinguishable in the same chart.
+- `PlanUsage` matches the model family out of Anthropic's `display_name`, so per-model
+  weekly bars keep their color if the API starts reporting a generation with it.
+
 ## [0.1.23] - 2026-07-21
 
 ### Added

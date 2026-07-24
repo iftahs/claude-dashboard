@@ -47,11 +47,11 @@ services:
       # AI Insights (chat + per-section buttons). In Docker there's no `claude`
       # CLI, so set ANTHROPIC_API_KEY in .env for a dedicated, un-throttled
       # backend. Unset → falls back to the Claude.ai OAuth token (works, but is
-      # rate-limited → may 429). AI_MODEL is optional (default claude-opus-4-8).
+      # rate-limited → may 429). AI_MODEL is optional (default claude-opus-5).
       # To route through a corporate LLM proxy (LiteLLM / gateway) instead, set
       # ANTHROPIC_BASE_URL + ANTHROPIC_AUTH_TOKEN in .env (the token is sent as a
       # bearer Authorization header). Host shell vars are NOT auto-passed, so they
-      # must be listed here. Set AI_MODEL if the proxy doesn't serve claude-opus-4-8.
+      # must be listed here. Set AI_MODEL if the proxy doesn't serve claude-opus-5.
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
       - ANTHROPIC_BASE_URL=${ANTHROPIC_BASE_URL:-}
       - ANTHROPIC_AUTH_TOKEN=${ANTHROPIC_AUTH_TOKEN:-}

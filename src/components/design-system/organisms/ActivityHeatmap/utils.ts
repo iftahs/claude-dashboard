@@ -1,4 +1,5 @@
 import type { WeekStart } from '@/lib/week';
+import type { DailyActivity } from '@/types';
 
 export const WEEKS = 18; // ~4 months
 export const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -20,6 +21,29 @@ export function localKey(d: Date): string {
   const m = String(d.getMonth() + 1).padStart(2, '0');
   const day = String(d.getDate()).padStart(2, '0');
   return `${y}-${m}-${day}`;
+}
+
+/**
+ * Heaviest day in the rendered range — null when nothing was used, so the caller can
+ * omit the sentence rather than claim a peak of zero. Runs over the padded grid cells,
+ * not the raw response, so the claim always matches a square the user can actually see.
+ */
+export function peakDay(cells: DailyActivity[]): DailyActivity | null {
+  let best: DailyActivity | null = null;
+  for (const c of cells) {
+    if (c.effectiveTokens > 0 && (best === null || c.effectiveTokens > best.effectiveTokens)) best = c;
+  }
+  return best;
+}
+
+/** "Wed, 18 Jun 2026" — day-first and spelled, so it can't be misread as 06/18. */
+export function fullDate(key: string): string {
+  return new Date(key + 'T00:00:00').toLocaleDateString('en-GB', {
+    weekday: 'short',
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+  });
 }
 
 export function color(tokens: number, max: number): string {

@@ -569,7 +569,7 @@ async function fetchLiteLlmBase(): Promise<LiteLlmBase> {
     entry.requests += num(mx.api_requests);
     entry.successful += num(mx.successful_requests);
     // Per-model spend is nested under `.metrics.spend`; keys carry a provider prefix
-    // (e.g. "vertex_ai/claude-opus-4-8") which we strip and merge for display.
+    // (e.g. "vertex_ai/claude-opus-5") which we strip and merge for display.
     const models = r?.breakdown?.models ?? {};
     for (const [m, v] of Object.entries<any>(models)) {
       const name = m.includes('/') ? m.slice(m.lastIndexOf('/') + 1) : m;

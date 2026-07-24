@@ -20,5 +20,6 @@ export function displayModel(model: string): string {
   return model
     .replace(/^claude-/, '')
     .replace(/-\d{8}$/, '')
-    .replace(/-(\d)-(\d)$/, ' $1.$2');
+    .replace(/-(\d)-(\d)$/, ' $1.$2')
+    .replace(/-(\d)$/, ' $1'); // single-digit generations: opus-5 → "opus 5"
 }

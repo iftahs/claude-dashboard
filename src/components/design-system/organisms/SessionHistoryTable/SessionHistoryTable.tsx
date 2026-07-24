@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from 'react';
-import { compact } from '@/lib/format';
+import { compact, shortModel } from '@/lib/format';
 import { ExportButton } from '@/components/design-system/molecules/ExportButton/ExportButton';
 import { InfoTip } from '@/components/design-system/atoms/InfoTip/InfoTip';
 import { Modal } from '@/components/design-system/molecules/Modal/Modal';
@@ -26,7 +26,7 @@ function TurnBlock({ turn }: { turn: SessionTranscriptTurn }) {
         <div className="flex items-center gap-2 flex-wrap">
           {ts && <span className="text-zinc-600 font-mono">{ts}</span>}
           {!isUser && turn.model && (
-            <span className="text-zinc-600 italic">{turn.model.replace(/^claude-/, '').replace(/-\d{8}$/, '')}</span>
+            <span className="text-zinc-600 italic">{shortModel(turn.model)}</span>
           )}
         </div>
 
