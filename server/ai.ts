@@ -40,7 +40,7 @@ export class AiUnavailableError extends Error {}
 export class AiTokenRejectedError extends Error {}
 export class AiCallError extends Error {}
 
-const DEFAULT_MODEL = process.env.AI_MODEL || 'claude-opus-4-8';
+const DEFAULT_MODEL = process.env.AI_MODEL || 'claude-opus-5';
 const CALL_TIMEOUT_MS = Number(process.env.AI_TIMEOUT_MS || 60_000);
 const MAX_OUTPUT_TOKENS = 1024;
 const CLI_PROBE_TTL = 5 * 60_000;
@@ -153,16 +153,41 @@ function runViaCli(input: AiCallInput, model: string): Promise<string> {
 
 // ── Anthropic Messages API (shared) ───────────────────────────────────────────
 
+/**
+ * Models that think by default when `thinking` is omitted. They share `max_tokens`
+ * between the thinking and the visible answer, so at our small budget the reply
+ * would truncate — we turn thinking off instead, which is legal at effort ≤ high
+ * (the default). Deliberately narrow: fable/mythos reject `{type:'disabled'}` with
+ * a 400, and proxied or unknown ids may not accept the field at all, so both keep
+ * today's request shape byte-for-byte.
+ */
+const THINKS_BY_DEFAULT = /(?:opus|sonnet)-5(?![\d-])/i;
+
+/**
+ * One body builder for both the buffered and streaming callers so they can't drift.
+ * With thinking off these models sometimes leak `<thinking>` tags into the visible
+ * text; the system suffix is the documented mitigation — note it names XML tags
+ * generically and never tells the model not to think, which makes leakage worse.
+ */
+function messagesBody(input: AiCallInput, model: string, extra?: Record<string, unknown>) {
+  const thinkingOff = THINKS_BY_DEFAULT.test(model);
+  return {
+    model,
+    max_tokens: input.maxTokens ?? MAX_OUTPUT_TOKENS,
+    system: thinkingOff
+      ? `${input.system}\n\nDo not include internal or system XML tags in your response.`
+      : input.system,
+    messages: [{ role: 'user', content: input.user }],
+    ...(thinkingOff ? { thinking: { type: 'disabled' } } : {}),
+    ...extra,
+  };
+}
+
 async function callMessages(headers: Record<string, string>, input: AiCallInput, model: string): Promise<string> {
   const res = await fetch(messagesUrl(), {
     method: 'POST',
     headers: { ...headers, 'content-type': 'application/json', 'anthropic-version': ANTHROPIC_VERSION },
-    body: JSON.stringify({
-      model,
-      max_tokens: input.maxTokens ?? MAX_OUTPUT_TOKENS,
-      system: input.system,
-      messages: [{ role: 'user', content: input.user }],
-    }),
+    body: JSON.stringify(messagesBody(input, model)),
     signal: AbortSignal.timeout(CALL_TIMEOUT_MS),
   });
   if (res.status === 401 || res.status === 403)
@@ -281,13 +306,7 @@ async function callMessagesStream(
   const res = await fetch(messagesUrl(), {
     method: 'POST',
     headers: { ...headers, 'content-type': 'application/json', 'anthropic-version': ANTHROPIC_VERSION },
-    body: JSON.stringify({
-      model,
-      max_tokens: input.maxTokens ?? MAX_OUTPUT_TOKENS,
-      system: input.system,
-      messages: [{ role: 'user', content: input.user }],
-      stream: true,
-    }),
+    body: JSON.stringify(messagesBody(input, model, { stream: true })),
     signal: AbortSignal.timeout(CALL_TIMEOUT_MS),
   });
   if (res.status === 401 || res.status === 403)
