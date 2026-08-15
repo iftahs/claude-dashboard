@@ -10,7 +10,7 @@ export const PRICING_DATA: ModelPrice[] = [
   { name: 'Claude Opus 4.5', family: 'opus-4-5', input: 5, output: 25, cacheWrite: 6.25, cacheRead: 0.5 },
   { name: 'Claude Opus 4.1 (deprecated)', family: 'opus-4-1', input: 15, output: 75, cacheWrite: 18.75, cacheRead: 1.5 },
   { name: 'Claude Opus 4 (deprecated)', family: 'opus-4', input: 15, output: 75, cacheWrite: 18.75, cacheRead: 1.5 },
-  { name: 'Claude Sonnet 5', family: 'sonnet-5', input: 3, output: 15, cacheWrite: 3.75, cacheRead: 0.3, popular: true },
+  { name: 'Claude Sonnet 5', family: 'sonnet-5', input: 2, output: 10, cacheWrite: 2.5, cacheRead: 0.2, popular: true },
   { name: 'Claude Sonnet 4.6', family: 'sonnet-4-6', input: 3, output: 15, cacheWrite: 3.75, cacheRead: 0.3 },
   { name: 'Claude Sonnet 4.5', family: 'sonnet-4-5', input: 3, output: 15, cacheWrite: 3.75, cacheRead: 0.3 },
   { name: 'Claude Sonnet 4 (deprecated)', family: 'sonnet-4', input: 3, output: 15, cacheWrite: 3.75, cacheRead: 0.3 },
