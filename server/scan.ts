@@ -608,7 +608,7 @@ function localYmd(d: Date): string {
  * `days`, so switching the window reuses the cache. Throws distinct messages so the
  * route can degrade gracefully (no permission / not a LiteLLM gateway / outage).
  */
-async function fetchLiteLlmBase(): Promise<LiteLlmBase> {
+async function fetchLiteLlmBase(days = 7): Promise<LiteLlmBase> {
   const base = litellmBaseUrl();
   const token = litellmAuthToken();
   if (!base || !token) throw new Error('LiteLLM gateway not configured');
@@ -620,7 +620,9 @@ async function fetchLiteLlmBase(): Promise<LiteLlmBase> {
   // Same day-of-month in the previous month, clamped to its last day, for a
   // fair "same point in the month" comparison.
   const prevMonthEnd = new Date(today.getFullYear(), today.getMonth() - 1, Math.min(today.getDate(), prevMonthLastDay));
-  const startYmd = localYmd(prevMonthStart);
+  const daysStart = new Date(today.getFullYear(), today.getMonth(), today.getDate() - days);
+  const effectiveStart = daysStart < prevMonthStart ? daysStart : prevMonthStart;
+  const startYmd = localYmd(effectiveStart);
   const endYmd = localYmd(today);
   const monthStartYmd = localYmd(monthStart);
   const prevEndYmd = localYmd(prevMonthEnd);
@@ -732,7 +734,7 @@ async function fetchLiteLlmAccount(): Promise<{ user: number; key: number }> {
 /** Actual billed spend: month-to-date, previous-month same-period total, and the
  *  last `days` calendar days (incl. today, zero-filled) with per-model breakdown. */
 export async function fetchLiteLlmSpend(days: number): Promise<LiteLlmSpend> {
-  const b = await fetchLiteLlmBase();
+  const b = await fetchLiteLlmBase(days);
   const lifetime = await fetchLiteLlmAccount();
   const daily: LiteLlmSpend['daily'] = [];
   for (let i = days - 1; i >= 0; i--) {

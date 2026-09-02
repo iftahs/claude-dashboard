@@ -21,7 +21,23 @@ import { useLiteLlmActual } from '@/hooks/useLiteLlmActual';
 import { useAiInsightCtx } from '@/hooks/useAiInsightContext';
 import type { ActivityData, HeatmapData } from '@/types';
 
-export function TrendsTab() {
+type TimeWindowOption = {
+  days: number;
+  label: string;
+  periodLabel: string;
+};
+
+const TIME_WINDOWS: TimeWindowOption[] = [
+  { days: 7, label: '1w', periodLabel: 'prev week' },
+  { days: 14, label: '2w', periodLabel: 'prev 2 weeks' },
+  { days: 30, label: '1m', periodLabel: 'prev month' },
+  { days: 60, label: '2m', periodLabel: 'prev 2 months' },
+  { days: 90, label: '3m', periodLabel: 'prev 3 months' },
+  { days: 180, label: '6m', periodLabel: 'prev 6 months' },
+  { days: 365, label: '1y', periodLabel: 'prev year' },
+];
+
+export const TrendsTab = () => {
   const { coworkAvailable, source, withSrc } = useSource();
   const { litellmAvailable, litellmHost, weekStart } = useConfigMode();
   const { weekly, models, weekDays, setWeekDays } = useLiveData();
@@ -35,6 +51,9 @@ export function TrendsTab() {
   const activity = usePolling<ActivityData>(withSrc('/api/activity'), 30000);
   const topModel = models.data?.models[0];
 
+  const currentWindow = TIME_WINDOWS.find((w) => w.days === weekDays);
+  const prevPeriodLabel = currentWindow ? currentWindow.periodLabel : `prev ${weekDays}d`;
+
   return (
     <>
       {/* Window selector — drives the cost stat cards, the estimate chart,
@@ -43,15 +62,15 @@ export function TrendsTab() {
         <span className="text-xs uppercase tracking-wider text-zinc-500">Spending · last {weekDays} days</span>
         <div className="flex items-center gap-3">
           <div className="flex overflow-hidden rounded-lg ring-1 ring-white/10">
-            {[7, 14, 21, 28].map((d) => (
+            {TIME_WINDOWS.map(({ days, label }) => (
               <button
-                key={d}
-                onClick={() => setWeekDays(d)}
+                key={days}
+                onClick={() => setWeekDays(days)}
                 className={`px-2.5 py-1 text-xs tabular-nums transition-colors ${
-                  weekDays === d ? 'bg-clay-500/20 text-clay-400' : 'text-zinc-500 hover:text-zinc-300'
+                  weekDays === days ? 'bg-clay-500/20 text-clay-400' : 'text-zinc-500 hover:text-zinc-300'
                 }`}
               >
-                {d / 7}w
+                {label}
               </button>
             ))}
           </div>
@@ -87,7 +106,7 @@ export function TrendsTab() {
               value={compact(weeklyEffective)}
               sub={
                 prevWeeklyEffective > 0
-                  ? `${weekDays === 7 ? 'prev week' : `prev ${weekDays / 7} weeks`}: ${compact(prevWeeklyEffective)}`
+                  ? `${prevPeriodLabel}: ${compact(prevWeeklyEffective)}`
                   : `${compact(weekly.data?.totals.outputTokens ?? 0)} output`
               }
               help="Input + output + cache-write tokens — the tokens that count toward rate limits. Cheap cache reads are excluded. Compared against the previous period."
