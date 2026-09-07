@@ -175,6 +175,7 @@ export function SessionHistoryTable({
   sessions,
   periodDays,
   onExport,
+  hideSourceBadge = false,
 }: SessionHistoryTableProps) {
   const [search, setSearch] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
@@ -276,7 +277,8 @@ export function SessionHistoryTable({
           <tbody className="divide-y divide-white/10 text-zinc-300">
             {paginatedSessions.length > 0 ? (
               paginatedSessions.map((s) => {
-                const { name: projectName, badge: sourceBadge } = sessionLabel(s);
+                const { name: projectName, badge } = sessionLabel(s);
+                const sourceBadge = hideSourceBadge ? null : badge;
                 const totalToks = s.effective_tokens ?? (s.input_tokens ?? 0) + (s.output_tokens ?? 0);
 
                 return (
@@ -358,7 +360,7 @@ export function SessionHistoryTable({
               <span className="font-bold text-zinc-100 truncate">
                 {sessionLabel(modalSession).name}
               </span>
-              {sessionLabel(modalSession).badge && (
+              {!hideSourceBadge && sessionLabel(modalSession).badge && (
                 <Badge variant="info">{sessionLabel(modalSession).badge}</Badge>
               )}
               <span className="text-zinc-500 font-mono text-xs flex-none">

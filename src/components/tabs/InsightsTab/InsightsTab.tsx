@@ -15,6 +15,7 @@ import { CommandUsage } from '@/components/design-system/organisms/CommandUsage/
 import { FileChurn } from '@/components/design-system/organisms/FileChurn/FileChurn';
 import { compact, usd } from '@/lib/format';
 import { track } from '@/lib/analytics';
+import { titleScope } from '@/lib/platform';
 import { usePolling } from '@/hooks/usePolling';
 import { useSource } from '@/hooks/useSource';
 import { useAiInsightCtx } from '@/hooks/useAiInsightContext';
@@ -39,29 +40,101 @@ const INSIGHT_DAY_OPTIONS: { value: InsightDays; label: string }[] = [
   { value: '30', label: '30d' },
 ];
 
+const TWO_COL = 'grid grid-cols-1 gap-6 lg:grid-cols-2';
+
 export function InsightsTab() {
-  const { withSrc } = useSource();
+  const { platform, showClaude, withSrc } = useSource();
   const { aiProps } = useAiInsightCtx();
   const [insightDays, setInsightDays] = useState<InsightDays>('7');
   const insightDaysNum = insightDays;
 
+  // Three panels have no Codex counterpart at all, so under the Codex platform
+  // they are dropped rather than rendered empty:
+  //   · Branches — Codex rollouts record no git branch.
+  //   · Permission rejections — Codex never asks, so nothing is ever rejected.
+  //   · Commands — slash commands come from ~/.claude/history.jsonl, which is
+  //     Claude Code's own file and is not source-filtered at all.
+  // Under Both they stay, labelled as the Claude-only readings they are.
+  const claudeOnlyPanels = showClaude;
+  const scope = titleScope(platform);
+
   const insightErrors = usePolling<InsightsErrors>(withSrc(`/api/insights/errors?days=${insightDaysNum}`), 60000);
   const insightRetries = usePolling<InsightsRetries>(withSrc(`/api/insights/retries?days=${insightDaysNum}`), 60000);
   const insightLanguages = usePolling<InsightsLanguages[]>(withSrc(`/api/insights/languages?days=${insightDaysNum}`), 60000);
-  const insightBranches = usePolling<InsightsBranches[]>(withSrc(`/api/insights/branches?days=${insightDaysNum}`), 60000);
+  const insightBranches = usePolling<InsightsBranches[]>(
+    claudeOnlyPanels ? withSrc(`/api/insights/branches?days=${insightDaysNum}`) : '',
+    60000,
+  );
   const insightMcp = usePolling<InsightsMcp>(withSrc(`/api/insights/mcp?days=${insightDaysNum}`), 60000);
   const insightComplexity = usePolling<ComplexityPoint[]>(withSrc(`/api/insights/complexity?days=${insightDaysNum}`), 60000);
   const insightYield = usePolling<InsightsYield>(withSrc(`/api/insights/yield?days=${insightDaysNum}`), 60000);
-  const insightRejections = usePolling<InsightsRejections>(withSrc(`/api/insights/rejections?days=${insightDaysNum}`), 60000);
+  const insightRejections = usePolling<InsightsRejections>(
+    claudeOnlyPanels ? withSrc(`/api/insights/rejections?days=${insightDaysNum}`) : '',
+    60000,
+  );
   const insightSubagents = usePolling<SubagentStats>(withSrc(`/api/insights/subagents?days=${insightDaysNum}`), 60000);
-  const insightCommands = usePolling<CommandUsageData>(`/api/insights/commands?days=${insightDaysNum}`, 60000);
+  const insightCommands = usePolling<CommandUsageData>(
+    claudeOnlyPanels ? `/api/insights/commands?days=${insightDaysNum}` : '',
+    60000,
+  );
   const insightChurn = usePolling<FileChurnData>(withSrc(`/api/insights/churn?days=${insightDaysNum}`), 60000);
+
+  // Codex's only "subagent" is the guardian auto-review the desktop app spawns
+  // to check a turn — same shape as a Task spawn, different name on screen.
+  const delegationLabel = platform === 'codex' ? 'Guardian review rate' : 'Delegation rate';
+  const spawnNoun = platform === 'codex' ? 'guardian reviews' : 'subagent spawns';
+
+  const languagesPanel = (
+    <Section
+      title="Languages · edits by file type"
+      help="Files touched in this window, bucketed by extension into a language. Solid = edits/writes; dimmed = reads. Shows what kinds of files the work concentrated on."
+      {...aiProps('languages', insightLanguages.data)}
+    >
+      <LanguageBreakdown data={insightLanguages.data} />
+    </Section>
+  );
+
+  const mcpPanel = (
+    <Section
+      title="MCP vs built-in · tool call split"
+      help={`How tool calls split between ${
+        platform === 'codex' ? "Codex's" : platform === 'both' ? "each agent's" : "Claude's"
+      } built-in tools and tools from connected MCP servers. The per-server table lists call counts and how many failed (errors), one row per MCP server.`}
+      {...aiProps('mcp', insightMcp.data)}
+    >
+      <McpBreakdown data={insightMcp.data} />
+    </Section>
+  );
+
+  const branchesPanel = (
+    <Section
+      title="Branches · token usage by git branch"
+      help={`Effective tokens, cost and session count attributed to each git branch (shown as repo / branch). Reflects which branches the most work went into.${
+        platform === 'both' ? ' Claude Code only — Codex rollouts record no branch.' : ''
+      }`}
+      {...aiProps('branches', insightBranches.data)}
+    >
+      <BranchBreakdown data={insightBranches.data} />
+    </Section>
+  );
+
+  const rejectionsPanel = (
+    <Section
+      title="Permission rejections · by tool"
+      help={`Tool calls you declined when Claude asked for permission, grouped by tool. High counts flag tools Claude reaches for that you often block.${
+        platform === 'both' ? ' Claude Code only — Codex records no permission prompts.' : ''
+      }`}
+      {...aiProps('rejections', insightRejections.data)}
+    >
+      <RejectionsPanel data={insightRejections.data} />
+    </Section>
+  );
 
   return (
     <>
       {/* Header row: day selector */}
       <div className="flex items-center justify-between">
-        <div className="text-sm text-zinc-500">Behavior analytics for the selected window</div>
+        <div className="text-sm text-zinc-500">Behavior analytics for the selected window{scope}</div>
         <ToggleGroup<InsightDays>
           options={INSIGHT_DAY_OPTIONS}
           value={insightDays}
@@ -92,10 +165,16 @@ export function InsightsTab() {
           help="Share of Edit/Write calls that succeeded on the first try (no follow-up retry on the same file). Higher means cleaner edits."
         />
         <StatCard
-          label="Delegation rate"
+          label={delegationLabel}
           value={insightSubagents.data ? `${(insightSubagents.data.delegationRate * 100).toFixed(0)}%` : '—'}
-          sub={insightSubagents.data ? `${insightSubagents.data.spawns} subagent spawns` : 'loading…'}
-          help="Share of sessions that spawned at least one subagent (Task/Agent tool). Indicates how often work is delegated to subagents."
+          sub={insightSubagents.data ? `${insightSubagents.data.spawns} ${spawnNoun}` : 'loading…'}
+          help={
+            platform === 'codex'
+              ? 'Share of Codex threads that spawned at least one guardian auto-review — the review pass the ChatGPT desktop app runs over a turn.'
+              : `Share of sessions that spawned at least one subagent (Task/Agent tool). Indicates how often work is delegated to subagents.${
+                  platform === 'both' ? " Codex's equivalent is the guardian auto-review, counted the same way." : ''
+                }`
+          }
         />
         <StatCard
           label="Wasted tokens"
@@ -115,41 +194,25 @@ export function InsightsTab() {
         <ErrorBreakdown data={insightErrors.data} />
       </Section>
 
-      {/* Languages | Branches */}
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-        <Section
-          title="Languages · edits by file type"
-          help="Files touched in this window, bucketed by extension into a language. Solid = edits/writes; dimmed = reads. Shows what kinds of files the work concentrated on."
-          {...aiProps('languages', insightLanguages.data)}
-        >
-          <LanguageBreakdown data={insightLanguages.data} />
-        </Section>
-        <Section
-          title="Branches · token usage by git branch"
-          help="Effective tokens, cost and session count attributed to each git branch (shown as repo / branch). Reflects which branches the most work went into."
-          {...aiProps('branches', insightBranches.data)}
-        >
-          <BranchBreakdown data={insightBranches.data} />
-        </Section>
-      </div>
-
-      {/* MCP | Rejections */}
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-        <Section
-          title="MCP vs built-in · tool call split"
-          help="How tool calls split between Claude's built-in tools and tools from connected MCP servers. The per-server table lists call counts and how many failed (errors), one row per MCP server."
-          {...aiProps('mcp', insightMcp.data)}
-        >
-          <McpBreakdown data={insightMcp.data} />
-        </Section>
-        <Section
-          title="Permission rejections · by tool"
-          help="Tool calls you declined when Claude asked for permission, grouped by tool. High counts flag tools Claude reaches for that you often block."
-          {...aiProps('rejections', insightRejections.data)}
-        >
-          <RejectionsPanel data={insightRejections.data} />
-        </Section>
-      </div>
+      {/* Languages | Branches, then MCP | Rejections — or, with the Claude-only
+          panels gone, Languages | MCP in a single row. */}
+      {claudeOnlyPanels ? (
+        <>
+          <div className={TWO_COL}>
+            {languagesPanel}
+            {branchesPanel}
+          </div>
+          <div className={TWO_COL}>
+            {mcpPanel}
+            {rejectionsPanel}
+          </div>
+        </>
+      ) : (
+        <div className={TWO_COL}>
+          {languagesPanel}
+          {mcpPanel}
+        </div>
+      )}
 
       {/* Complexity scatter — full width */}
       <Section
@@ -161,7 +224,7 @@ export function InsightsTab() {
       </Section>
 
       {/* Yield | Subagent stats */}
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+      <div className={TWO_COL}>
         <Section
           title="Yield · committed vs uncommitted sessions"
           help="Sessions that ran a git commit vs those that didn't — a rough proxy for which work landed. Lists the biggest uncommitted sessions by tokens."
@@ -170,8 +233,18 @@ export function InsightsTab() {
           <YieldPanel data={insightYield.data} />
         </Section>
         <Section
-          title="Subagent stats · delegation analysis"
-          help="Subagent (Task/Agent) spawns in this window: total, average per delegating session, and breakdowns by subagent type and model."
+          title={
+            platform === 'codex'
+              ? 'Guardian reviews · auto-review analysis'
+              : 'Subagent stats · delegation analysis'
+          }
+          help={
+            platform === 'codex'
+              ? 'Guardian auto-review spawns in this window: total, average per reviewed thread, and the breakdown by review type and model. Their tokens are folded into the parent thread and priced at zero.'
+              : `Subagent (Task/Agent) spawns in this window: total, average per delegating session, and breakdowns by subagent type and model.${
+                  platform === 'both' ? " Codex's guardian auto-reviews appear here as their own type." : ''
+                }`
+          }
           {...aiProps('subagents', insightSubagents.data)}
         >
           <SubagentStatsPanel data={insightSubagents.data} />
@@ -187,15 +260,20 @@ export function InsightsTab() {
         <RetryPanel data={insightRetries.data} />
       </Section>
 
-      {/* Commands | File churn */}
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-        <Section
-          title="Commands · slash-command & skill usage"
-          help="How often each slash command / skill was invoked in this window, from your local command history. Reflects which commands you reach for most."
-          {...aiProps('commands', insightCommands.data)}
-        >
-          <CommandUsage data={insightCommands.data} />
-        </Section>
+      {/* Commands | File churn — Commands reads Claude Code's own history file,
+          so under Codex only the churn panel survives (and takes the full width). */}
+      <div className={claudeOnlyPanels ? TWO_COL : 'grid grid-cols-1 gap-6'}>
+        {claudeOnlyPanels && (
+          <Section
+            title="Commands · slash-command & skill usage"
+            help={`How often each slash command / skill was invoked in this window, from your local command history. Reflects which commands you reach for most.${
+              platform === 'both' ? ' Claude Code only — read from ~/.claude/history.jsonl.' : ''
+            }`}
+            {...aiProps('commands', insightCommands.data)}
+          >
+            <CommandUsage data={insightCommands.data} />
+          </Section>
+        )}
         <Section
           title="File churn · most-edited files"
           help="Files edited most often (Edit/Write/MultiEdit calls) in this window. Hover a row for the full path. High churn flags the files the work concentrated on."

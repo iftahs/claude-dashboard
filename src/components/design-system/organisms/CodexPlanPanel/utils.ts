@@ -1,7 +1,13 @@
 import { ago, compact } from '@/lib/format';
-import { codexProjectLabel } from '@/lib/project';
-import type { CodexLiveData, CodexProfileStats, CodexWindow, LiveSubagents, LiveUsageData } from '@/types';
+import type { CodexLiveData, CodexProfileStats, CodexWindow, LiveUsageData } from '@/types';
 import type { CodexStat } from './types';
+
+/** InfoTip copy for the Codex rate-limit card (overrides PlanUsage's Claude.ai default). */
+export const CODEX_PLAN_HELP =
+  "Your ChatGPT plan's Codex rate-limit windows: the 5-hour window and the weekly window, each with % used and time to reset. Read from OpenAI's usage API with the token the ChatGPT desktop app stores locally — surfaced for awareness, never enforced or refreshed by this dashboard.";
+
+/** Row labels for the two Codex windows. */
+export const CODEX_PLAN_LABELS = { block: '5-hour limit', weekly: 'Weekly limit' };
 
 /**
  * Map one Codex window onto the `{ utilization, resets_at }` shape PlanUsage reads.
@@ -18,22 +24,6 @@ function planWindow(w: CodexWindow | null) {
 export function toPlanUsageLive(live: CodexLiveData): LiveUsageData {
   const shaped = { five_hour: planWindow(live.fiveHour), seven_day: planWindow(live.weekly) };
   return shaped as LiveUsageData;
-}
-
-/**
- * The Codex agents endpoint carries each thread's *full* cwd in `project` (the
- * Claude Code one already ships a display name). AgentActivity renders `project`
- * verbatim, so shorten it to the last segment — or "Codex chat · <slug>" for the
- * desktop app's scratch folders — before it reaches the screen.
- */
-export function toDisplayAgents(data: LiveSubagents | null): LiveSubagents | null {
-  if (!data) return null;
-  return {
-    ...data,
-    mainAgents: data.mainAgents.map((m) => ({ ...m, project: codexProjectLabel(m.project) })),
-    running: data.running.map((r) => ({ ...r, project: codexProjectLabel(r.project) })),
-    recentlyCompleted: data.recentlyCompleted.map((r) => ({ ...r, project: codexProjectLabel(r.project) })),
-  };
 }
 
 /** Error strings containing "expired" mean the local Codex token lapsed (see server/codex-live.ts). */
@@ -168,4 +158,18 @@ export function profileStats(p: CodexProfileStats): CodexStat[] {
       help: 'The reasoning-effort setting (low / medium / high) your turns most often ran with.',
     },
   ];
+}
+
+/**
+ * The four cards worth keeping when the panel shares the row with another platform
+ * (Both mode): what the plan is and whether it is exhausted, plus the two
+ * server-side numbers that have no equivalent anywhere else in the dashboard.
+ */
+export function compactStats(live: CodexLiveData | null, profile: CodexProfileStats | null): CodexStat[] {
+  const fromLive = live && !live.error ? liveStats(live).filter((s) => s.key === 'plan' || s.key === 'status') : [];
+  const fromProfile =
+    profile && !profile.error
+      ? profileStats(profile).filter((s) => s.key === 'lifetime' || s.key === 'streak')
+      : [];
+  return [...fromLive, ...fromProfile];
 }

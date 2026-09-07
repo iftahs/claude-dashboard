@@ -11,18 +11,20 @@ import { useTags } from '@/hooks/useTags';
 import type { SessionMeta, ProjectData } from '@/types';
 
 export function SessionsTab() {
-  const { source, withSrc } = useSource();
+  const { platform, showClaude, source, withSrc } = useSource();
   const { configData, configLoading, isApi } = useConfigMode();
   const sessions = usePolling<SessionMeta[]>(withSrc('/api/sessions'), 10000);
   const projectCosts = usePolling<ProjectData>(withSrc('/api/projects?days=90'), 30000);
   const totalPeriodDays = useSessionPeriod(sessions.data);
   const tags = useTags();
 
-  // The config profile is Claude Code's own settings/plan — meaningless under a
-  // Cowork or Codex filter. Per-project and tag breakdowns need a host project:
-  // Cowork sessions run in a sandbox with none, so that filter skips straight to
-  // the session log, while Codex threads carry real cwd paths and keep them.
-  const showConfig = source !== 'cowork' && source !== 'codex';
+  // The config profile reads ~/.claude's own settings/plan — meaningless under
+  // the Codex platform or a Cowork filter, but still worth showing under Both
+  // (the Claude half of the view is still Claude Code). Per-project and tag
+  // breakdowns need a host project: Cowork sessions run in a sandbox with none,
+  // so that filter skips straight to the session log, while Codex threads carry
+  // real cwd paths and keep them.
+  const showConfig = showClaude && source !== 'cowork';
   const showProjects = source !== 'cowork';
 
   return (
@@ -70,6 +72,9 @@ export function SessionsTab() {
           sessions={sessions.data}
           periodDays={totalPeriodDays}
           onExport={() => sessions.data ?? []}
+          // Under Codex every row is a Codex thread, so the badge would label
+          // the whole table rather than distinguish anything in it.
+          hideSourceBadge={platform === 'codex'}
         />
       ) : sessions.loading ? (
         <div className="card p-5 space-y-3">

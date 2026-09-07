@@ -27,7 +27,7 @@ function usageTone(pct: number): SidebarBadgeTone {
  */
 export function useSidebarTabs(tabs: TabDef[]): SidebarTab[] {
   const {
-    runningAgentCount, liveWorkflowCount, fiveHourPct, codexWeeklyPct,
+    runningAgentCount, liveWorkflowCount, limitPct, limitTitle,
     autoResumeArmed, autoResumeWaiting, autoResumeExecutorMissing,
   } = useLiveMetrics();
   const { waiting: waitingAgentCount } = useAgentTraffic();
@@ -64,29 +64,16 @@ export function useSidebarTabs(tabs: TabDef[]): SidebarTab[] {
             };
           }
         }
-        if (t.id === 'live' && fiveHourPct != null) {
+        // Rate-limit utilization for the active platform: Claude's 5-hour window
+        // under Claude/Both, Codex's weekly window under Codex (see useLiveMetrics).
+        if (t.id === 'live' && limitPct != null) {
           return {
             ...t,
             badge: (
               <SidebarBadge
-                tone={usageTone(fiveHourPct)}
-                label={`${fiveHourPct}%`}
-                title={`5-hour limit: ${fiveHourPct}% used`}
-              />
-            ),
-          };
-        }
-        // Codex weekly utilization — the tab is only listed when Codex data exists,
-        // and the poll behind this is disabled otherwise, so Claude-only users never
-        // reach this branch.
-        if (t.id === 'codex' && codexWeeklyPct != null) {
-          return {
-            ...t,
-            badge: (
-              <SidebarBadge
-                tone={usageTone(codexWeeklyPct)}
-                label={`${codexWeeklyPct}%`}
-                title={`Codex weekly limit: ${codexWeeklyPct}% used`}
+                tone={usageTone(limitPct)}
+                label={`${limitPct}%`}
+                title={`${limitTitle}: ${limitPct}% used`}
               />
             ),
           };
@@ -140,6 +127,6 @@ export function useSidebarTabs(tabs: TabDef[]): SidebarTab[] {
         }
         return { ...t };
       }),
-    [tabs, runningAgentCount, waitingAgentCount, liveWorkflowCount, fiveHourPct, codexWeeklyPct, autoResumeArmed, autoResumeWaiting, autoResumeExecutorMissing],
+    [tabs, runningAgentCount, waitingAgentCount, liveWorkflowCount, limitPct, limitTitle, autoResumeArmed, autoResumeWaiting, autoResumeExecutorMissing],
   );
 }

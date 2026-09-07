@@ -4,6 +4,7 @@ import { buildBudgetRows } from '../lib/budget';
 import { useNotifications } from './useNotifications';
 import { useUpdateToast } from './useUpdateToast';
 import { useConfigMode } from './useConfigMode';
+import { useSource } from './useSource';
 import { useLiveData } from './useLiveData';
 import { useLiteLlmActual } from './useLiteLlmActual';
 import { useCostMetrics } from './useCostMetrics';
@@ -19,6 +20,7 @@ import type { Limits } from './useLimits';
  */
 export function useDashboardNotifications(activeTab: string, limits: Limits) {
   const { configData, detectedMode, effectiveMode, isApi, settings, weekStart } = useConfigMode();
+  const { platform } = useSource();
   const { liveUsage, version, weekly } = useLiveData();
   const { litellmActual } = useLiteLlmActual();
   const { costPerDay } = useCostMetrics();
@@ -65,7 +67,9 @@ export function useDashboardNotifications(activeTab: string, limits: Limits) {
   // while the live API reports an error, auto-clears when it recovers.
   useEffect(() => {
     const err = !isApi ? liveUsage.data?.error : undefined;
-    if (!err) {
+    // Nothing on screen is Claude.ai's while the platform switcher is on Codex —
+    // an Anthropic token the user isn't currently using must not raise a toast.
+    if (!err || platform === 'codex') {
       dismiss('offline');
       return;
     }
@@ -97,7 +101,7 @@ export function useDashboardNotifications(activeTab: string, limits: Limits) {
         ? `Anthropic's usage service is temporarily unavailable (${err.match(/5\d\d/)?.[0] ?? '5xx'}). It's on their side — the dashboard keeps retrying and this clears on its own.`
         : `${err} — try running \`claude\` in a terminal.`,
     });
-  }, [isApi, detectedMode, liveUsage.data?.error, notify, dismiss]);
+  }, [isApi, detectedMode, platform, liveUsage.data?.error, notify, dismiss]);
 
   // Auto-resume completion — toast when a scheduled resume finishes, so the
   // result is noticed without reopening the session (details on ⏰ Auto-Resume).
