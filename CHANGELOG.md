@@ -5,6 +5,20 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.25] - 2026-09-07
+
+### Added
+- Claude Fable 5.1 support: its own pricing row (cache reads are $0.25/MTok, a quarter
+  of Fable 5, so cached-heavy Fable 5.1 sessions were overstated), a distinct red
+  palette step so 5 and 5.1 are separable in one chart, a Cost Calculation row, and
+  the model in the AI Insights picker.
+
+### Changed
+- AI Insights requests to Fable / Mythos (5 and 5.1) send `output_config.effort: low`
+  — they always think and share `max_tokens` with the answer, and reject every
+  explicit `thinking` setting — and a `refusal` stop reason now surfaces as a named
+  error instead of "Empty response from model".
+
 ## [0.1.24] - 2026-07-25
 
 ### Added

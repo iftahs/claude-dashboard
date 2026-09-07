@@ -157,23 +157,37 @@ function runViaCli(input: AiCallInput, model: string): Promise<string> {
  * Models that think by default when `thinking` is omitted. They share `max_tokens`
  * between the thinking and the visible answer, so at our small budget the reply
  * would truncate — we turn thinking off instead, which is legal at effort ≤ high
- * (the default). Fable and Mythos are deliberately absent: they reject
- * `thinking:{type:'disabled'}` with a 400.
+ * (the default). Fable and Mythos (5 and 5.1) are deliberately absent: they reject
+ * `thinking:{type:'disabled'}` with a 400 — see ALWAYS_THINKS below.
  */
 const THINKS_BY_DEFAULT = new Set(['claude-opus-5', 'claude-sonnet-5']);
 
 /**
- * Exact alias match, not a substring test. Gateway and provider prefixes are stripped
+ * Models where thinking is always on and every explicit `thinking` setting is a
+ * 400. The only lever that keeps the visible answer from being crowded out of our
+ * small `max_tokens` is effort, so these get `output_config.effort: 'low'`.
+ */
+const ALWAYS_THINKS = new Set(['claude-fable-5', 'claude-fable-5-1', 'claude-mythos-5', 'claude-mythos-5-1']);
+
+/**
+ * Exact alias, not a substring test. Gateway and provider prefixes are stripped
  * first — LiteLLM and Vertex serve "vertex_ai/claude-opus-5" and Bedrock adds
  * "anthropic." (the same normalisation scan.ts does for spend) — so a real Opus 5
  * behind a proxy is covered. A custom gateway alias that merely *contains* "opus-5" is
  * not: an unknown id may not accept the field at all and must keep today's request
  * shape byte-for-byte.
  */
-function thinksByDefault(model: string): boolean {
+function modelAlias(model: string): string {
   const bare = model.includes('/') ? model.slice(model.lastIndexOf('/') + 1) : model;
-  const alias = bare.trim().toLowerCase().replace(/^anthropic\./, '').replace(/-\d{8}$/, '');
-  return THINKS_BY_DEFAULT.has(alias);
+  return bare.trim().toLowerCase().replace(/^anthropic\./, '').replace(/-\d{8}$/, '');
+}
+
+function thinksByDefault(model: string): boolean {
+  return THINKS_BY_DEFAULT.has(modelAlias(model));
+}
+
+function alwaysThinks(model: string): boolean {
+  return ALWAYS_THINKS.has(modelAlias(model));
 }
 
 /**
@@ -192,8 +206,17 @@ function messagesBody(input: AiCallInput, model: string, extra?: Record<string, 
       : input.system,
     messages: [{ role: 'user', content: input.user }],
     ...(thinkingOff ? { thinking: { type: 'disabled' } } : {}),
+    ...(alwaysThinks(model) ? { output_config: { effort: 'low' } } : {}),
     ...extra,
   };
+}
+
+/** Fable-class models can decline with HTTP 200 + `stop_reason: 'refusal'`; name it
+ *  instead of reporting an empty reply. */
+function refusalError(data: any): AiCallError | null {
+  if (data?.stop_reason !== 'refusal') return null;
+  const category = data?.stop_details?.category;
+  return new AiCallError(`Model declined the request (refusal${category ? `: ${category}` : ''}).`);
 }
 
 async function callMessages(headers: Record<string, string>, input: AiCallInput, model: string): Promise<string> {
@@ -207,6 +230,8 @@ async function callMessages(headers: Record<string, string>, input: AiCallInput,
     throw new AiTokenRejectedError(`Anthropic API rejected the credential (${res.status}).`);
   if (!res.ok) throw new AiCallError(`Anthropic API error ${res.status} ${res.statusText} (model "${model}" via ${anthropicBaseUrl()})`);
   const data: any = await res.json();
+  const refused = refusalError(data);
+  if (refused) throw refused;
   const text = Array.isArray(data?.content)
     ? data.content.filter((b: any) => b?.type === 'text').map((b: any) => b.text).join('').trim()
     : '';
@@ -325,9 +350,18 @@ async function callMessagesStream(
   if (res.status === 401 || res.status === 403)
     throw new AiTokenRejectedError(`Anthropic API rejected the credential (${res.status}).`);
   if (!res.ok) throw new AiCallError(`Anthropic API error ${res.status} ${res.statusText} (model "${model}" via ${anthropicBaseUrl()})`);
+  let delivered = false;
+  let refused: AiCallError | null = null;
   await pumpSSE(res, (j) => {
-    if (j?.type === 'content_block_delta' && j.delta?.type === 'text_delta' && j.delta.text) onDelta(j.delta.text);
+    if (j?.type === 'content_block_delta' && j.delta?.type === 'text_delta' && j.delta.text) {
+      delivered = true;
+      onDelta(j.delta.text);
+    } else if (j?.type === 'message_delta') {
+      refused = refusalError(j.delta);
+    }
   });
+  // A refusal that arrives before any text would otherwise stream as an empty reply.
+  if (refused && !delivered) throw refused;
 }
 
 async function callOpenAIStream(apiKey: string, input: AiCallInput, model: string, onDelta: (t: string) => void): Promise<void> {
