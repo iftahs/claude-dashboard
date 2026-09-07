@@ -8,9 +8,12 @@ interface Price {
 }
 
 const TABLE: Array<[RegExp, Price]> = [
-  // Claude Fable
+  // Claude Fable 5.1 — same 10/50 tier as Fable 5, but cache reads dropped to 0.25.
+  // Must stay above the generic /fable/ row (first match wins).
+  [/fable-5-1|fable-5\.1/i, { input: 10, output: 50, cacheWrite: 12.50, cacheRead: 0.25 }],
+  // Claude Fable 5
   [/fable/i, { input: 10, output: 50, cacheWrite: 12.50, cacheRead: 1.0 }],
-  // Claude Mythos
+  // Claude Mythos 5 / 5.1 (the 5.1 cache-read rate was unconfirmed at launch — keep 1.0)
   [/mythos/i, { input: 10, output: 50, cacheWrite: 12.50, cacheRead: 1.0 }],
   // Claude Opus: 5 and 4.5, 4.6, 4.7, 4.8 are priced at 5 / 25
   [/opus-5|opus-4-[5-8]|opus-4\.[5-8]/i, { input: 5, output: 25, cacheWrite: 6.25, cacheRead: 0.5 }],
