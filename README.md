@@ -1,6 +1,6 @@
 # Claude Dashboard
 
-A beautiful, **local-first** dashboard for your [Claude Code](https://claude.com/claude-code) usage. It reads the JSON logs Claude Code already writes to `~/.claude` and visualizes them — no API key, no account login. Your usage logs never leave your machine.
+A beautiful, **local-first** dashboard for your [Claude Code](https://claude.com/claude-code) usage. It reads the JSON logs Claude Code already writes to `~/.claude` and visualizes them — no API key, no account login. Your usage logs never leave your machine. Use the ChatGPT desktop app too? Its Codex transcripts in `~/.codex` get the same treatment, plus a dedicated **ChatGPT · Codex** tab with live limits and running threads.
 
 Two features are optional and opt-in network paths, both privacy-hardened: **anonymous product analytics** (PostHog — feature-usage events only, switchable off) and **AI Insights** (sends *aggregates only* — never transcripts or file paths — to a model you choose). See [Privacy & telemetry](#privacy--telemetry).
 
@@ -98,7 +98,10 @@ Resume interrupted work automatically after a usage-limit reset. Full setup and 
 
 ![Auto-Resume · pick allowed tools from settings.json, grouped by tool](.github/screenshots/auto-resume-tools.png)
 
-### 11. ⚙ Settings
+### 11. 🟢 ChatGPT · Codex
+Appears only when the ChatGPT desktop app's Codex data (`~/.codex`) exists. **Plan usage** shows your live Codex **5-hour** and **weekly** windows with % used, reset countdowns and plan tier (read with the token the app already stores — never refreshed), credits and rate-limit reset credits; **Agents · live activity** lists running Codex threads and the **guardian auto-reviews** they spawn, with the same traffic-light treatment as Claude agents; **Server vs local** compares OpenAI's own daily token series with what the local rollouts contain (mobile/web usage only shows up server-side). Codex also joins the header **source toggle**, so every historical chart can be scoped to it or combined with Claude.
+
+### 12. ⚙ Settings
 A full-screen settings view (pinned to the bottom of the sidebar) for **usage mode** (auto / subscription / API), **agent alerts** (visual / notification / sound), **week start**, **spending limits** + **budget alerts** (first crossing of 70 / 90 / 100% of a cap), **AI Insights** (provider, model, API key — stored only in your browser), and **telemetry** opt-out.
 
 ![Settings · usage mode, alerts, spend caps, AI provider, telemetry](.github/screenshots/settings.png)
@@ -151,6 +154,8 @@ Want the dashboard always available without running `npm` each time? Run it as a
    CLAUDE_DIR_HOST=C:/Users/you/.claude
    ```
 
+   If you use the ChatGPT desktop app, `npm run docker:up` also fills in `CODEX_DIR_HOST` (your `~/.codex`) so the container can read Codex data; leave it blank to opt out.
+
    To enable the **AI Insights** backend in Docker, either set `WITH_CLAUDE_CLI=1` (bundles the `claude` CLI so it can run `claude -p` against your mounted token) or provide an `ANTHROPIC_API_KEY` — both are documented in [`.env.example`](.env.example). You can also just set an API key at runtime in ⚙ Settings instead.
 
 2. Build and start:
@@ -167,9 +172,10 @@ The container uses `restart: unless-stopped`, so it comes back automatically aft
 
 ## Optional integrations
 
-Both are auto-detected — if you don't use them, nothing changes in the UI.
+All are auto-detected — if you don't use them, nothing changes in the UI.
 
 - **Cowork** — Claude's desktop app writes standard Claude Code JSONL in its own folder. When the dashboard finds it, a **source toggle (Code / Cowork / All)** appears in the header and a Code-vs-Cowork split shows up on Trends. Code-only users see the dashboard unchanged. Point `COWORK_DIR` / `COWORK_DIR_HOST` at it only if it lives somewhere non-standard.
+- **ChatGPT desktop / Codex** — the ChatGPT desktop app's coding agent (Codex) keeps its transcripts in `~/.codex`. When that folder exists you get a **🟢 ChatGPT · Codex** tab (live 5-hour and weekly limits, plan and credits, running threads and guardian auto-reviews, server-vs-local daily tokens) and **Codex** joins the header source toggle, so Trends / Models / Sessions / Projects / Insights can be scoped to it or combined with Claude. Costs for Codex are OpenAI list-price estimates (gpt-5.5 / gpt-5.6 / gpt-6 rates; the internal review model is unpriced). Set `CODEX_DIR` / `CODEX_DIR_HOST` only for a non-standard location; `npm run docker:up` writes `CODEX_DIR_HOST` for you, and a blank value opts out.
 - **LiteLLM gateway** — if you route Claude Code through a [LiteLLM](https://litellm.ai) proxy, set `LITELLM_BASE_URL` / `LITELLM_API_KEY` (or just reuse `ANTHROPIC_BASE_URL` / `ANTHROPIC_AUTH_TOKEN`) and the dashboard will show your **real billed cost** — month-to-date and per-day on Trends, and against your spend caps — instead of the estimate.
 
 ## Auto-resume after a usage limit
@@ -265,12 +271,13 @@ Everything is derived from what Claude Code records locally, plus the OAuth toke
 - ⚠️ **Costs are an *estimated equivalent* API price.** A subscription has no per-token bill, so the dollar figures answer "what would this have cost on pay-as-you-go?" — they are not an invoice. Configure a [LiteLLM gateway](#optional-integrations) to see real billed amounts instead.
 - ❌ **Claude.ai web / desktop chat usage** — that's server-side per-conversation and never written to `~/.claude`.
 - ❌ **Cowork sessions running in full-VM sandbox mode** — their transcripts stay inside the VM, so there's nothing on disk to read.
+- ⚠️ **Codex (ChatGPT desktop)** — local rollouts cover threads run on this machine; Codex Cloud tasks, ChatGPT web chats and mobile usage only appear in the server-side daily series the Codex tab fetches with your token. Guardian auto-review tokens are folded into their parent thread.
 
 You can also set your own USD **spending caps** in ⚙ Settings to get gauges and budget alerts against those estimates.
 
 ## Privacy & telemetry
 
-Your Claude usage data — logs, tokens, project paths, session contents — **never leaves your machine**. The only network calls the dashboard makes for *your* data reuse the OAuth token Claude Code already stores locally to read live usage and your plan from Anthropic. Beyond that, exactly two optional, opt-in paths reach the network:
+Your Claude usage data — logs, tokens, project paths, session contents — **never leaves your machine**. The only network calls the dashboard makes for *your* data reuse the OAuth token Claude Code already stores locally to read live usage and your plan from Anthropic, and — when the ChatGPT desktop app is installed — the token in `~/.codex/auth.json` to read your Codex limits and daily totals from OpenAI (`chatgpt.com/backend-api/wham/usage` and `/wham/profiles/me`; two GETs, never a token refresh, account id / e-mail stripped before anything reaches the UI). Beyond that, exactly two optional, opt-in paths reach the network:
 
 ### Anonymous product analytics
 

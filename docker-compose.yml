@@ -27,6 +27,13 @@ services:
       # nested .claude/projects transcripts at the scanned depth → zero cowork
       # events (harmless) and the container still boots. See .env.example.
       - "${COWORK_DIR_HOST:-${CLAUDE_DIR_HOST}}:/data/cowork:ro"
+      # OpenAI Codex (the ChatGPT desktop app's coding agent) data, read-only.
+      # Optional: `npm run docker:up` writes CODEX_DIR_HOST=~/.codex into .env when
+      # that folder exists; blank it to opt out. Unset, it falls back to .claude,
+      # which holds no rollout-*.jsonl files → zero codex events, container still
+      # boots. Only sessions/**/rollout-*.jsonl, session_index.jsonl and auth.json
+      # (for the live limits call) are ever read.
+      - "${CODEX_DIR_HOST:-${CLAUDE_DIR_HOST}}:/data/.codex:ro"
       # ~/.claude.json (bypassPermissionsModeAccepted etc.), read-only. Optional:
       # CLAUDE_JSON_HOST is written to .env automatically by `npm run docker:up`;
       # when unset this falls back to mounting the .claude DIR here, which the
@@ -42,6 +49,7 @@ services:
     environment:
       - CLAUDE_DIR=/data/.claude
       - COWORK_DIR=/data/cowork
+      - CODEX_DIR=/data/.codex
       - SERVER_PORT=8787
       - APP_RUNTIME=docker
       # AI Insights (chat + per-section buttons). In Docker there's no `claude`

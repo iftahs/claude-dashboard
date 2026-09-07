@@ -5,6 +5,26 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.26] - 2026-09-07
+
+### Added
+- OpenAI Codex (ChatGPT desktop) as a third usage surface. The rollouts under
+  ~/.codex are parsed into the same event pipeline (source: codex), so Trends, Models,
+  Sessions, Projects and Insights can be scoped to Codex or combined with Claude via
+  the header source toggle; guardian auto-review threads fold into their parent.
+- A ChatGPT · Codex tab: live 5-hour / weekly limits, plan tier, credits and reset
+  credits (read with the token the app stores, never refreshed; passive fallback from
+  the newest rollout when offline), running threads and guardian reviews with the
+  Claude agents treatment, and a server-vs-local daily token comparison.
+- Pricing rows for gpt-5.5 / gpt-5.6 (sol, terra, luna) / gpt-6-astra; the internal
+  codex-auto-review model is unpriced. A violet palette family for GPT models.
+- CODEX_DIR / CODEX_DIR_HOST (auto-written by npm run docker:up, blank to opt out)
+  and a read-only /data/.codex mount in docker-compose.
+
+### Fixed
+- The scan fingerprint now folds in total bytes, so a file that grows without its
+  mtime changing (Codex guardian rollouts) no longer leaves memoised aggregates stale.
+
 ## [0.1.24] - 2026-07-25
 
 ### Added
