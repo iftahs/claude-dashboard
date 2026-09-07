@@ -8,18 +8,56 @@ export interface TokenTotals {
   cost: number;
 }
 
-export type UsageSource = 'code' | 'cowork';
+export type UsageSource = 'code' | 'cowork' | 'codex';
 
-/** Effective-token totals split by surface (Code vs Cowork). */
+/** Effective-token totals split by surface (Code / Cowork / Codex). */
 export interface SourceSplit {
   code: TokenTotals;
   cowork: TokenTotals;
+  codex: TokenTotals;
 }
 
-/** /api/sources — which usage surfaces have local data. Gates all Cowork UI. */
+/** /api/sources — which usage surfaces have local data. Gates all Cowork and Codex UI. */
 export interface SourcesInfo {
   code: { events: number; lastTs: number };
   cowork: { available: boolean; events: number; lastTs: number };
+  codex: { available: boolean; events: number; lastTs: number };
+}
+
+/** One Codex rate-limit window, normalised from either the live `/wham/usage`
+ *  payload or the passive `token_count.rate_limits` snapshot in a rollout. */
+export interface CodexWindow {
+  usedPct: number;          // 0–100
+  windowSec: number;        // 18000 (5-hour) or 604800 (weekly)
+  resetsAt: string | null;  // ISO; null when the window has lapsed / is unknown
+}
+
+/** GET /api/codex/live — the ChatGPT desktop (Codex) plan limits. PII stripped. */
+export interface CodexLiveData {
+  planType: string | null;              // 'plus' | 'go' | 'pro' | 'team' | …
+  fiveHour: CodexWindow | null;
+  weekly: CodexWindow | null;
+  limitReached: boolean;
+  credits: { hasCredits: boolean; unlimited: boolean; balance: string | null; overageLimitReached: boolean } | null;
+  resetCredits: { available: number; applicable: number } | null;
+  modelAvailability: Record<string, boolean>;
+  origin: 'live' | 'passive';           // network fetch vs newest rollout snapshot
+  snapshotAt: string | null;            // passive only: timestamp of the snapshot record
+  error?: string;
+}
+
+/** GET /api/codex/profile — server-side stats from `/wham/profiles/me` (stats only, no profile). */
+export interface CodexProfileStats {
+  lifetimeTokens: number;
+  peakDailyTokens: number;
+  currentStreakDays: number;
+  longestStreakDays: number;
+  totalThreads: number;
+  longestRunningTurnSec: number;
+  mostUsedReasoningEffort: string | null;
+  mostUsedReasoningEffortPct: number | null;
+  dailyUsage: { date: string; tokens: number }[]; // UTC days, ascending
+  error?: string;
 }
 
 export interface VersionInfo {

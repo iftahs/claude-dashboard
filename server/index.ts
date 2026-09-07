@@ -45,9 +45,9 @@ function wrap(data: unknown, computedAt: number) {
   return { data, computedAt, claudeDir: claudeDir() };
 }
 
-/** Parse the optional ?source=all|code|cowork filter (default 'all'). */
+/** Parse the optional ?source=all|code|cowork|codex filter (default 'all'). */
 function parseSource(raw: unknown): SourceFilter {
-  return raw === 'code' || raw === 'cowork' ? raw : 'all';
+  return raw === 'code' || raw === 'cowork' || raw === 'codex' ? raw : 'all';
 }
 
 app.get('/api/health', (_req, res) => {
@@ -283,10 +283,10 @@ app.get('/api/sessions', async (req, res) => {
 
     // Preserve older sessions whose transcripts are gone from disk but whose
     // sidecar metadata survives — append them so the list never regresses.
-    // Sidecars are Claude Code only, so skip them when scoped to Cowork.
+    // Sidecars are Claude Code only, so skip them when scoped to another surface.
     const liveIds = new Set(result.map((r) => r.session_id));
     for (const s of sidecar) {
-      if (source === 'cowork') break;
+      if (source !== 'all' && source !== 'code') break;
       if (liveIds.has(s.session_id)) continue;
       const stats = eventStats.get(s.session_id);
       const in_tok = s.input_tokens ?? 0;
@@ -331,14 +331,16 @@ app.get('/api/sessions', async (req, res) => {
 app.get('/api/sources', async (_req, res) => {
   try {
     const { events, computedAt } = await getEvents();
-    let codeN = 0, coworkN = 0, codeLast = 0, coworkLast = 0;
+    let codeN = 0, coworkN = 0, codexN = 0, codeLast = 0, coworkLast = 0, codexLast = 0;
     for (const e of events) {
       if (e.source === 'cowork') { coworkN++; if (e.ts > coworkLast) coworkLast = e.ts; }
+      else if (e.source === 'codex') { codexN++; if (e.ts > codexLast) codexLast = e.ts; }
       else { codeN++; if (e.ts > codeLast) codeLast = e.ts; }
     }
     res.json(wrap({
       code: { events: codeN, lastTs: codeLast },
       cowork: { available: coworkN > 0, events: coworkN, lastTs: coworkLast },
+      codex: { available: codexN > 0, events: codexN, lastTs: codexLast },
     }, computedAt));
   } catch (e) {
     res.status(500).json({ error: String(e) });
