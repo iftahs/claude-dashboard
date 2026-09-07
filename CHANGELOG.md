@@ -32,6 +32,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The scan fingerprint now folds in total bytes, so a file that grows without its
   mtime changing (Codex guardian rollouts) no longer leaves memoised aggregates stale.
 
+### Removed
+- The Auto-Resume feature (Auto-Resume page, `/api/auto-resume/*`, the host
+  resume-watcher scripts and the `HOST_REPO_DIR` env). It was unreliable and Claude
+  Code now handles limit resets itself. `~/.claude-dashboard-auto-resume.json` can be
+  deleted.
+
 ## [0.1.24] - 2026-07-25
 
 ### Added

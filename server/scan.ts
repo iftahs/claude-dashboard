@@ -376,8 +376,8 @@ export async function fetchLiveUsageFor(accessToken: string, key: string, expire
     throw new Error(expiredTokenMessage());
   }
 
-  // OAUTH_API_BASE: test-only override so the auto-resume detection loop can be
-  // driven end-to-end by a local mock without exhausting a real limit.
+  // OAUTH_API_BASE: test-only override so live-usage detection can be driven
+  // end-to-end by a local mock without exhausting a real limit.
   const url = `${process.env.OAUTH_API_BASE || 'https://api.anthropic.com'}/api/oauth/usage`;
   const res = await oauthGet(url, accessToken);
   if (res.status === 401) {

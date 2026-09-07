@@ -69,10 +69,6 @@ services:
       # ANTHROPIC_AUTH_TOKEN; set these only if the spend-read key/url differs.
       - LITELLM_BASE_URL=${LITELLM_BASE_URL:-}
       - LITELLM_API_KEY=${LITELLM_API_KEY:-}
-      # OPTIONAL — absolute HOST path of this repo (e.g. E:\dev-projects\claude-dashboard).
-      # Auto-resume uses it to render a copy-paste `node .../resume-watcher.mjs` command
-      # on the Auto-Resume page. The container can't discover the host path itself.
-      - HOST_REPO_DIR=${HOST_REPO_DIR:-}
       # Container path of the ~/.claude.json mount above (bypass detection).
       - CLAUDE_JSON=/data/claude-json
       # Day buckets follow the container clock — pin it to your local timezone

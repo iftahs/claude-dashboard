@@ -4,8 +4,6 @@
  *
  * Records host-only paths into .env for the Docker container (which cannot
  * discover host paths itself):
- *   HOST_REPO_DIR    — this repo's absolute path, for the copy-paste
- *                      resume-watcher command on the Auto-Resume page.
  *   CLAUDE_JSON_HOST — ~/.claude.json (when present), so the container can
  *                      detect whether bypassPermissions is enabled.
  *   CODEX_DIR_HOST   — ~/.codex (or $CODEX_HOME) when it holds a sessions/
@@ -43,7 +41,6 @@ function setIfAbsent(key, value) {
   upsert(key, value);
 }
 
-upsert('HOST_REPO_DIR', process.cwd());
 const claudeJson = join(os.homedir(), '.claude.json');
 if (existsSync(claudeJson)) upsert('CLAUDE_JSON_HOST', claudeJson);
 const codexHome = process.env.CODEX_HOME || join(os.homedir(), '.codex');

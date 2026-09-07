@@ -14,12 +14,6 @@ export interface LiveMetrics {
   limitPct: number | null;
   /** What `limitPct` measures, for the badge tooltip ("5-hour limit" / "Codex weekly limit"). */
   limitTitle: string;
-  /** Auto-resume armed (once/always)? */
-  autoResumeArmed: boolean;
-  /** Sessions currently waiting for (or running) a scheduled resume. */
-  autoResumeWaiting: number;
-  /** Armed but nothing can execute the resumes (no watcher, no host CLI). */
-  autoResumeExecutorMissing: boolean;
 }
 
 /** Running subagents + main sessions actively working or delegating, for one surface. */
@@ -43,7 +37,7 @@ function activeAgents(d: LiveSubagents | null): number {
  */
 export function useLiveMetrics(): LiveMetrics {
   const { showClaude, showCodex } = useSource();
-  const { liveSubagents, codexAgents, codexLive, workflows, liveUsage, autoResume } = useLiveData();
+  const { liveSubagents, codexAgents, codexLive, workflows, liveUsage } = useLiveData();
 
   const runningAgentCount =
     (showClaude ? activeAgents(liveSubagents.data) : 0) + (showCodex ? activeAgents(codexAgents.data) : 0);
@@ -59,11 +53,6 @@ export function useLiveMetrics(): LiveMetrics {
   const limitPct = codexOnly ? codexWeeklyPct : fiveHourPct;
   const limitTitle = codexOnly ? 'Codex weekly limit' : '5-hour limit';
 
-  const ar = autoResume.data;
-  const autoResumeArmed = ar?.armed ?? false;
-  const autoResumeWaiting = ar?.jobs.length ?? 0;
-  const autoResumeExecutorMissing = autoResumeArmed && !!ar && !ar.watcher.online && !ar.internalExecutor;
-
   return {
     runningAgentCount,
     liveWorkflowCount,
@@ -71,8 +60,5 @@ export function useLiveMetrics(): LiveMetrics {
     codexWeeklyPct,
     limitPct,
     limitTitle,
-    autoResumeArmed,
-    autoResumeWaiting,
-    autoResumeExecutorMissing,
   };
 }

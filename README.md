@@ -8,14 +8,14 @@ Two features are optional and opt-in network paths, both privacy-hardened: **ano
 
 ## Interactive Features & Tour
 
-The dashboard is organized as a left **sidebar** with eleven destinations. Views are deep-linkable (e.g. `/agents`, `/workflows`, `/ai`), live badges on the sidebar show running agents, the current 5-hour block %, in-flight workflows and queued resumes, and **toast notifications** surface update-available, connection, and account-mode notices.
+The dashboard is organized as a left **sidebar** with ten destinations. Views are deep-linkable (e.g. `/agents`, `/workflows`, `/ai`), live badges on the sidebar show running agents, the current 5-hour block % and in-flight workflows, and **toast notifications** surface update-available, connection, and account-mode notices.
 
 ### Platform switcher · Claude / Codex / Both
 
 There is no separate Codex tab. When Codex data exists in `~/.codex`, a **platform** switcher appears in the header and re-points the *whole* dashboard:
 
 * **Claude** — Claude Code (plus Cowork, via the secondary Code / Cowork / All source toggle). Exactly the dashboard below, unchanged. Users without Codex data never see the switcher and never leave this mode.
-* **Codex** — the same tabs, reading the ChatGPT desktop agent instead: live 5-hour / weekly Codex limits, plan tier and credits on **Live**; running threads and their **guardian auto-reviews** on **Agents**; GPT models and OpenAI rate cards on **Models**; Codex threads with their real project paths on **Sessions**. Claude-only destinations (Workflows, Workspace, Auto-Resume) drop out of the sidebar, as do the panels with no Codex counterpart (git branches, permission rejections, slash commands).
+* **Codex** — the same tabs, reading the ChatGPT desktop agent instead: live 5-hour / weekly Codex limits, plan tier and credits on **Live**; running threads and their **guardian auto-reviews** on **Agents**; GPT models and OpenAI rate cards on **Models**; Codex threads with their real project paths on **Sessions**. Claude-only destinations (Workflows, Workspace) drop out of the sidebar, as do the panels with no Codex counterpart (git branches, permission rejections, slash commands).
 * **Both** — everything combined, plus the comparisons that only exist side by side: a **Claude vs Codex daily chart** and a three-way **Claude Code / Cowork / Codex** split on Trends, a Claude/Codex sub-label on every spend card, and both vendors' rate cards on Models.
 
 ### 1. ⚡ Live Usage
@@ -23,7 +23,6 @@ There is no separate Codex tab. When Codex data exists in `~/.codex`, a **platfo
 * **Plan Usage**: Your real subscription ceilings pulled live from Claude.ai — the **5-hour limit**, the **weekly all-models limit**, and **per-model weekly caps** (Opus / Sonnet / Fable / Cowork). Each bar shows % used, an exact countdown **and the absolute reset date & time**, plus a burn-rate forecast ("on pace to hit limit in ~3d") and your plan tier.
 * **Extra Usage**: Anthropic's overage / credit pool — spend against the monthly limit, or an explanation when your org hasn't enabled it.
 * **What's contributing to your limits usage?**: A cost-weighted breakdown of the day and week by **skill, subagent, plugin and MCP server**.
-* **Auto-Resume glance**: When armed, a compact card showing the watched limit and any queued resumes.
 * **Spending limits**: Client-side USD caps (daily / weekly / monthly) with progress gauges.
 
 ![Plan usage · 5-hour, weekly and per-model caps with exact reset times](.github/screenshots/plan-usage.png)
@@ -95,18 +94,7 @@ Ask questions about your own usage in plain language, and get per-section explan
 
 ![Sessions · config profile, project analytics & tags](.github/screenshots/sessions.png)
 
-### 10. ⏰ Auto-Resume
-Resume interrupted work automatically after a usage-limit reset. Full setup and caveats in [Auto-resume after a usage limit](#auto-resume-after-a-usage-limit).
-* **Arm it**: *Off* / *Once* (next limit only) / *Always*, optionally also on the **weekly** limit.
-* **Permission mode** for the unattended run: Inherit session (safest) / Plan / Accept edits / Auto / Bypass.
-* **Always-allowed tools**: Headless runs can't show approval prompts, so pick the tools up front — the rules from your `settings.json` `permissions.allow` are listed as checkboxes, **grouped by tool** (Bash, Read, WebFetch, MCP server…) with per-group and overall counters and a select-all. A free-text box takes any extra rules. They're passed to the resume as `--allowedTools`.
-* **Queue & history**: The sessions waiting to resume with live countdowns, and the **recovered sessions** log — each with its result and an expandable tail of the run's output.
-
-![Auto-Resume · arm controls, permission mode, queue & recovered sessions](.github/screenshots/auto-resume.png)
-
-![Auto-Resume · pick allowed tools from settings.json, grouped by tool](.github/screenshots/auto-resume-tools.png)
-
-### 11. ⚙ Settings
+### 10. ⚙ Settings
 A full-screen settings view (pinned to the bottom of the sidebar) for **usage mode** (auto / subscription / API), **agent alerts** (visual / notification / sound), **week start**, **spending limits** + **budget alerts** (first crossing of 70 / 90 / 100% of a cap), **AI Insights** (provider, model, API key — stored only in your browser), and **telemetry** opt-out.
 
 ![Settings · usage mode, alerts, spend caps, AI provider, telemetry](.github/screenshots/settings.png)
@@ -183,53 +171,7 @@ All are auto-detected — if you don't use them, nothing changes in the UI.
 - **ChatGPT desktop / Codex** — the ChatGPT desktop app's coding agent (Codex) keeps its transcripts in `~/.codex`. When that folder exists a **[platform switcher](#platform-switcher--claude--codex--both) (Claude / Codex / Both)** appears in the header and re-points the whole dashboard — Live, Agents, Trends, Models, Sessions, Projects and Insights all read Codex instead of Claude, or both at once with a side-by-side daily comparison. Costs for Codex are OpenAI list-price estimates (gpt-5.5 / gpt-5.6 / gpt-6 rates; the internal review model is unpriced). Set `CODEX_DIR` / `CODEX_DIR_HOST` only for a non-standard location; `npm run docker:up` writes `CODEX_DIR_HOST` for you, and a blank value opts out.
 - **LiteLLM gateway** — if you route Claude Code through a [LiteLLM](https://litellm.ai) proxy, set `LITELLM_BASE_URL` / `LITELLM_API_KEY` (or just reuse `ANTHROPIC_BASE_URL` / `ANTHROPIC_AUTH_TOKEN`) and the dashboard will show your **real billed cost** — month-to-date and per-day on Trends, and against your spend caps — instead of the estimate.
 
-## Auto-resume after a usage limit
-
-When Claude Code hits your subscription's 5-hour usage limit mid-task, work stops until the window resets. This feature resumes the interrupted work automatically ~1 minute after the reset. **Every recently-active session gets its own resume** (up to 5 per limit hit) — if you were working in two terminals when the limit hit, both continue. Multiple resumes run one after another, not in parallel, so they don't race each other into the fresh window.
-
-Enable it on the **Auto-Resume** page (⏰ in the sidebar), which also shows the queue of sessions waiting to resume and the history of recovered sessions:
-
-- **Once** — arms for the next limit hit only, then turns itself off.
-- **Always** — re-arms after every fired resume.
-- Optional: also trigger on the **weekly** limit (note: that reset can be days away).
-- **Permission mode** for the unattended run: *Inherit session* (default, safest), *Plan*, *Accept edits*, *Auto*, or *Bypass* (only takes effect if bypass is enabled in your Claude Code config).
-- **Always-allowed tools** — headless runs can't show approval prompts, so any tool the resume needs must be granted up front or it stalls. Tick them from your `settings.json` `permissions.allow` list (grouped by tool, with select-all) and/or type extra rules; they're passed as `--allowedTools`.
-- The **resume prompt** is editable; default: *"You were interrupted by a usage limit. Continue exactly where you left off and finish the task in progress."*
-
-How it works: the backend watches your live limits while armed; when the limit is exhausted it captures every recently-active Claude Code session and schedules a resume job per session for `resets_at + 1 min`. The resumes themselves run `claude -p --resume <sessionId>` **on your host** — the Docker container can't launch Claude Code — so start the companion watcher:
-
-```bash
-npm run resume-watcher                                      # from the repo; dashboard in Docker (port 8787)
-DASHBOARD_URL=http://localhost:8788 npm run resume-watcher  # dashboard via `npm run dev`
-```
-
-Easiest: the **Auto-Resume page renders a ready-made copy-paste command** (absolute script path + `--url`, works from any folder and any shell) whenever the watcher isn't connected:
-
-```bash
-node "<path-to-claude-dashboard>/scripts/resume-watcher.mjs" --url http://localhost:8787
-```
-
-> The repo path is filled in automatically: `npm run dev` uses the backend's own folder, and `npm run docker:up` records it into `.env` (`HOST_REPO_DIR`) via a pre-hook. Only starting the container with a bare `docker compose up` skips that — set `HOST_REPO_DIR` in `.env` by hand in that case.
-
-**Don't want a terminal open all the time?** Install it once as a hidden background auto-start:
-
-```bash
-npm run resume-watcher:install     # from the repo (add -- --url http://localhost:8788 for dev mode)
-npm run resume-watcher:uninstall   # removes the auto-start and stops the running watcher
-```
-
-Per OS (no admin rights needed): **Windows** — a silent `.vbs` launcher in your Startup folder (runs hidden at every login, started immediately); **macOS** — a launchd user agent (`RunAtLoad` + `KeepAlive`); **Linux** — a systemd user unit (`enable --now`). The watcher logs to `~/.claude-resume-watcher.log`, and the Auto-Resume page shows a green "Host watcher connected" when it's alive. The page also renders both commands (install / run-once) ready to copy whenever no watcher is connected.
-
-If the dashboard backend runs directly on your host (`npm run dev`) with the `claude` CLI on PATH, the backend executes the resume itself whenever no watcher is connected — the watcher is only mandatory for Docker.
-
-**Limitations (v1):**
-
-- The resume is headless — it appends to the session's own transcript but **won't wake an open terminal or VS Code window**. Reopen the session (`claude --resume`) to see what it did.
-- Claude Desktop (Cowork) sessions are not covered — only terminal / VS Code extension sessions under `~/.claude/projects`.
-- Arm-state persists on the backend (a small file in the container/host home dir), so restarts re-arm automatically — no browser tab needed. A full image rebuild wipes it; the next opened dashboard tab re-arms from your browser's saved settings. A restart in the ~1-minute window between the reset and the scheduled resume can drop that round's jobs.
-- The dashboard backend must be running at reset time (in Docker it always is — `restart: unless-stopped`); the browser tab does **not** need to be open.
-
-### macOS: keeping the OAuth token fresh
+## macOS: keeping the OAuth token fresh
 
 On macOS, Claude Code stores its OAuth token in the **Keychain**, which a Docker container can't reach. `npm run docker:up` therefore copies the token into `~/.claude/.dashboard-oauth-cache.json` (read by the container) *and* installs a small launchd agent (`com.claude-dashboard.token-sync`) that re-syncs it every 15 minutes — otherwise the snapshot's access token expires within hours and the Live tab degrades to "OAuth token expired". The running container picks up the refreshed file automatically; no rebuild or restart needed.
 

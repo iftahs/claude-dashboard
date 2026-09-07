@@ -360,7 +360,7 @@ export function rolloutThreadId(path: string): string {
   return m ? m[1].toLowerCase() : '';
 }
 
-/** Read the last `bytes` of a file as UTF-8 (same pattern as readSessionCwd in auto-resume.ts). */
+/** Read the last `bytes` of a file as UTF-8. */
 export async function readTail(path: string, bytes: number): Promise<string> {
   const st = await stat(path);
   const len = Math.min(bytes, st.size);

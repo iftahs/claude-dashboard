@@ -5,7 +5,6 @@ import { ToggleGroup } from './components/design-system/atoms/ToggleGroup/Toggle
 import { Skeleton } from './components/design-system/atoms/Skeleton/Skeleton';
 import { Sidebar } from './components/design-system/organisms/Sidebar/Sidebar';
 import { AgentTrafficSignal } from './components/design-system/organisms/AgentTrafficSignal/AgentTrafficSignal';
-import { AutoResumeBadge } from './components/design-system/molecules/AutoResumeBadge/AutoResumeBadge';
 
 // Tabs are code-split: only one is ever mounted, but statically importing all
 // of them pulled every chart and the whole of recharts into the first chunk
@@ -20,7 +19,6 @@ const InsightsTab = lazy(() => import('./components/tabs/InsightsTab/InsightsTab
 const WorkspaceTab = lazy(() => import('./components/tabs/WorkspaceTab/WorkspaceTab').then((m) => ({ default: m.WorkspaceTab })));
 const AiTab = lazy(() => import('./components/tabs/AiTab/AiTab').then((m) => ({ default: m.AiTab })));
 const SessionsTab = lazy(() => import('./components/tabs/SessionsTab/SessionsTab').then((m) => ({ default: m.SessionsTab })));
-const AutoResumeTab = lazy(() => import('./components/tabs/AutoResumeTab/AutoResumeTab').then((m) => ({ default: m.AutoResumeTab })));
 const SettingsTab = lazy(() => import('./components/tabs/SettingsTab/SettingsTab').then((m) => ({ default: m.SettingsTab })));
 
 import { useSource, type Platform, type SourceFilter } from './hooks/useSource';
@@ -40,7 +38,6 @@ type Tab =
   | 'workspace'
   | 'ai'
   | 'sessions'
-  | 'autoresume'
   | 'settings';
 
 // `settings` must stay last — it's pinned to the bottom of the sidebar nav.
@@ -57,16 +54,14 @@ const TABS: { id: Tab; icon: string; label: string }[] = [
   { id: 'workspace', icon: '🗂', label: 'Workspace' },
   { id: 'ai', icon: '🪄', label: 'AI Insights' },
   { id: 'sessions', icon: '📋', label: 'Sessions' },
-  { id: 'autoresume', icon: '⏰', label: 'Auto-Resume' },
   { id: 'settings', icon: '⚙', label: 'Settings' },
 ];
 
 /**
  * Tabs per platform. Claude keeps the full original list. Codex (and Both) drop
- * the Claude-only surfaces — Workflows (Claude Code's workflow journals),
- * Workspace (~/.claude tasks/plans) and Auto-Resume (`claude --resume`) have no
- * Codex counterpart — and every remaining tab renders the selected platform's
- * data, side by side under Both.
+ * the Claude-only surfaces — Workflows (Claude Code's workflow journals) and
+ * Workspace (~/.claude tasks/plans) have no Codex counterpart — and every
+ * remaining tab renders the selected platform's data, side by side under Both.
  */
 const CODEX_TABS = new Set<Tab>(['live', 'agents', 'trends', 'models', 'insights', 'ai', 'sessions', 'settings']);
 function tabsFor(platform: Platform) {
@@ -120,7 +115,6 @@ export default function App() {
       <main className="flex-1 overflow-y-auto">
         <div className="mx-auto max-w-6xl px-5 py-8">
           <header className="mb-6 flex items-center justify-end gap-4">
-            <AutoResumeBadge />
             <AgentTrafficSignal />
             {platformOptions.length > 0 && (
               <div className="flex items-center gap-2" title="Which platform the whole dashboard shows: Claude (Anthropic), Codex (OpenAI, via the ChatGPT desktop app), or both side by side">
@@ -140,9 +134,6 @@ export default function App() {
           <Suspense fallback={<TabFallback />}>
             {activeTab === 'settings' ? (
               <SettingsTab limits={limits} onChangeLimits={setLimits} />
-            ) : activeTab === 'autoresume' ? (
-              // Auto-resume works even before any usage logs exist — keep it out of the `empty` gate.
-              <AutoResumeTab />
             ) : empty ? (
               <div className="card mt-6 p-12 text-center text-zinc-400">
                 {platform === 'codex'

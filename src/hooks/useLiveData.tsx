@@ -14,7 +14,6 @@ import type {
   WorkflowsData,
   WorkflowStats,
   VersionInfo,
-  AutoResumeState,
   CodexLiveData,
   CodexProfileStats,
 } from '../types';
@@ -37,7 +36,6 @@ interface LiveDataCtx {
   workflows: PollState<WorkflowsData>;
   workflowStats: PollState<WorkflowStats>;
   version: PollState<VersionInfo>;
-  autoResume: PollState<AutoResumeState>;
   // Codex (ChatGPT desktop) — all three are disabled (empty URL, no request) unless
   // /api/sources reports Codex data, so Claude-only users poll nothing new.
   codexLive: PollState<CodexLiveData>;
@@ -73,9 +71,6 @@ export function LiveDataProvider({ children }: { children: ReactNode }) {
   const workflows = usePolling<WorkflowsData>('/api/workflows', 4000);
   const workflowStats = usePolling<WorkflowStats>('/api/workflows/stats', 30000);
   const version = usePolling<VersionInfo>('/api/version', 1_800_000);
-  // 5s: drives the header pill + sidebar badge, which must track arm/disarm
-  // clicks promptly (the endpoint is in-memory — polling it is near-free).
-  const autoResume = usePolling<AutoResumeState>('/api/auto-resume/state', 5000);
   // Codex: live limits mirror the Claude live cadence, agents the Claude agents
   // cadence; the profile endpoint is server-cached for 30 min so poll it that often.
   const codexLive = usePolling<CodexLiveData>(codexAvailable ? '/api/codex/live' : '', 15000);
@@ -97,14 +92,13 @@ export function LiveDataProvider({ children }: { children: ReactNode }) {
       workflows,
       workflowStats,
       version,
-      autoResume,
       codexLive,
       codexAgents,
       codexProfile,
     }),
     [
       recentHours, weekDays, recent, weekly, models, litellm, liveUsage, liveSubagents,
-      workflows, workflowStats, version, autoResume, codexLive, codexAgents, codexProfile,
+      workflows, workflowStats, version, codexLive, codexAgents, codexProfile,
     ],
   );
 

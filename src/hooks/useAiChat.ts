@@ -14,7 +14,7 @@ export interface ChatMessage {
 
 /** The window + surface the chat answers over — mirrors what the user is looking at. */
 export interface AiScope {
-  source: SourceFilter;
+  source: SourceFilter | 'claude';
   days: number;
 }
 

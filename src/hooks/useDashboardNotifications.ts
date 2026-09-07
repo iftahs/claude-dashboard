@@ -103,40 +103,6 @@ export function useDashboardNotifications(activeTab: string, limits: Limits) {
     });
   }, [isApi, detectedMode, platform, liveUsage.data?.error, notify, dismiss]);
 
-  // Auto-resume completion — toast when a scheduled resume finishes, so the
-  // result is noticed without reopening the session (details on ⏰ Auto-Resume).
-  const lastResumeKey = useRef<string | null>(null);
-  const { autoResume } = useLiveData();
-  useEffect(() => {
-    const top = autoResume.data?.history?.[0];
-    if (!top || top.status === 'cancelled') return;
-    const key = `${top.id}:${top.finishedAt}`;
-    if (lastResumeKey.current === null) {
-      lastResumeKey.current = key; // don't re-announce history from before this page load
-      return;
-    }
-    if (lastResumeKey.current === key) return;
-    lastResumeKey.current = key;
-    const project = top.projectPath.split(/[\\/]/).filter(Boolean).pop() || 'session';
-    notify({
-      id: `auto-resume:${key}`,
-      severity: top.status === 'done' ? 'info' : 'warning',
-      timeoutMs: top.status === 'done' ? 12000 : 0,
-      title:
-        top.status === 'done'
-          ? `Auto-resumed ${project}`
-          : top.status === 'skipped'
-            ? `Auto-resume skipped for ${project}`
-            : `Auto-resume failed for ${project}`,
-      message:
-        top.status === 'done'
-          ? 'The interrupted work was continued. See the output on the ⏰ Auto-Resume page.'
-          : top.status === 'skipped'
-            ? 'The session was already continued manually before the scheduled time.'
-            : `${(top.message || 'unknown error').slice(0, 200)} — details on the ⏰ Auto-Resume page.`,
-    });
-  }, [autoResume.data?.history, notify]);
-
   // Pay-as-you-go note — shown once per session when API mode is active.
   const apiNotified = useRef(false);
   useEffect(() => {

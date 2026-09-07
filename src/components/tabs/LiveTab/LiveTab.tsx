@@ -5,7 +5,6 @@ import { PlanUsage } from '@/components/design-system/molecules/PlanUsage/PlanUs
 import { AccountsLivePanel } from '@/components/design-system/organisms/AccountsLivePanel/AccountsLivePanel';
 import { ExtraUsageCard } from '@/components/design-system/molecules/ExtraUsageCard/ExtraUsageCard';
 import { LimitsContributors } from '@/components/design-system/organisms/LimitsContributors/LimitsContributors';
-import { AutoResumeCard } from '@/components/design-system/organisms/AutoResumeCard/AutoResumeCard';
 import { SpendingLimits } from '@/components/design-system/molecules/SpendingLimits/SpendingLimits';
 import { CodexPlanCard, CodexPlanStats } from '@/components/design-system/organisms/CodexPlanPanel/CodexPlanPanel';
 import { CodexDailyCompareChart } from '@/components/design-system/organisms/CodexDailyCompareChart/CodexDailyCompareChart';
@@ -127,7 +126,7 @@ export function LiveTab({ limits }: LiveTabProps) {
   // ── Codex only ────────────────────────────────────────────────────────────
   // BlockGauge is Anthropic-specific (its alerts talk about the Claude block), so
   // the Codex rate-limit card takes its slot; everything Claude-only below it —
-  // auto-resume, extra usage, limit contributors, accounts — is dropped.
+  // extra usage, limit contributors, accounts — is dropped.
   if (platform === 'codex') {
     return (
       <>
@@ -179,7 +178,6 @@ export function LiveTab({ limits }: LiveTabProps) {
         <HourlyChart />
 
         {/* Claude-side panels — each self-hides when it has nothing to say. */}
-        <AutoResumeCard />
         {configData && !isApi && liveUsage.data?.extra_usage && (
           <ExtraUsageCard
             extraUsage={liveUsage.data.extra_usage}
@@ -227,9 +225,6 @@ export function LiveTab({ limits }: LiveTabProps) {
       {/* Subscription rate-limit bars — only meaningful with a plan. With more
           than one logged-in account, show each account's limits side-by-side. */}
       {claudePlanCard}
-
-      {/* Auto-resume status — self-hides unless armed or recently fired. */}
-      <AutoResumeCard />
 
       {/* Extra usage — Anthropic's "pay once you hit your plan limit" overage/credit pool. */}
       {configData && !isApi && liveUsage.data?.extra_usage && (
