@@ -156,6 +156,8 @@ async function assemble(scope: AiScope, ids: DatasetId[], redact: boolean): Prom
       note:
         source === 'all'
           ? 'Every surface: Claude Code, Cowork and Codex (ChatGPT desktop).'
+          : source === 'claude'
+            ? 'Claude only — Claude Code and Cowork (Codex excluded).'
           : source === 'code'
             ? 'Claude Code only (Cowork and Codex excluded).'
             : source === 'codex'

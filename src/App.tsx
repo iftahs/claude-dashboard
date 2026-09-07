@@ -21,10 +21,9 @@ const WorkspaceTab = lazy(() => import('./components/tabs/WorkspaceTab/Workspace
 const AiTab = lazy(() => import('./components/tabs/AiTab/AiTab').then((m) => ({ default: m.AiTab })));
 const SessionsTab = lazy(() => import('./components/tabs/SessionsTab/SessionsTab').then((m) => ({ default: m.SessionsTab })));
 const AutoResumeTab = lazy(() => import('./components/tabs/AutoResumeTab/AutoResumeTab').then((m) => ({ default: m.AutoResumeTab })));
-const CodexTab = lazy(() => import('./components/tabs/CodexTab/CodexTab').then((m) => ({ default: m.CodexTab })));
 const SettingsTab = lazy(() => import('./components/tabs/SettingsTab/SettingsTab').then((m) => ({ default: m.SettingsTab })));
 
-import { useSource, type SourceFilter } from './hooks/useSource';
+import { useSource, type Platform, type SourceFilter } from './hooks/useSource';
 import { useLiveData } from './hooks/useLiveData';
 import { useLimits } from './hooks/useLimits';
 import { useSidebarTabs } from './hooks/useSidebarTabs';
@@ -42,13 +41,12 @@ type Tab =
   | 'ai'
   | 'sessions'
   | 'autoresume'
-  | 'codex'
   | 'settings';
 
 // `settings` must stay last — it's pinned to the bottom of the sidebar nav.
 // Icons are a separate field so the sidebar can align them in a fixed-width slot
 // (emoji glyphs render at different widths, which otherwise misaligns the labels).
-// `codex` is listed only when /api/sources reports Codex data (see `visibleTabs`).
+// Which tabs exist depends on the platform switcher (see PLATFORM_TABS below).
 const TABS: { id: Tab; icon: string; label: string }[] = [
   { id: 'live', icon: '⚡', label: 'Live Usage' },
   { id: 'agents', icon: '🤖', label: 'Agents · Live Activity' },
@@ -60,9 +58,20 @@ const TABS: { id: Tab; icon: string; label: string }[] = [
   { id: 'ai', icon: '🪄', label: 'AI Insights' },
   { id: 'sessions', icon: '📋', label: 'Sessions' },
   { id: 'autoresume', icon: '⏰', label: 'Auto-Resume' },
-  { id: 'codex', icon: '🟢', label: 'ChatGPT · Codex' },
   { id: 'settings', icon: '⚙', label: 'Settings' },
 ];
+
+/**
+ * Tabs per platform. Claude keeps the full original list. Codex (and Both) drop
+ * the Claude-only surfaces — Workflows (Claude Code's workflow journals),
+ * Workspace (~/.claude tasks/plans) and Auto-Resume (`claude --resume`) have no
+ * Codex counterpart — and every remaining tab renders the selected platform's
+ * data, side by side under Both.
+ */
+const CODEX_TABS = new Set<Tab>(['live', 'agents', 'trends', 'models', 'insights', 'ai', 'sessions', 'settings']);
+function tabsFor(platform: Platform) {
+  return platform === 'claude' ? TABS : TABS.filter((t) => CODEX_TABS.has(t.id));
+}
 
 /** Shown for the one frame it takes a tab chunk to arrive. Shaped like a tab body
  *  so switching tabs does not collapse the layout. */
@@ -75,26 +84,14 @@ function TabFallback() {
   );
 }
 
-/** Header toggle tooltip — names exactly the surfaces that have data. */
-function sourceToggleTitle(cowork: boolean, codex: boolean): string {
-  const surfaces = ['Claude Code CLI'];
-  if (cowork) surfaces.push('Cowork (desktop local-agent mode)');
-  if (codex) surfaces.push('Codex (ChatGPT desktop)');
-  return `Filter usage by surface: ${surfaces.join(' vs ')}`;
-}
-
 export default function App() {
   const location = useLocation();
   const navigate = useNavigate();
-  const { source, setSource, sourceOptions, coworkAvailable, codexAvailable, secondaryAvailable } = useSource();
+  const { platform, setPlatform, platformOptions, source, setSource, sourceOptions, showSurfaceToggle } = useSource();
 
-  // The Codex tab exists only for users with Codex data — everyone else gets the
-  // original tab list. Memoised because useSidebarTabs keys its memo on the array
-  // identity; a fresh array per render would rebuild every badge each poll.
-  const visibleTabs = useMemo(
-    () => TABS.filter((t) => t.id !== 'codex' || codexAvailable),
-    [codexAvailable],
-  );
+  // Memoised because useSidebarTabs keys its memo on the array identity; a fresh
+  // array per render would rebuild every badge each poll.
+  const visibleTabs = useMemo(() => tabsFor(platform), [platform]);
   const seg = location.pathname.replace(/^\//, '');
   const activeTab: Tab = visibleTabs.some((t) => t.id === seg) ? (seg as Tab) : 'live';
 
@@ -125,8 +122,14 @@ export default function App() {
           <header className="mb-6 flex items-center justify-end gap-4">
             <AutoResumeBadge />
             <AgentTrafficSignal />
-            {secondaryAvailable && (
-              <div className="flex items-center gap-2" title={sourceToggleTitle(coworkAvailable, codexAvailable)}>
+            {platformOptions.length > 0 && (
+              <div className="flex items-center gap-2" title="Which platform the whole dashboard shows: Claude (Anthropic), Codex (OpenAI, via the ChatGPT desktop app), or both side by side">
+                <span className="text-[11px] uppercase tracking-wide text-zinc-600">platform</span>
+                <ToggleGroup<Platform> options={platformOptions} value={platform} onChange={setPlatform} />
+              </div>
+            )}
+            {showSurfaceToggle && (
+              <div className="flex items-center gap-2" title="Filter Claude usage by surface: Claude Code CLI vs Cowork (desktop local-agent mode)">
                 <span className="text-[11px] uppercase tracking-wide text-zinc-600">source</span>
                 <ToggleGroup<SourceFilter> options={sourceOptions} value={source} onChange={setSource} />
               </div>
@@ -140,14 +143,11 @@ export default function App() {
             ) : activeTab === 'autoresume' ? (
               // Auto-resume works even before any usage logs exist — keep it out of the `empty` gate.
               <AutoResumeTab />
-            ) : activeTab === 'codex' ? (
-              // A Codex-only user has zero Claude events — this tab must not hide behind the `empty` gate either.
-              <div className="space-y-6">
-                <CodexTab />
-              </div>
             ) : empty ? (
               <div className="card mt-6 p-12 text-center text-zinc-400">
-                No usage logs found. Use Claude Code, then this dashboard will populate.
+                {platform === 'codex'
+                  ? 'No Codex usage found. Run a thread in the ChatGPT desktop app, then this dashboard will populate.'
+                  : 'No usage logs found. Use Claude Code, then this dashboard will populate.'}
               </div>
             ) : (
               <div className="space-y-6">

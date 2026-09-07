@@ -6,7 +6,7 @@ import { exec } from 'node:child_process';
 import { promisify } from 'node:util';
 import express from 'express';
 import { getEvents, eventsFingerprint } from './cache.ts';
-import { buildRecent, buildWeekly, buildModels, buildActivity, buildTools, buildHourlyHeatmap, buildProjectStats, filterSource, type SourceFilter } from './aggregate.ts';
+import { buildRecent, buildWeekly, buildModels, buildActivity, buildTools, buildHourlyHeatmap, buildProjectStats, filterSource, sourceMatches, type SourceFilter } from './aggregate.ts';
 import { claudeDir, readConfig, readCredentials, readStatsSummary, readSessionMetas, fetchLiveUsage, fetchLiveProfile, fetchLiveUsageFor, fetchLiveProfileFor, readAccountCredentials, expiredTokenMessage, detectLitellm, fetchLiteLlmSpend } from './scan.ts';
 import { getInsights, insightsFingerprint } from './insights-scan.ts';
 import { primeData } from './data.ts';
@@ -47,9 +47,9 @@ function wrap(data: unknown, computedAt: number) {
   return { data, computedAt, claudeDir: claudeDir() };
 }
 
-/** Parse the optional ?source=all|code|cowork|codex filter (default 'all'). */
+/** Parse the optional ?source=all|claude|code|cowork|codex filter (default 'all'). */
 function parseSource(raw: unknown): SourceFilter {
-  return raw === 'code' || raw === 'cowork' || raw === 'codex' ? raw : 'all';
+  return raw === 'code' || raw === 'cowork' || raw === 'codex' || raw === 'claude' ? raw : 'all';
 }
 
 app.get('/api/health', (_req, res) => {
@@ -243,7 +243,7 @@ app.get('/api/sessions', async (req, res) => {
     for (const sm of insights.sessionsMeta.values()) {
       if (sm.isSidechain || !sm.sessionId) continue; // skip subagent-only sessions
       if (sm.assistantMsgs === 0) continue;           // skip empty/aborted shells
-      if (source !== 'all' && sm.source !== source) continue; // surface filter
+      if (!sourceMatches(sm.source, source)) continue; // surface / platform filter
 
       const stats = eventStats.get(sm.sessionId);
       const agg = toolAgg.get(sm.sessionId);
@@ -288,7 +288,7 @@ app.get('/api/sessions', async (req, res) => {
     // Sidecars are Claude Code only, so skip them when scoped to another surface.
     const liveIds = new Set(result.map((r) => r.session_id));
     for (const s of sidecar) {
-      if (source !== 'all' && source !== 'code') break;
+      if (source !== 'all' && source !== 'code' && source !== 'claude') break;
       if (liveIds.has(s.session_id)) continue;
       const stats = eventStats.get(s.session_id);
       const in_tok = s.input_tokens ?? 0;

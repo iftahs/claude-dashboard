@@ -111,12 +111,24 @@ function sourceSplit(events: UsageEvent[]): SourceSplit {
   return split;
 }
 
-export type SourceFilter = 'all' | UsageSource;
+/**
+ * `?source=` filter. Besides the single surfaces, 'claude' selects every Anthropic
+ * surface (code + cowork) — what the frontend's Claude platform sends once Codex
+ * data exists, so "Claude" never silently includes OpenAI usage.
+ */
+export type SourceFilter = 'all' | 'claude' | UsageSource;
 
-/** Narrow an event list to one surface; 'all' passes everything through. */
+/** Does an event/session tagged `s` belong to the filter `f`? */
+export function sourceMatches(s: UsageSource, f: SourceFilter): boolean {
+  if (f === 'all') return true;
+  if (f === 'claude') return s !== 'codex';
+  return s === f;
+}
+
+/** Narrow an event list to one surface (or platform); 'all' passes everything through. */
 export function filterSource(events: UsageEvent[], source: SourceFilter): UsageEvent[] {
   if (source === 'all') return events;
-  return events.filter((e) => e.source === source);
+  return events.filter((e) => sourceMatches(e.source, source));
 }
 
 export interface ActiveBlock {
