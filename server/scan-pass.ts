@@ -17,16 +17,25 @@
  * take 0.69s while parsing every line takes 6.6s. Hence:
  *   - a substring pre-filter before JSON.parse on the usage-only path
  *   - a bounded pool of PARSE_CONCURRENCY (8 measured optimal; 16 and 24 are worse)
+ *
+ * OpenAI Codex rollouts (`source: 'codex'`) are a different on-disk format and are
+ * handed to scan-pass-codex.ts, which emits the same FileRows. That module imports
+ * the row types and a few helpers from here (a benign import cycle: every binding
+ * is only touched inside a function, after both modules have evaluated).
  */
 import { readdir, readFile, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import { keepScanFile, scanRoots, type UsageSource } from './scan.ts';
+import { parseCodexFileRows } from './scan-pass-codex.ts';
 
 /** Measured optimum on an NVMe SSD: 1→4.28s, 8→3.11s, 16→3.27s, 24→3.74s. */
 export const PARSE_CONCURRENCY = 8;
 
 /** insights-scan.ts has always skipped files above this size; preserved verbatim. */
-const INSIGHTS_MAX_FILE_BYTES = 5 * 1024 * 1024;
+export const INSIGHTS_MAX_FILE_BYTES = 5 * 1024 * 1024;
+
+/** Per-session search-corpus cap applied at parse time (and again globally in merge.ts). */
+export const CORPUS_CAP_BYTES = 20 * 1024;
 
 // ---------------------------------------------------------------------------
 // Row types — flat, serialisable, no Maps. Everything here can go straight into
@@ -238,7 +247,8 @@ function parentSessionFromPath(file: string): string {
   return file.replace(/\\/g, '/').match(/\/([^/]+)\/subagents\//)?.[1] ?? '';
 }
 
-function extractMcpServer(name: string): string | null {
+/** `mcp__<server>__<tool>` → server. Shared with the codex parser, which names MCP calls the same way. */
+export function extractMcpServer(name: string): string | null {
   const m = name.match(/^mcp__([^_]+(?:_[^_]+)*)__/);
   return m ? m[1] : null;
 }
@@ -259,7 +269,7 @@ function isGitPushCommand(toolName: string, input: any): boolean {
   return /git\s+push/.test(typeof input?.command === 'string' ? input.command : '');
 }
 
-function num(v: unknown): number {
+export function num(v: unknown): number {
   return typeof v === 'number' && Number.isFinite(v) ? v : 0;
 }
 
@@ -279,8 +289,12 @@ function attrStr(v: unknown): string {
  *    (insights-scan.ts:237-241 has always skipped larger ones)
  *  - cowork transcripts get an empty projectPath, because the path they encode is
  *    sandbox-internal and meaningless on the host
+ *
+ * Codex rollouts are not Claude transcripts at all and take their own parser.
  */
 export async function parseFileRows(file: ScannedFile): Promise<FileRows> {
+  if (file.source === 'codex') return parseCodexFileRows(file);
+
   const { path, source, mtimeMs, size } = file;
   const insightsSkipped = size > INSIGHTS_MAX_FILE_BYTES;
 
@@ -332,7 +346,7 @@ export async function parseFileRows(file: ScannedFile): Promise<FileRows> {
     if (!c) { c = { snippets: [], len: 0 }; corpus.set(sessionId, c); }
     // The 20 KB per-session cap is applied again globally in merge.ts; keeping it
     // here too bounds memory for a single huge transcript.
-    if (c.len < 20 * 1024) { c.snippets.push(snippet); c.len += snippet.length + 1; }
+    if (c.len < CORPUS_CAP_BYTES) { c.snippets.push(snippet); c.len += snippet.length + 1; }
   };
 
   for (const line of text.split('\n')) {

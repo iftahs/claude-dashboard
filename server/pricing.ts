@@ -24,6 +24,17 @@ const TABLE: Array<[RegExp, Price]> = [
   [/haiku-3-[5-9]|haiku-3\.[5-9]/i, { input: 0.8, output: 4, cacheWrite: 1, cacheRead: 0.08 }],
   // Legacy Claude Haiku (3.0) and generic fallback priced at 0.25 / 1.25
   [/haiku/i, { input: 0.25, output: 1.25, cacheWrite: 0.3125, cacheRead: 0.03 }],
+
+  // --- OpenAI Codex (GPT) — the ChatGPT desktop agent's models. Codex reports no
+  // cache writes (cache_write_input_tokens is always 0), hence cacheWrite: 0.
+  // Most specific first; the generic /^gpt-/ row must stay last of this group.
+  [/gpt-5\.6-terra/i, { input: 2, output: 12, cacheWrite: 0, cacheRead: 0.2 }],
+  [/gpt-5\.6-luna/i, { input: 0.2, output: 1.2, cacheWrite: 0, cacheRead: 0.02 }],
+  [/gpt-5\.6-sol|gpt-5\.5/i, { input: 5, output: 30, cacheWrite: 0, cacheRead: 0.5 }],
+  [/gpt-6-astra/i, { input: 10, output: 50, cacheWrite: 0, cacheRead: 1 }],
+  // Bundled/unmetered: guardian auto-review, the mini tier and reserve capacity bill nothing.
+  [/codex-auto-review|gpt-5\.4-mini|gpt-reserve/i, { input: 0, output: 0, cacheWrite: 0, cacheRead: 0 }],
+  [/^gpt-/i, { input: 5, output: 30, cacheWrite: 0, cacheRead: 0.5 }],
 ];
 
 const DEFAULT: Price = { input: 3, output: 15, cacheWrite: 3.75, cacheRead: 0.3 };
@@ -31,6 +42,12 @@ const DEFAULT: Price = { input: 3, output: 15, cacheWrite: 3.75, cacheRead: 0.3 
 function priceFor(model: string): Price {
   for (const [re, p] of TABLE) if (re.test(model)) return p;
   return DEFAULT;
+}
+
+/** False for models the table deliberately bills at zero (e.g. codex-auto-review); true otherwise, DEFAULT included. */
+export function hasPrice(model: string): boolean {
+  const p = priceFor(model);
+  return p.input > 0 || p.output > 0 || p.cacheWrite > 0 || p.cacheRead > 0;
 }
 
 export function estimateCost(

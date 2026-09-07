@@ -79,13 +79,22 @@ export interface ScanRoot {
 
 /**
  * The directories scanned for usage events. Always the Claude Code projects dir;
- * plus the Cowork desktop root when it exists on disk. Both the main scanner and
- * the insights scanner walk this same list so the two stay in sync.
+ * plus the Cowork desktop root when it exists on disk; plus the Codex sessions
+ * tree. Both the main scanner and the insights scanner walk this same list so the
+ * two stay in sync.
+ *
+ * The codex root is pushed unconditionally — the walk swallows a missing dir, and
+ * keepScanFile() admits only `rollout-*.jsonl`, so a machine without Codex yields
+ * zero codex files. Merge order within a root is the sorted path list, and several
+ * session fields are "first file wins": that relies on a parent rollout sorting
+ * before its guardian children, which holds because both live in the same
+ * YYYY/MM/DD tree and the parent is always created first.
  */
 export function scanRoots(): ScanRoot[] {
   const roots: ScanRoot[] = [{ dir: projectsDir(), source: 'code' }];
   const cw = coworkDir();
   if (cw) roots.push({ dir: cw, source: 'cowork' });
+  roots.push({ dir: join(codexDir(), 'sessions'), source: 'codex' });
   return roots;
 }
 

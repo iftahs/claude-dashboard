@@ -19,6 +19,8 @@ import { buildContributors } from './contributors.ts';
 import { getCommandUsage } from './history.ts';
 import { getWorkspaceTasks, getInventory } from './workspace.ts';
 import { getLiveSubagents } from './subagents-live.ts';
+import { fetchCodexUsage, fetchCodexProfile } from './codex-live.ts';
+import { getLiveCodexAgents } from './codex-agents-live.ts';
 import { getWorkflows, getWorkflowStats } from './workflows.ts';
 import { getAgentDetail } from './workflow-agent-detail.ts';
 import { runAi, runAiStream, resolveBackend, AiUnavailableError, AiTokenRejectedError, AiCallError, type AiCreds } from './ai.ts';
@@ -440,6 +442,37 @@ app.get('/api/accounts/live', async (_req, res) => {
     // Active account first, then most-recently captured.
     liveAccounts.sort((a, b) => Number(b.isActive) - Number(a.isActive) || b.capturedAt - a.capturedAt);
     res.json(wrap({ accounts: liveAccounts }, Date.now()));
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+// ── OpenAI Codex (ChatGPT desktop) ──────────────────────────────────────────
+// Live plan limits + profile stats reuse the token Codex stores in
+// <codexDir>/auth.json (no refresh flow, PII stripped); running threads come
+// from the rollout files. Like /api/usage/live, failures of the two network
+// routes return wrap({ error }) at HTTP 200 so the frontend can show the reason.
+// See server/codex-live.ts and server/codex-agents-live.ts.
+
+app.get('/api/codex/live', async (_req, res) => {
+  try {
+    res.json(wrap(await fetchCodexUsage(), Date.now()));
+  } catch (e: any) {
+    res.json(wrap({ error: e.message || String(e) }, Date.now()));
+  }
+});
+
+app.get('/api/codex/profile', async (_req, res) => {
+  try {
+    res.json(wrap(await fetchCodexProfile(), Date.now()));
+  } catch (e: any) {
+    res.json(wrap({ error: e.message || String(e) }, Date.now()));
+  }
+});
+
+app.get('/api/codex/agents/live', async (_req, res) => {
+  try {
+    res.json(wrap(await getLiveCodexAgents(), Date.now()));
   } catch (e) {
     res.status(500).json({ error: String(e) });
   }

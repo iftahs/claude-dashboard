@@ -20,8 +20,12 @@ import { homedir } from 'node:os';
 import { join } from 'node:path';
 import type { FileRows } from './scan-pass.ts';
 
-/** Bump when the shape of FileRows changes — invalidates every cached blob. */
-const SCHEMA_VERSION = 1;
+/**
+ * Bump when the shape of FileRows — or what a parser puts in it — changes;
+ * invalidates every cached blob.
+ *   2: Codex rollouts (scan-pass-codex.ts) join the store; `source: 'codex'` rows.
+ */
+const SCHEMA_VERSION = 2;
 
 export function cacheDir(): string {
   return process.env.DASHBOARD_CACHE_DIR || join(homedir(), '.claude-dashboard-cache');
