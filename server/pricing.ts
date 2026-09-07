@@ -19,7 +19,10 @@ const TABLE: Array<[RegExp, Price]> = [
   [/opus-5|opus-4-[5-8]|opus-4\.[5-8]/i, { input: 5, output: 25, cacheWrite: 6.25, cacheRead: 0.5 }],
   // Legacy Claude Opus (3.0, 4.0, 4.1) priced at 15 / 75
   [/opus/i, { input: 15, output: 75, cacheWrite: 18.75, cacheRead: 1.5 }],
-  // Claude Sonnet (all versions: 3.0, 3.5, 4.5, 4.6, 5) priced at 3 / 15
+  // Claude Sonnet 5 priced at 2 / 10 — the launch "introductory" rate is now the
+  // standard price; the scheduled 2026-09-01 increase to 3 / 15 was cancelled.
+  [/sonnet-5/i, { input: 2, output: 10, cacheWrite: 2.50, cacheRead: 0.2 }],
+  // Older Claude Sonnet (3.0, 3.5, 4.0, 4.5, 4.6) priced at 3 / 15
   [/sonnet/i, { input: 3, output: 15, cacheWrite: 3.75, cacheRead: 0.3 }],
   // Claude Haiku 4.5 priced at 1 / 5
   [/haiku-4/i, { input: 1, output: 5, cacheWrite: 1.25, cacheRead: 0.1 }],
