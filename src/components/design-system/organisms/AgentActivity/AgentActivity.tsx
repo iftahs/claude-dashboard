@@ -15,6 +15,20 @@ import { useFlashOnIncrease } from '@/hooks/useFlashOnIncrease';
 // literal so framer-motion's Transition type accepts it under strict TS.
 const spring = { type: 'spring', stiffness: 500, damping: 40 } as const;
 
+// Default copy — the Claude Code wording. The Codex tab feeds this same organism
+// its own thread/guardian data and overrides these via `title` / `help` / `labels`.
+const DEFAULT_TITLE = 'Agents · live activity';
+const DEFAULT_HELP =
+  'Live view of agents working right now: main agents, their running subagents (Task/Agent spawns), and recently finished ones — refreshed every few seconds from active session logs. Empty when nothing is running.';
+const DEFAULT_LABELS = {
+  mains: 'Main sessions',
+  subagents: 'Subagents',
+  otherSubagents: 'Other subagents',
+  subagentUnit: ['subagent', 'subagents'] as [string, string],
+  mainUnit: ['main', 'mains'] as [string, string],
+  empty: 'No agents running right now',
+};
+
 // ── Ticking elapsed label ──────────────────────────────────────────────────
 
 function ElapsedTicker({ startedAt }: { startedAt: number }) {
@@ -287,7 +301,8 @@ function CountChip({ count, label, pulse }: { count: number; label: string; puls
   );
 }
 
-export function AgentActivity({ data, loading }: AgentActivityProps) {
+export function AgentActivity({ data, loading, title, help, labels }: AgentActivityProps) {
+  const L = { ...DEFAULT_LABELS, ...labels };
   const running = data?.running ?? [];
   const completed = data?.recentlyCompleted ?? [];
   const mains = data?.mainAgents ?? [];
@@ -305,8 +320,8 @@ export function AgentActivity({ data, loading }: AgentActivityProps) {
 
   return (
     <Section
-      title="Agents · live activity"
-      help="Live view of agents working right now: main agents, their running subagents (Task/Agent spawns), and recently finished ones — refreshed every few seconds from active session logs. Empty when nothing is running."
+      title={title ?? DEFAULT_TITLE}
+      help={help ?? DEFAULT_HELP}
       right={
         runningSubagents > 0 || activeMains > 0 || waitingCount > 0 ? (
           <div className="flex items-center gap-2">
@@ -320,12 +335,12 @@ export function AgentActivity({ data, loading }: AgentActivityProps) {
             {runningSubagents > 0 && (
               <CountChip
                 count={runningSubagents}
-                label={runningSubagents === 1 ? 'subagent' : 'subagents'}
+                label={runningSubagents === 1 ? L.subagentUnit[0] : L.subagentUnit[1]}
                 pulse
               />
             )}
             {activeMains > 0 && (
-              <CountChip count={activeMains} label={activeMains === 1 ? 'main' : 'mains'} />
+              <CountChip count={activeMains} label={activeMains === 1 ? L.mainUnit[0] : L.mainUnit[1]} />
             )}
           </div>
         ) : undefined
@@ -337,7 +352,7 @@ export function AgentActivity({ data, loading }: AgentActivityProps) {
         <MotionConfig reducedMotion="user">
           <div className="flex flex-col gap-4">
             {/* Main Claude Code sessions, each with its subagents nested beneath */}
-            {mains.length > 0 && <GroupLabel>Main sessions</GroupLabel>}
+            {mains.length > 0 && <GroupLabel>{L.mains}</GroupLabel>}
             <AnimatePresence initial={false}>
               {mains.map((m) => {
                 const kids = running.filter((r) => r.parentKey === m.key);
@@ -365,7 +380,7 @@ export function AgentActivity({ data, loading }: AgentActivityProps) {
                     />
                     {(kids.length > 0 || done.length > 0) && (
                       <div className="ml-3 flex flex-col gap-2 border-l border-white/10 pl-3 sm:ml-4 sm:pl-4">
-                        <GroupLabel>Subagents</GroupLabel>
+                        <GroupLabel>{L.subagents}</GroupLabel>
                         {kids.length > 0 && (
                           <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                             <AnimatePresence initial={false}>
@@ -409,7 +424,7 @@ export function AgentActivity({ data, loading }: AgentActivityProps) {
             {/* Subagents whose parent session isn't shown */}
             {(orphanRunning.length > 0 || orphanCompleted.length > 0) && (
               <div className="flex flex-col gap-2">
-                <GroupLabel>{mains.length > 0 ? 'Other subagents' : 'Subagents'}</GroupLabel>
+                <GroupLabel>{mains.length > 0 ? L.otherSubagents : L.subagents}</GroupLabel>
                 {orphanRunning.length > 0 && (
                   <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
                     <AnimatePresence initial={false}>
@@ -450,7 +465,7 @@ export function AgentActivity({ data, loading }: AgentActivityProps) {
       ) : (
         <div className="flex items-center gap-2 py-1 text-xs text-zinc-600">
           <span className="inline-block h-1.5 w-1.5 rounded-full bg-zinc-700 flex-none" />
-          No agents running right now
+          {L.empty}
         </div>
       )}
     </Section>

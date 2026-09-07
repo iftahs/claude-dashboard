@@ -22,7 +22,7 @@ import { useAiInsightCtx } from '@/hooks/useAiInsightContext';
 import type { ActivityData, HeatmapData } from '@/types';
 
 export function TrendsTab() {
-  const { coworkAvailable, source, withSrc } = useSource();
+  const { secondaryAvailable, source, withSrc } = useSource();
   const { litellmAvailable, litellmHost, weekStart } = useConfigMode();
   const { weekly, models, weekDays, setWeekDays } = useLiveData();
   const { costPerDay, daysLeftInMonth, projectedMonthCost, weeklyEffective, prevWeeklyEffective } =
@@ -114,8 +114,9 @@ export function TrendsTab() {
         <LiteLlmActualBilled spend={litellmSpend} host={litellmHost} weekDays={weekDays} />
       )}
 
-      {/* Sources split (Code vs Cowork) — only under the All filter. */}
-      {coworkAvailable && source === 'all' && weekly.data?.bySource && (
+      {/* Sources split (Code / Cowork / Codex) — only under the All filter, and
+          only once a second surface has data (Code-only users never see it). */}
+      {secondaryAvailable && source === 'all' && weekly.data?.bySource && (
         <SourcesSplitChart bySource={weekly.data.bySource} weekDays={weekDays} />
       )}
 

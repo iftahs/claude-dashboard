@@ -18,7 +18,7 @@ import type { Limits } from './useLimits';
  * pay-as-you-go note). Kept out of the render tree so App stays a thin shell.
  */
 export function useDashboardNotifications(activeTab: string, limits: Limits) {
-  const { configData, effectiveMode, isApi, settings, weekStart } = useConfigMode();
+  const { configData, detectedMode, effectiveMode, isApi, settings, weekStart } = useConfigMode();
   const { liveUsage, version, weekly } = useLiveData();
   const { litellmActual } = useLiteLlmActual();
   const { costPerDay } = useCostMetrics();
@@ -70,6 +70,16 @@ export function useDashboardNotifications(activeTab: string, limits: Limits) {
       return;
     }
     const lc = err.toLowerCase();
+    // "No access token" means there simply are no Claude.ai credentials on this
+    // machine — e.g. a Codex-only user, or someone who never logged Claude Code in.
+    // The backend reports that as `authMode: 'api'` (`detectedMode`), so unless the
+    // user has *forced* subscription mode in Settings the toast is already skipped
+    // via `isApi`; this guard covers the forced case, where nagging "session
+    // expired" on every load would be wrong — there was never a session to expire.
+    if (lc.includes('no access token') && detectedMode === 'api') {
+      dismiss('offline');
+      return;
+    }
     const expired = lc.includes('expired') || lc.includes('no access token');
     // Upstream Anthropic outage (5xx) — not a token problem; running `claude` won't help.
     const upstream = /:\s*5\d\d\b/.test(err) || lc.includes('service unavailable')
@@ -87,7 +97,7 @@ export function useDashboardNotifications(activeTab: string, limits: Limits) {
         ? `Anthropic's usage service is temporarily unavailable (${err.match(/5\d\d/)?.[0] ?? '5xx'}). It's on their side — the dashboard keeps retrying and this clears on its own.`
         : `${err} — try running \`claude\` in a terminal.`,
     });
-  }, [isApi, liveUsage.data?.error, notify, dismiss]);
+  }, [isApi, detectedMode, liveUsage.data?.error, notify, dismiss]);
 
   // Auto-resume completion — toast when a scheduled resume finishes, so the
   // result is noticed without reopening the session (details on ⏰ Auto-Resume).

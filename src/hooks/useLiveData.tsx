@@ -15,6 +15,8 @@ import type {
   WorkflowStats,
   VersionInfo,
   AutoResumeState,
+  CodexLiveData,
+  CodexProfileStats,
 } from '../types';
 
 const POLL = 5000;
@@ -36,6 +38,11 @@ interface LiveDataCtx {
   workflowStats: PollState<WorkflowStats>;
   version: PollState<VersionInfo>;
   autoResume: PollState<AutoResumeState>;
+  // Codex (ChatGPT desktop) — all three are disabled (empty URL, no request) unless
+  // /api/sources reports Codex data, so Claude-only users poll nothing new.
+  codexLive: PollState<CodexLiveData>;
+  codexAgents: PollState<LiveSubagents>;
+  codexProfile: PollState<CodexProfileStats>;
 }
 
 const LiveDataContext = createContext<LiveDataCtx | null>(null);
@@ -44,10 +51,12 @@ const LiveDataContext = createContext<LiveDataCtx | null>(null);
  * The polls that more than one tab (or the header/sidebar) depend on, plus the
  * window state shared between Live and Trends. Source-aware polls run through
  * `withSrc`; the LiteLLM poll is gated on gateway detection so Code-only /
- * direct-Anthropic users poll nothing.
+ * direct-Anthropic users poll nothing; the Codex polls are gated the same way on
+ * `codexAvailable` (they feed the Codex tab, the sidebar badge and the header
+ * agent traffic signal).
  */
 export function LiveDataProvider({ children }: { children: ReactNode }) {
-  const { withSrc } = useSource();
+  const { withSrc, codexAvailable } = useSource();
   const { litellmAvailable } = useConfigMode();
   const [recentHours, setRecentHours] = useState(12);
   const [weekDays, setWeekDays] = useState(7);
@@ -67,6 +76,11 @@ export function LiveDataProvider({ children }: { children: ReactNode }) {
   // 5s: drives the header pill + sidebar badge, which must track arm/disarm
   // clicks promptly (the endpoint is in-memory — polling it is near-free).
   const autoResume = usePolling<AutoResumeState>('/api/auto-resume/state', 5000);
+  // Codex: live limits mirror the Claude live cadence, agents the Claude agents
+  // cadence; the profile endpoint is server-cached for 30 min so poll it that often.
+  const codexLive = usePolling<CodexLiveData>(codexAvailable ? '/api/codex/live' : '', 15000);
+  const codexAgents = usePolling<LiveSubagents>(codexAvailable ? '/api/codex/agents/live' : '', 2500);
+  const codexProfile = usePolling<CodexProfileStats>(codexAvailable ? '/api/codex/profile' : '', 1_800_000);
 
   const value = useMemo<LiveDataCtx>(
     () => ({
@@ -84,8 +98,14 @@ export function LiveDataProvider({ children }: { children: ReactNode }) {
       workflowStats,
       version,
       autoResume,
+      codexLive,
+      codexAgents,
+      codexProfile,
     }),
-    [recentHours, weekDays, recent, weekly, models, litellm, liveUsage, liveSubagents, workflows, workflowStats, version, autoResume],
+    [
+      recentHours, weekDays, recent, weekly, models, litellm, liveUsage, liveSubagents,
+      workflows, workflowStats, version, autoResume, codexLive, codexAgents, codexProfile,
+    ],
   );
 
   return <LiveDataContext.Provider value={value}>{children}</LiveDataContext.Provider>;

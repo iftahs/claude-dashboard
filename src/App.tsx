@@ -1,4 +1,4 @@
-import { lazy, Suspense } from 'react';
+import { lazy, Suspense, useMemo } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { LiveBadge } from './components/design-system/atoms/LiveBadge/LiveBadge';
 import { ToggleGroup } from './components/design-system/atoms/ToggleGroup/ToggleGroup';
@@ -8,7 +8,7 @@ import { AgentTrafficSignal } from './components/design-system/organisms/AgentTr
 import { AutoResumeBadge } from './components/design-system/molecules/AutoResumeBadge/AutoResumeBadge';
 
 // Tabs are code-split: only one is ever mounted, but statically importing all
-// eleven pulled every chart and the whole of recharts into the first chunk
+// of them pulled every chart and the whole of recharts into the first chunk
 // (1.19 MB) before anything could paint. Each is now its own lazily-fetched chunk.
 // They use named exports, so the module is remapped to the default lazy() expects.
 const LiveTab = lazy(() => import('./components/tabs/LiveTab/LiveTab').then((m) => ({ default: m.LiveTab })));
@@ -21,20 +21,34 @@ const WorkspaceTab = lazy(() => import('./components/tabs/WorkspaceTab/Workspace
 const AiTab = lazy(() => import('./components/tabs/AiTab/AiTab').then((m) => ({ default: m.AiTab })));
 const SessionsTab = lazy(() => import('./components/tabs/SessionsTab/SessionsTab').then((m) => ({ default: m.SessionsTab })));
 const AutoResumeTab = lazy(() => import('./components/tabs/AutoResumeTab/AutoResumeTab').then((m) => ({ default: m.AutoResumeTab })));
+const CodexTab = lazy(() => import('./components/tabs/CodexTab/CodexTab').then((m) => ({ default: m.CodexTab })));
 const SettingsTab = lazy(() => import('./components/tabs/SettingsTab/SettingsTab').then((m) => ({ default: m.SettingsTab })));
 
-import { useSource, SOURCE_OPTIONS, type SourceFilter } from './hooks/useSource';
+import { useSource, type SourceFilter } from './hooks/useSource';
 import { useLiveData } from './hooks/useLiveData';
 import { useLimits } from './hooks/useLimits';
 import { useSidebarTabs } from './hooks/useSidebarTabs';
 import { useDashboardNotifications } from './hooks/useDashboardNotifications';
 import { useDocumentTitle } from './hooks/useDocumentTitle';
 
-type Tab = 'live' | 'agents' | 'workflows' | 'trends' | 'models' | 'insights' | 'workspace' | 'ai' | 'sessions' | 'autoresume' | 'settings';
+type Tab =
+  | 'live'
+  | 'agents'
+  | 'workflows'
+  | 'trends'
+  | 'models'
+  | 'insights'
+  | 'workspace'
+  | 'ai'
+  | 'sessions'
+  | 'autoresume'
+  | 'codex'
+  | 'settings';
 
 // `settings` must stay last — it's pinned to the bottom of the sidebar nav.
 // Icons are a separate field so the sidebar can align them in a fixed-width slot
 // (emoji glyphs render at different widths, which otherwise misaligns the labels).
+// `codex` is listed only when /api/sources reports Codex data (see `visibleTabs`).
 const TABS: { id: Tab; icon: string; label: string }[] = [
   { id: 'live', icon: '⚡', label: 'Live Usage' },
   { id: 'agents', icon: '🤖', label: 'Agents · Live Activity' },
@@ -46,6 +60,7 @@ const TABS: { id: Tab; icon: string; label: string }[] = [
   { id: 'ai', icon: '🪄', label: 'AI Insights' },
   { id: 'sessions', icon: '📋', label: 'Sessions' },
   { id: 'autoresume', icon: '⏰', label: 'Auto-Resume' },
+  { id: 'codex', icon: '🟢', label: 'ChatGPT · Codex' },
   { id: 'settings', icon: '⚙', label: 'Settings' },
 ];
 
@@ -60,16 +75,32 @@ function TabFallback() {
   );
 }
 
+/** Header toggle tooltip — names exactly the surfaces that have data. */
+function sourceToggleTitle(cowork: boolean, codex: boolean): string {
+  const surfaces = ['Claude Code CLI'];
+  if (cowork) surfaces.push('Cowork (desktop local-agent mode)');
+  if (codex) surfaces.push('Codex (ChatGPT desktop)');
+  return `Filter usage by surface: ${surfaces.join(' vs ')}`;
+}
+
 export default function App() {
   const location = useLocation();
   const navigate = useNavigate();
-  const seg = location.pathname.replace(/^\//, '');
-  const activeTab: Tab = TABS.some((t) => t.id === seg) ? (seg as Tab) : 'live';
+  const { source, setSource, sourceOptions, coworkAvailable, codexAvailable, secondaryAvailable } = useSource();
 
-  const { source, setSource, coworkAvailable } = useSource();
+  // The Codex tab exists only for users with Codex data — everyone else gets the
+  // original tab list. Memoised because useSidebarTabs keys its memo on the array
+  // identity; a fresh array per render would rebuild every badge each poll.
+  const visibleTabs = useMemo(
+    () => TABS.filter((t) => t.id !== 'codex' || codexAvailable),
+    [codexAvailable],
+  );
+  const seg = location.pathname.replace(/^\//, '');
+  const activeTab: Tab = visibleTabs.some((t) => t.id === seg) ? (seg as Tab) : 'live';
+
   const { recent, weekly, version } = useLiveData();
   const [limits, setLimits] = useLimits();
-  const sidebarTabs = useSidebarTabs(TABS);
+  const sidebarTabs = useSidebarTabs(visibleTabs);
   useDashboardNotifications(activeTab, limits);
   useDocumentTitle();
 
@@ -94,13 +125,10 @@ export default function App() {
           <header className="mb-6 flex items-center justify-end gap-4">
             <AutoResumeBadge />
             <AgentTrafficSignal />
-            {coworkAvailable && (
-              <div
-                className="flex items-center gap-2"
-                title="Filter usage by surface: Claude Code CLI vs Cowork (desktop local-agent mode)"
-              >
+            {secondaryAvailable && (
+              <div className="flex items-center gap-2" title={sourceToggleTitle(coworkAvailable, codexAvailable)}>
                 <span className="text-[11px] uppercase tracking-wide text-zinc-600">source</span>
-                <ToggleGroup<SourceFilter> options={SOURCE_OPTIONS} value={source} onChange={setSource} />
+                <ToggleGroup<SourceFilter> options={sourceOptions} value={source} onChange={setSource} />
               </div>
             )}
             <LiveBadge error={error} />
@@ -112,6 +140,11 @@ export default function App() {
             ) : activeTab === 'autoresume' ? (
               // Auto-resume works even before any usage logs exist — keep it out of the `empty` gate.
               <AutoResumeTab />
+            ) : activeTab === 'codex' ? (
+              // A Codex-only user has zero Claude events — this tab must not hide behind the `empty` gate either.
+              <div className="space-y-6">
+                <CodexTab />
+              </div>
             ) : empty ? (
               <div className="card mt-6 p-12 text-center text-zinc-400">
                 No usage logs found. Use Claude Code, then this dashboard will populate.

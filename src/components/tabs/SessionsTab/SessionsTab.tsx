@@ -18,23 +18,29 @@ export function SessionsTab() {
   const totalPeriodDays = useSessionPeriod(sessions.data);
   const tags = useTags();
 
+  // The config profile is Claude Code's own settings/plan — meaningless under a
+  // Cowork or Codex filter. Per-project and tag breakdowns need a host project:
+  // Cowork sessions run in a sandbox with none, so that filter skips straight to
+  // the session log, while Codex threads carry real cwd paths and keep them.
+  const showConfig = source !== 'cowork' && source !== 'codex';
+  const showProjects = source !== 'cowork';
+
   return (
     <>
-      {/* Config profile + per-project breakdown only make sense for Code.
-          Cowork sessions run in a sandbox with no host project, so under
-          the Cowork filter we skip straight to the session log. */}
-      {source !== 'cowork' && (
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-          <div className="lg:col-span-1 self-start">
-            {configData ? (
-              <ConfigProfile config={configData} isApi={isApi} />
-            ) : configLoading ? (
-              <div className="card p-5">
-                <Skeleton className="h-[200px] w-full rounded-2xl" />
-              </div>
-            ) : null}
-          </div>
-          <div className="lg:col-span-2">
+      {showProjects && (
+        <div className={`grid grid-cols-1 gap-6 ${showConfig ? 'lg:grid-cols-3' : ''}`}>
+          {showConfig && (
+            <div className="lg:col-span-1 self-start">
+              {configData ? (
+                <ConfigProfile config={configData} isApi={isApi} />
+              ) : configLoading ? (
+                <div className="card p-5">
+                  <Skeleton className="h-[200px] w-full rounded-2xl" />
+                </div>
+              ) : null}
+            </div>
+          )}
+          <div className={showConfig ? 'lg:col-span-2' : ''}>
             {sessions.data ? (
               <ProjectBreakdown
                 sessions={sessions.data}
@@ -51,7 +57,7 @@ export function SessionsTab() {
         </div>
       )}
 
-      {source !== 'cowork' && sessions.data && (
+      {showProjects && sessions.data && (
         <TagBreakdown
           sessions={sessions.data}
           projectCosts={projectCosts.data?.projects}

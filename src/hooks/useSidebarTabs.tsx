@@ -27,7 +27,7 @@ function usageTone(pct: number): SidebarBadgeTone {
  */
 export function useSidebarTabs(tabs: TabDef[]): SidebarTab[] {
   const {
-    runningAgentCount, liveWorkflowCount, fiveHourPct,
+    runningAgentCount, liveWorkflowCount, fiveHourPct, codexWeeklyPct,
     autoResumeArmed, autoResumeWaiting, autoResumeExecutorMissing,
   } = useLiveMetrics();
   const { waiting: waitingAgentCount } = useAgentTraffic();
@@ -72,6 +72,21 @@ export function useSidebarTabs(tabs: TabDef[]): SidebarTab[] {
                 tone={usageTone(fiveHourPct)}
                 label={`${fiveHourPct}%`}
                 title={`5-hour limit: ${fiveHourPct}% used`}
+              />
+            ),
+          };
+        }
+        // Codex weekly utilization — the tab is only listed when Codex data exists,
+        // and the poll behind this is disabled otherwise, so Claude-only users never
+        // reach this branch.
+        if (t.id === 'codex' && codexWeeklyPct != null) {
+          return {
+            ...t,
+            badge: (
+              <SidebarBadge
+                tone={usageTone(codexWeeklyPct)}
+                label={`${codexWeeklyPct}%`}
+                title={`Codex weekly limit: ${codexWeeklyPct}% used`}
               />
             ),
           };
@@ -125,6 +140,6 @@ export function useSidebarTabs(tabs: TabDef[]): SidebarTab[] {
         }
         return { ...t };
       }),
-    [tabs, runningAgentCount, waitingAgentCount, liveWorkflowCount, fiveHourPct, autoResumeArmed, autoResumeWaiting, autoResumeExecutorMissing],
+    [tabs, runningAgentCount, waitingAgentCount, liveWorkflowCount, fiveHourPct, codexWeeklyPct, autoResumeArmed, autoResumeWaiting, autoResumeExecutorMissing],
   );
 }
