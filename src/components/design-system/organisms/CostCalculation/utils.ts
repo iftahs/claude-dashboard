@@ -12,7 +12,8 @@ import type { ModelPrice, PriceGroup, PricePlatform } from './types';
  */
 export const PRICING_DATA: ModelPrice[] = [
   // ── Anthropic ────────────────────────────────────────────────────────────
-  { name: 'Claude Fable 5', family: 'fable', platform: 'claude', input: 10, output: 50, cacheWrite: 12.5, cacheRead: 1.0, popular: true },
+  { name: 'Claude Fable 5.1', family: 'fable-5-1', platform: 'claude', input: 10, output: 50, cacheWrite: 12.5, cacheRead: 0.25, popular: true },
+  { name: 'Claude Fable 5', family: 'fable', platform: 'claude', input: 10, output: 50, cacheWrite: 12.5, cacheRead: 1.0 },
   { name: 'Claude Mythos 5 (limited availability)', family: 'mythos', platform: 'claude', input: 10, output: 50, cacheWrite: 12.5, cacheRead: 1.0 },
   { name: 'Claude Opus 5', family: 'opus-5', platform: 'claude', input: 5, output: 25, cacheWrite: 6.25, cacheRead: 0.5, popular: true },
   { name: 'Claude Opus 4.8', family: 'opus-4-8', platform: 'claude', input: 5, output: 25, cacheWrite: 6.25, cacheRead: 0.5 },
@@ -21,7 +22,7 @@ export const PRICING_DATA: ModelPrice[] = [
   { name: 'Claude Opus 4.5', family: 'opus-4-5', platform: 'claude', input: 5, output: 25, cacheWrite: 6.25, cacheRead: 0.5 },
   { name: 'Claude Opus 4.1 (deprecated)', family: 'opus-4-1', platform: 'claude', input: 15, output: 75, cacheWrite: 18.75, cacheRead: 1.5 },
   { name: 'Claude Opus 4 (deprecated)', family: 'opus-4', platform: 'claude', input: 15, output: 75, cacheWrite: 18.75, cacheRead: 1.5 },
-  { name: 'Claude Sonnet 5', family: 'sonnet-5', platform: 'claude', input: 3, output: 15, cacheWrite: 3.75, cacheRead: 0.3, popular: true },
+  { name: 'Claude Sonnet 5', family: 'sonnet-5', platform: 'claude', input: 2, output: 10, cacheWrite: 2.5, cacheRead: 0.2, popular: true },
   { name: 'Claude Sonnet 4.6', family: 'sonnet-4-6', platform: 'claude', input: 3, output: 15, cacheWrite: 3.75, cacheRead: 0.3 },
   { name: 'Claude Sonnet 4.5', family: 'sonnet-4-5', platform: 'claude', input: 3, output: 15, cacheWrite: 3.75, cacheRead: 0.3 },
   { name: 'Claude Sonnet 4 (deprecated)', family: 'sonnet-4', platform: 'claude', input: 3, output: 15, cacheWrite: 3.75, cacheRead: 0.3 },

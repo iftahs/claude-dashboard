@@ -10,7 +10,7 @@ export const PROVIDER_LABELS: Record<AiProvider, string> = {
 };
 
 export const PROVIDER_MODELS: Record<AiProvider, string[]> = {
-  claude: ['claude-opus-5', 'claude-opus-4-8', 'claude-sonnet-5', 'claude-sonnet-4-6', 'claude-haiku-4-5-20251001'],
+  claude: ['claude-fable-5-1', 'claude-opus-5', 'claude-opus-4-8', 'claude-sonnet-5', 'claude-sonnet-4-6', 'claude-haiku-4-5-20251001'],
   openai: ['gpt-4o', 'gpt-4o-mini', 'gpt-4.1', 'o4-mini'],
   gemini: ['gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-2.0-flash'],
 };
