@@ -5,6 +5,39 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.26] - 2026-09-08
+
+### Added
+- OpenAI Codex (ChatGPT desktop) as a second platform. The rollouts under ~/.codex are
+  parsed into the same event pipeline (source: codex), and a Claude / Codex / Both
+  switcher in the header re-points the whole dashboard — every tab reads the selected
+  platform, so there is no separate Codex tab. Guardian auto-review threads fold into
+  their parent. The original Code / Cowork / All source toggle stays as a Claude-side
+  sub-filter, and users with no ~/.codex never see the switcher at all.
+- Under Codex: live 5-hour / weekly limits, plan tier, credits and reset credits (read
+  with the token the app stores, never refreshed; passive fallback from the newest
+  rollout when offline), running threads and guardian reviews with the Claude agents
+  treatment, and a server-vs-local daily token comparison. Claude-only destinations
+  (Workflows, Workspace) and panels (git branches, permission rejections,
+  slash commands) drop out instead of rendering empty.
+- Under Both: a Claude-vs-Codex daily chart, a three-way Claude Code / Cowork / Codex
+  sources split, per-platform sub-labels on the Trends spend cards, and both vendors'
+  rate cards on Models.
+- Pricing rows for gpt-5.5 / gpt-5.6 (sol, terra, luna) / gpt-6-astra; the internal
+  codex-auto-review model is unpriced. A violet palette family for GPT models.
+- CODEX_DIR / CODEX_DIR_HOST (auto-written by npm run docker:up, blank to opt out)
+  and a read-only /data/.codex mount in docker-compose.
+
+### Fixed
+- The scan fingerprint now folds in total bytes, so a file that grows without its
+  mtime changing (Codex guardian rollouts) no longer leaves memoised aggregates stale.
+
+### Removed
+- The Auto-Resume feature (Auto-Resume page, `/api/auto-resume/*`, the host
+  resume-watcher scripts and the `HOST_REPO_DIR` env). It was unreliable and Claude
+  Code now handles limit resets itself. `~/.claude-dashboard-auto-resume.json` can be
+  deleted.
+
 ## [0.1.25] - 2026-09-07
 
 ### Added

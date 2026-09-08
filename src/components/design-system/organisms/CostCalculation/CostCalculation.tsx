@@ -1,16 +1,67 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { usd, compact } from '@/lib/format';
 import { InfoTip } from '@/components/design-system/atoms/InfoTip/InfoTip';
-import type { ModelPrice } from './types';
-import { PRICING_DATA, calcCost } from './utils';
+import type { CostCalculationProps, ModelPrice, PriceGroup, PricePlatform } from './types';
+import { billingBlurb, calcCost, priceGroups } from './utils';
 
-export function CostCalculation() {
-  const [selectedModel, setSelectedModel] = useState<ModelPrice>(PRICING_DATA[0]);
-  const [showLegacy, setShowLegacy] = useState(false);
+/** "$3.00", or "—" for the cache-write column of a vendor that has no such charge. */
+function rate(model: ModelPrice, field: 'input' | 'output' | 'cacheWrite' | 'cacheRead') {
+  if (field === 'cacheWrite' && model.platform === 'openai') return '—';
+  return `$${model[field].toFixed(2)}`;
+}
+
+function PriceRow({
+  model,
+  selected,
+  onSelect,
+}: {
+  model: ModelPrice;
+  selected: boolean;
+  onSelect: (m: ModelPrice) => void;
+}) {
+  return (
+    <tr
+      className={`hover:bg-white/10 transition-colors cursor-pointer ${
+        selected ? 'bg-clay-500/10 text-clay-400 font-medium' : ''
+      }`}
+      onClick={() => onSelect(model)}
+    >
+      <td className="py-3 pr-2">
+        {model.name}
+        {model.note && <span className="ml-1.5 text-[10px] text-zinc-500">{model.note}</span>}
+      </td>
+      <td className="py-3 pl-3 text-right tabular-nums">{rate(model, 'input')}</td>
+      <td className="py-3 pl-3 text-right tabular-nums">{rate(model, 'output')}</td>
+      <td className="py-3 pl-3 text-right tabular-nums">{rate(model, 'cacheWrite')}</td>
+      <td className="py-3 pl-3 text-right tabular-nums">{rate(model, 'cacheRead')}</td>
+    </tr>
+  );
+}
+
+/**
+ * Reference rate cards + a sandbox calculator. The rows shown follow the header
+ * platform switcher: Claude's card alone, OpenAI's (Codex) card alone, or both —
+ * Claude first, except under Codex where the GPT rows lead because they are the
+ * only ones that describe what the user is looking at.
+ */
+export function CostCalculation({ platform }: CostCalculationProps) {
+  const groups = useMemo(() => priceGroups(platform), [platform]);
+  const showGroupLabels = groups.length > 1;
+
+  const [selectedModel, setSelectedModel] = useState<ModelPrice>(() => groups[0].current[0]);
+  const [expanded, setExpanded] = useState<Partial<Record<PricePlatform, boolean>>>({});
   const [inputTokens, setInputTokens] = useState(100_000);
   const [outputTokens, setOutputTokens] = useState(20_000);
   const [cacheWriteTokens, setCacheWriteTokens] = useState(50_000);
   const [cacheReadTokens, setCacheReadTokens] = useState(200_000);
+
+  // Switching platform can hide the selected row; fall back to the first row of
+  // the leading group so the calculator never prices an invisible model.
+  useEffect(() => {
+    if (!groups.some((g) => g.platform === selectedModel.platform)) {
+      setSelectedModel(groups[0].current[0]);
+    }
+  }, [groups, selectedModel.platform]);
 
   const calculateCost = () =>
     calcCost(selectedModel, {
@@ -20,8 +71,61 @@ export function CostCalculation() {
       cacheRead: cacheReadTokens,
     });
 
-  const currentModels = PRICING_DATA.filter((m) => m.popular);
-  const legacyModels = PRICING_DATA.filter((m) => !m.popular);
+  const noCacheWrite = selectedModel.platform === 'openai';
+
+  const renderGroup = (g: PriceGroup) => (
+    <div key={g.platform} className={showGroupLabels ? 'mt-5 first:mt-0' : ''}>
+      {showGroupLabels && (
+        <div className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
+          {g.label}
+        </div>
+      )}
+      {/* `whitespace-nowrap` on the rate headers: a row's note ("internal review
+          model — not billed") widens the Model column enough to wrap them otherwise. */}
+      <table className="w-full text-left text-xs border-collapse">
+        <thead>
+          <tr className="border-b border-white/10 text-zinc-500 font-semibold uppercase tracking-wider">
+            <th className="py-2.5">Model</th>
+            <th className="py-2.5 pl-3 text-right whitespace-nowrap">Input / 1M</th>
+            <th className="py-2.5 pl-3 text-right whitespace-nowrap">Output / 1M</th>
+            <th className="py-2.5 pl-3 text-right whitespace-nowrap">Cache Write / 1M</th>
+            <th className="py-2.5 pl-3 text-right whitespace-nowrap">Cache Read / 1M</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-white/10 text-zinc-300">
+          {g.current.map((model) => (
+            <PriceRow
+              key={model.name}
+              model={model}
+              selected={selectedModel.name === model.name}
+              onSelect={setSelectedModel}
+            />
+          ))}
+          {expanded[g.platform] &&
+            g.legacy.map((model) => (
+              <PriceRow
+                key={model.name}
+                model={model}
+                selected={selectedModel.name === model.name}
+                onSelect={setSelectedModel}
+              />
+            ))}
+        </tbody>
+      </table>
+
+      {g.legacy.length > 0 && (
+        <div className="mt-4 flex justify-start">
+          <button
+            onClick={() => setExpanded((e) => ({ ...e, [g.platform]: !e[g.platform] }))}
+            className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500 hover:text-zinc-300 transition-colors flex items-center gap-1"
+          >
+            {expanded[g.platform] ? 'Hide other models' : `Show other models (${g.legacy.length})`}
+            <span>{expanded[g.platform] ? '▲' : '▼'}</span>
+          </button>
+        </div>
+      )}
+    </div>
+  );
 
   return (
     <div className="card p-6">
@@ -31,76 +135,20 @@ export function CostCalculation() {
             Cost Calculation Explained
             <InfoTip text="Reference pay-as-you-go API prices (per 1M tokens, by model). Your subscription has no per-token bill — these power the 'estimated equivalent cost' figures. Use the calculator to price a hypothetical request; cache reads are billed at ~10% of input." />
           </h2>
-          <p className="text-xs text-zinc-500">
-            Anthropic charges based on the number of tokens processed. Cache reads are discounted by 90%.
-          </p>
+          <p className="text-xs text-zinc-500">{billingBlurb(platform)}</p>
         </div>
       </div>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
-        {/* Left: Pricing Table */}
+        {/* Left: Pricing Table(s) — one rate card per vendor in scope */}
         <div className="lg:col-span-7 overflow-x-auto">
-          <table className="w-full text-left text-xs border-collapse">
-            <thead>
-              <tr className="border-b border-white/10 text-zinc-500 font-semibold uppercase tracking-wider">
-                <th className="py-2.5">Model</th>
-                <th className="py-2.5 text-right">Input / 1M</th>
-                <th className="py-2.5 text-right">Output / 1M</th>
-                <th className="py-2.5 text-right">Cache Write / 1M</th>
-                <th className="py-2.5 text-right">Cache Read / 1M</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-white/10 text-zinc-300">
-              {currentModels.map((model) => (
-                <tr
-                  key={model.name}
-                  className={`hover:bg-white/10 transition-colors cursor-pointer ${
-                    selectedModel.name === model.name ? 'bg-clay-500/10 text-clay-400 font-medium' : ''
-                  }`}
-                  onClick={() => setSelectedModel(model)}
-                >
-                  <td className="py-3 pr-2">
-                    {model.name}
-                  </td>
-                  <td className="py-3 text-right tabular-nums">${model.input.toFixed(2)}</td>
-                  <td className="py-3 text-right tabular-nums">${model.output.toFixed(2)}</td>
-                  <td className="py-3 text-right tabular-nums">${model.cacheWrite.toFixed(2)}</td>
-                  <td className="py-3 text-right tabular-nums">${model.cacheRead.toFixed(2)}</td>
-                </tr>
-              ))}
-              {showLegacy &&
-                legacyModels.map((model) => (
-                  <tr
-                    key={model.name}
-                    className={`hover:bg-white/10 transition-colors cursor-pointer ${
-                      selectedModel.name === model.name ? 'bg-clay-500/10 text-clay-400 font-medium' : ''
-                    }`}
-                    onClick={() => setSelectedModel(model)}
-                  >
-                    <td className="py-3 pr-2">
-                      {model.name}
-                    </td>
-                    <td className="py-3 text-right tabular-nums">${model.input.toFixed(2)}</td>
-                    <td className="py-3 text-right tabular-nums">${model.output.toFixed(2)}</td>
-                    <td className="py-3 text-right tabular-nums">${model.cacheWrite.toFixed(2)}</td>
-                    <td className="py-3 text-right tabular-nums">${model.cacheRead.toFixed(2)}</td>
-                  </tr>
-                ))}
-            </tbody>
-          </table>
-
-          <div className="mt-4 flex justify-start">
-            <button
-              onClick={() => setShowLegacy(!showLegacy)}
-              className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500 hover:text-zinc-300 transition-colors flex items-center gap-1"
-            >
-              {showLegacy ? 'Hide other models' : `Show other models (${legacyModels.length})`}
-              <span>{showLegacy ? '▲' : '▼'}</span>
-            </button>
-          </div>
+          {groups.map(renderGroup)}
 
           <div className="mt-4 rounded-xl bg-ink-700/30 p-3 text-xs text-zinc-400 leading-relaxed border border-white/10">
             <span className="font-semibold text-zinc-300">💡 Prompt Caching Benefit:</span> Cache reads cost only <strong>10%</strong> of standard input price. Designing your prompts to reuse systemic instructions, codebase maps, or tool schemas leverages this pricing to achieve massive savings.
+            {platform !== 'claude' && (
+              <> OpenAI applies the same discount to cached input but charges nothing to write the cache, so its Cache Write column reads “—”.</>
+            )}
           </div>
         </div>
 
@@ -179,14 +227,18 @@ export function CostCalculation() {
               />
             </div>
 
-            {/* Cache Write Tokens */}
+            {/* Cache Write Tokens — free on OpenAI, so the row says so rather than
+                implying the slider moves the total. */}
             <div
               className="group cursor-pointer select-none"
               onDoubleClick={() => setCacheWriteTokens(50_000)}
               title="Double-click to reset to initial value"
             >
               <div className="flex justify-between text-xs mb-1">
-                <span className="text-zinc-400 group-hover:text-zinc-300 transition-colors">Cache Write Tokens</span>
+                <span className="text-zinc-400 group-hover:text-zinc-300 transition-colors">
+                  Cache Write Tokens
+                  {noCacheWrite && <span className="ml-1.5 text-[10px] text-zinc-600">not charged</span>}
+                </span>
                 <span className="text-zinc-500 font-mono">{cacheWriteTokens.toLocaleString()}</span>
               </div>
               <input
@@ -200,7 +252,9 @@ export function CostCalculation() {
                   e.stopPropagation();
                   setCacheWriteTokens(50_000);
                 }}
-                className="w-full h-1.5 bg-ink-600 rounded-lg appearance-none cursor-pointer accent-clay-500"
+                className={`w-full h-1.5 bg-ink-600 rounded-lg appearance-none cursor-pointer accent-clay-500 ${
+                  noCacheWrite ? 'opacity-50' : ''
+                }`}
               />
             </div>
 
@@ -251,6 +305,9 @@ export function CostCalculation() {
                 = {usd(calculateCost())}
               </div>
             </div>
+            {selectedModel.note && (
+              <p className="mt-2 text-[10px] text-zinc-500">{selectedModel.name}: {selectedModel.note}.</p>
+            )}
           </div>
         </div>
       </div>

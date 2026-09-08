@@ -9,7 +9,7 @@ const execFileAsync = promisify(execFile);
 
 const CLAUDE_CODE_UA = 'claude-code/2.1.199'; // keep roughly in step with the CLI
 
-export type UsageSource = 'code' | 'cowork';
+export type UsageSource = 'code' | 'cowork' | 'codex';
 
 export interface UsageEvent {
   ts: number; // epoch ms
@@ -30,11 +30,20 @@ export interface UsageEvent {
   attributionPlugin: string; // plugin this request ran under
   projectPath: string; // decoded path of the project directory
   gitBranch: string; // git branch at the time of the message ('' if unknown)
-  source: UsageSource; // 'code' = Claude Code CLI, 'cowork' = desktop local-agent mode
+  source: UsageSource; // 'code' = Claude Code CLI, 'cowork' = desktop local-agent mode, 'codex' = OpenAI Codex (ChatGPT desktop)
 }
 
 export function claudeDir(): string {
   return process.env.CLAUDE_DIR || join(homedir(), '.claude');
+}
+
+/**
+ * OpenAI Codex home — the ChatGPT desktop app's coding agent writes its rollouts,
+ * auth and sidecars here. Same path on every OS; `CODEX_HOME` is Codex's own
+ * override and `CODEX_DIR` ours (used by the Docker mount).
+ */
+export function codexDir(): string {
+  return process.env.CODEX_DIR || process.env.CODEX_HOME || join(homedir(), '.codex');
 }
 
 function projectsDir(): string {
@@ -70,13 +79,22 @@ export interface ScanRoot {
 
 /**
  * The directories scanned for usage events. Always the Claude Code projects dir;
- * plus the Cowork desktop root when it exists on disk. Both the main scanner and
- * the insights scanner walk this same list so the two stay in sync.
+ * plus the Cowork desktop root when it exists on disk; plus the Codex sessions
+ * tree. Both the main scanner and the insights scanner walk this same list so the
+ * two stay in sync.
+ *
+ * The codex root is pushed unconditionally — the walk swallows a missing dir, and
+ * keepScanFile() admits only `rollout-*.jsonl`, so a machine without Codex yields
+ * zero codex files. Merge order within a root is the sorted path list, and several
+ * session fields are "first file wins": that relies on a parent rollout sorting
+ * before its guardian children, which holds because both live in the same
+ * YYYY/MM/DD tree and the parent is always created first.
  */
 export function scanRoots(): ScanRoot[] {
   const roots: ScanRoot[] = [{ dir: projectsDir(), source: 'code' }];
   const cw = coworkDir();
   if (cw) roots.push({ dir: cw, source: 'cowork' });
+  roots.push({ dir: join(codexDir(), 'sessions'), source: 'codex' });
   return roots;
 }
 
@@ -84,10 +102,13 @@ export function scanRoots(): ScanRoot[] {
  * Cowork roots contain metadata (`local_*.json`), audit logs (`audit.jsonl`) and
  * the nested `.claude/projects/` transcripts. Only the latter carry token usage,
  * so cowork files are kept only when their path sits under a `.claude/projects/`
- * segment. Code files are always kept.
+ * segment. Code files are always kept. Codex roots are kept only for
+ * `rollout-*.jsonl` transcripts — that name guard is what lets the Docker compose
+ * fallback (mounting `.claude` at the codex path) yield zero codex files.
  */
 export function keepScanFile(file: string, source: UsageSource): boolean {
   if (source === 'code') return true;
+  if (source === 'codex') return /[\\/]rollout-[^\\/]*\.jsonl$/i.test(file);
   return /[\\/]\.claude[\\/]projects[\\/]/.test(file);
 }
 
@@ -355,8 +376,8 @@ export async function fetchLiveUsageFor(accessToken: string, key: string, expire
     throw new Error(expiredTokenMessage());
   }
 
-  // OAUTH_API_BASE: test-only override so the auto-resume detection loop can be
-  // driven end-to-end by a local mock without exhausting a real limit.
+  // OAUTH_API_BASE: test-only override so live-usage detection can be driven
+  // end-to-end by a local mock without exhausting a real limit.
   const url = `${process.env.OAUTH_API_BASE || 'https://api.anthropic.com'}/api/oauth/usage`;
   const res = await oauthGet(url, accessToken);
   if (res.status === 401) {

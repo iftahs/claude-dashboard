@@ -31,7 +31,25 @@ function modelBarColor(displayName: string): string {
   return (key && MODEL_COLORS[key]) || DEFAULT_MODEL_COLOR;
 }
 
-export function PlanUsage({ block, weekly, liveUsage, weekStart, tier, accountLabel, active }: PlanUsageProps) {
+// Default copy — the Claude.ai wording. Callers for another plan system (the
+// Codex tab) override these via `help` / `labels` without touching this file.
+const DEFAULT_HELP =
+  "Your live subscription rate-limit ceilings from Claude.ai: the 5-hour window plus the weekly all-models, per-model and Cowork caps, each with % used and time to reset. Pulled from Anthropic's usage API — these are surfaced for awareness, not enforced.";
+const DEFAULT_BLOCK_LABEL = '5-hour limit';
+const DEFAULT_WEEKLY_LABEL = 'Weekly · all models';
+
+export function PlanUsage({
+  block,
+  weekly,
+  liveUsage,
+  weekStart,
+  tier,
+  accountLabel,
+  active,
+  help,
+  labels,
+  note,
+}: PlanUsageProps) {
   const [, forceUpdate] = useState(0);
 
   useEffect(() => {
@@ -115,7 +133,7 @@ export function PlanUsage({ block, weekly, liveUsage, weekStart, tier, accountLa
       <div className="mb-4 flex items-center justify-between gap-2">
         <h3 className="flex min-w-0 items-center gap-1.5 text-sm font-bold tracking-wider text-zinc-300">
           <span className={titleSpanClass}>{title}</span>
-          <InfoTip text="Your live subscription rate-limit ceilings from Claude.ai: the 5-hour window plus the weekly all-models, per-model and Cowork caps, each with % used and time to reset. Pulled from Anthropic's usage API — these are surfaced for awareness, not enforced." />
+          <InfoTip text={help ?? DEFAULT_HELP} />
         </h3>
         {tierLabel ? (
           <span className="shrink-0 rounded-full bg-white/5 px-2 py-0.5 font-mono text-[10px] uppercase tracking-wide text-zinc-400 ring-1 ring-white/10">
@@ -130,7 +148,7 @@ export function PlanUsage({ block, weekly, liveUsage, weekStart, tier, accountLa
         {/* 5-hour limit row */}
         <div className="space-y-1.5">
           <div className="flex justify-between items-center text-xs">
-            <span className="font-semibold text-zinc-200">5-hour limit</span>
+            <span className="font-semibold text-zinc-200">{labels?.block ?? DEFAULT_BLOCK_LABEL}</span>
             <span className="text-zinc-400 font-mono">
               {blockPct}% <span className="text-zinc-600 font-sans">·</span> resets {blockResetStr}
               {!noActiveBlock && <span className="text-zinc-600"> · {dateTimeLabel(blockResetsAt)}</span>}
@@ -142,7 +160,7 @@ export function PlanUsage({ block, weekly, liveUsage, weekStart, tier, accountLa
         {/* Weekly limit row */}
         <div className="space-y-1.5">
           <div className="flex justify-between items-center text-xs">
-            <span className="font-semibold text-zinc-200">Weekly · all models</span>
+            <span className="font-semibold text-zinc-200">{labels?.weekly ?? DEFAULT_WEEKLY_LABEL}</span>
             <span className="text-zinc-400 font-mono">
               {weeklyPct}% <span className="text-zinc-600 font-sans">·</span> resets {weeklyResetStr}
               {!noActiveWeekly && <span className="text-zinc-600"> · {dateTimeLabel(weeklyResetsAt)}</span>}
@@ -178,6 +196,7 @@ export function PlanUsage({ block, weekly, liveUsage, weekStart, tier, accountLa
           );
         })}
       </div>
+      {note && <p className="mt-3 text-[11px] text-zinc-500">{note}</p>}
     </div>
   );
 }

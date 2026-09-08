@@ -5,7 +5,7 @@
  */
 
 import type { InsightsData, ToolCallRecord, ToolResultRecord } from './insights-scan.ts';
-import type { UsageSource } from './scan.ts';
+import { sourceMatches, type SourceFilter } from './aggregate.ts';
 import { estimateCost } from './pricing.ts';
 
 const DAY_MS = 24 * 3600_000;
@@ -17,15 +17,15 @@ const DAY_MS = 24 * 3600_000;
  * whole — builders join them via the already-filtered tool calls / sessions,
  * so leftover entries are simply never looked up. 'all' is a pass-through.
  */
-export function scopeInsights(d: InsightsData, source: 'all' | UsageSource): InsightsData {
+export function scopeInsights(d: InsightsData, source: SourceFilter): InsightsData {
   if (source === 'all') return d;
   const sessionsMeta = new Map(
-    [...d.sessionsMeta].filter(([, sm]) => sm.source === source)
+    [...d.sessionsMeta].filter(([, sm]) => sourceMatches(sm.source, source))
   );
   return {
-    toolCalls: d.toolCalls.filter((tc) => tc.source === source),
+    toolCalls: d.toolCalls.filter((tc) => sourceMatches(tc.source, source)),
     toolResults: d.toolResults,
-    taskSpawns: d.taskSpawns.filter((t) => t.source === source),
+    taskSpawns: d.taskSpawns.filter((t) => sourceMatches(t.source, source)),
     sessionsMeta,
     searchCorpus: d.searchCorpus,
   };

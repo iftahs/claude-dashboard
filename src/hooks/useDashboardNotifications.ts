@@ -4,6 +4,7 @@ import { buildBudgetRows } from '../lib/budget';
 import { useNotifications } from './useNotifications';
 import { useUpdateToast } from './useUpdateToast';
 import { useConfigMode } from './useConfigMode';
+import { useSource } from './useSource';
 import { useLiveData } from './useLiveData';
 import { useLiteLlmActual } from './useLiteLlmActual';
 import { useCostMetrics } from './useCostMetrics';
@@ -18,7 +19,8 @@ import type { Limits } from './useLimits';
  * pay-as-you-go note). Kept out of the render tree so App stays a thin shell.
  */
 export function useDashboardNotifications(activeTab: string, limits: Limits) {
-  const { configData, effectiveMode, isApi, settings, weekStart } = useConfigMode();
+  const { configData, detectedMode, effectiveMode, isApi, settings, weekStart } = useConfigMode();
+  const { platform } = useSource();
   const { liveUsage, version, weekly } = useLiveData();
   const { litellmActual } = useLiteLlmActual();
   const { costPerDay } = useCostMetrics();
@@ -65,11 +67,23 @@ export function useDashboardNotifications(activeTab: string, limits: Limits) {
   // while the live API reports an error, auto-clears when it recovers.
   useEffect(() => {
     const err = !isApi ? liveUsage.data?.error : undefined;
-    if (!err) {
+    // Nothing on screen is Claude.ai's while the platform switcher is on Codex —
+    // an Anthropic token the user isn't currently using must not raise a toast.
+    if (!err || platform === 'codex') {
       dismiss('offline');
       return;
     }
     const lc = err.toLowerCase();
+    // "No access token" means there simply are no Claude.ai credentials on this
+    // machine — e.g. a Codex-only user, or someone who never logged Claude Code in.
+    // The backend reports that as `authMode: 'api'` (`detectedMode`), so unless the
+    // user has *forced* subscription mode in Settings the toast is already skipped
+    // via `isApi`; this guard covers the forced case, where nagging "session
+    // expired" on every load would be wrong — there was never a session to expire.
+    if (lc.includes('no access token') && detectedMode === 'api') {
+      dismiss('offline');
+      return;
+    }
     const expired = lc.includes('expired') || lc.includes('no access token');
     // Upstream Anthropic outage (5xx) — not a token problem; running `claude` won't help.
     const upstream = /:\s*5\d\d\b/.test(err) || lc.includes('service unavailable')
@@ -87,41 +101,7 @@ export function useDashboardNotifications(activeTab: string, limits: Limits) {
         ? `Anthropic's usage service is temporarily unavailable (${err.match(/5\d\d/)?.[0] ?? '5xx'}). It's on their side — the dashboard keeps retrying and this clears on its own.`
         : `${err} — try running \`claude\` in a terminal.`,
     });
-  }, [isApi, liveUsage.data?.error, notify, dismiss]);
-
-  // Auto-resume completion — toast when a scheduled resume finishes, so the
-  // result is noticed without reopening the session (details on ⏰ Auto-Resume).
-  const lastResumeKey = useRef<string | null>(null);
-  const { autoResume } = useLiveData();
-  useEffect(() => {
-    const top = autoResume.data?.history?.[0];
-    if (!top || top.status === 'cancelled') return;
-    const key = `${top.id}:${top.finishedAt}`;
-    if (lastResumeKey.current === null) {
-      lastResumeKey.current = key; // don't re-announce history from before this page load
-      return;
-    }
-    if (lastResumeKey.current === key) return;
-    lastResumeKey.current = key;
-    const project = top.projectPath.split(/[\\/]/).filter(Boolean).pop() || 'session';
-    notify({
-      id: `auto-resume:${key}`,
-      severity: top.status === 'done' ? 'info' : 'warning',
-      timeoutMs: top.status === 'done' ? 12000 : 0,
-      title:
-        top.status === 'done'
-          ? `Auto-resumed ${project}`
-          : top.status === 'skipped'
-            ? `Auto-resume skipped for ${project}`
-            : `Auto-resume failed for ${project}`,
-      message:
-        top.status === 'done'
-          ? 'The interrupted work was continued. See the output on the ⏰ Auto-Resume page.'
-          : top.status === 'skipped'
-            ? 'The session was already continued manually before the scheduled time.'
-            : `${(top.message || 'unknown error').slice(0, 200)} — details on the ⏰ Auto-Resume page.`,
-    });
-  }, [autoResume.data?.history, notify]);
+  }, [isApi, detectedMode, platform, liveUsage.data?.error, notify, dismiss]);
 
   // Pay-as-you-go note — shown once per session when API mode is active.
   const apiNotified = useRef(false);

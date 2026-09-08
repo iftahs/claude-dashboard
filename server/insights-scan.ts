@@ -78,7 +78,7 @@ export interface SessionMetaRecord {
   cost: number;
   file: string;
   agentId?: string;
-  source: UsageSource; // 'code' = Claude Code CLI, 'cowork' = desktop local-agent mode
+  source: UsageSource; // 'code' = Claude Code CLI, 'cowork' = desktop local-agent mode, 'codex' = OpenAI Codex rollout
 }
 
 export interface InsightsData {

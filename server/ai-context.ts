@@ -155,10 +155,14 @@ async function assemble(scope: AiScope, ids: DatasetId[], redact: boolean): Prom
       to: new Date(weekly.rangeTo).toISOString(),
       note:
         source === 'all'
-          ? 'Both surfaces: Claude Code and Cowork.'
+          ? 'Every surface: Claude Code, Cowork and Codex (ChatGPT desktop).'
+          : source === 'claude'
+            ? 'Claude only — Claude Code and Cowork (Codex excluded).'
           : source === 'code'
-            ? 'Claude Code only (Cowork excluded).'
-            : 'Cowork only (Claude Code excluded).',
+            ? 'Claude Code only (Cowork and Codex excluded).'
+            : source === 'codex'
+              ? 'Codex (ChatGPT desktop) only — OpenAI models; Claude Code and Cowork excluded.'
+              : 'Cowork only (Claude Code and Codex excluded).',
     },
     account: {
       windowDays: days,

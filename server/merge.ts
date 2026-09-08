@@ -9,6 +9,12 @@
  * keys (28.4%) appear in more than one file, and 75 of 189 sessions span multiple
  * files. Any per-file pre-summing double-counts those. Everything that needs global
  * knowledge is therefore computed here, from rows that carry their own identity.
+ *
+ * Codex rows (scan-pass-codex.ts) flow through unchanged: their dedup keys are
+ * `codex:<response_id>` (never ':'), a guardian review rollout arrives as a
+ * sidechain partial whose sessionId is the parent thread — exactly like a Claude
+ * `subagents/agent-*.jsonl` file — and its TaskSpawnRow is marked completed by a
+ * result row the parser emits with agentIdFromResult = the guardian's own id.
  */
 import { estimateCost } from './pricing.ts';
 import type { UsageEvent } from './scan.ts';

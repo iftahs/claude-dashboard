@@ -1,7 +1,7 @@
 {
   "name": "claude-dashboard",
   "private": false,
-  "version": "0.1.25",
+  "version": "0.1.26",
   "type": "module",
   "description": "Beautiful local dashboard for Claude Code usage — 5-hour blocks, weekly trends, model breakdown, tool usage and an activity heatmap, read straight from your ~/.claude logs.",
   "license": "MIT",
@@ -31,12 +31,7 @@
     "//docker:down": "Stop and remove the running container.",
     "docker:down": "docker compose down",
     "//docker:logs": "Follow the container logs live (Ctrl+C to stop watching; container keeps running).",
-    "docker:logs": "docker compose logs -f",
-    "//resume-watcher": "Host-side executor for auto-resume: polls the dashboard for scheduled resume jobs and spawns `claude -p --resume`. Set DASHBOARD_URL=http://localhost:8788 when the backend runs via `npm run dev`.",
-    "resume-watcher": "node scripts/resume-watcher.mjs",
-    "//resume-watcher:install": "Register the watcher as a hidden background auto-start (Windows Startup .vbs / macOS launchd / Linux systemd user unit) and start it now — no terminal needs to stay open.",
-    "resume-watcher:install": "node scripts/install-resume-watcher.mjs",
-    "resume-watcher:uninstall": "node scripts/install-resume-watcher.mjs --uninstall"
+    "docker:logs": "docker compose logs -f"
   },
   "dependencies": {
     "@posthog/react": "^1.10.2",

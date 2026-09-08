@@ -6,7 +6,7 @@ import { exec } from 'node:child_process';
 import { promisify } from 'node:util';
 import express from 'express';
 import { getEvents, eventsFingerprint } from './cache.ts';
-import { buildRecent, buildWeekly, buildModels, buildActivity, buildTools, buildHourlyHeatmap, buildProjectStats, filterSource, type SourceFilter } from './aggregate.ts';
+import { buildRecent, buildWeekly, buildModels, buildActivity, buildTools, buildHourlyHeatmap, buildProjectStats, filterSource, sourceMatches, type SourceFilter } from './aggregate.ts';
 import { claudeDir, readConfig, readCredentials, readStatsSummary, readSessionMetas, fetchLiveUsage, fetchLiveProfile, fetchLiveUsageFor, fetchLiveProfileFor, readAccountCredentials, expiredTokenMessage, detectLitellm, fetchLiteLlmSpend } from './scan.ts';
 import { getInsights, insightsFingerprint } from './insights-scan.ts';
 import { primeData } from './data.ts';
@@ -19,21 +19,14 @@ import { buildContributors } from './contributors.ts';
 import { getCommandUsage } from './history.ts';
 import { getWorkspaceTasks, getInventory } from './workspace.ts';
 import { getLiveSubagents } from './subagents-live.ts';
+import { fetchCodexUsage, fetchCodexProfile } from './codex-live.ts';
+import { getLiveCodexAgents } from './codex-agents-live.ts';
 import { getWorkflows, getWorkflowStats } from './workflows.ts';
 import { getAgentDetail } from './workflow-agent-detail.ts';
 import { runAi, runAiStream, resolveBackend, AiUnavailableError, AiTokenRejectedError, AiCallError, type AiCreds } from './ai.ts';
 import { buildAiPayload, buildChatUserMessage, CHAT_SYSTEM, buildSectionUserMessage, SECTION_SYSTEM, SUGGEST_SYSTEM, buildSuggestMessage, type AiScope, type ChatTurn } from './ai-context.ts';
 import { routeDatasets } from './ai-router.ts';
 import { getVersionInfo, isDocker } from './version.ts';
-import {
-  getState as getAutoResumeState,
-  setStateFromClient as setAutoResumeFromClient,
-  validPrefs as validAutoResumePrefs,
-  getPendingJobs as getPendingResumeJobs,
-  claimJob as claimResumeJob,
-  completeJob as completeResumeJob,
-  createTestJob as createTestResumeJob,
-} from './auto-resume.ts';
 
 const execAsync = promisify(exec);
 
@@ -45,9 +38,9 @@ function wrap(data: unknown, computedAt: number) {
   return { data, computedAt, claudeDir: claudeDir() };
 }
 
-/** Parse the optional ?source=all|code|cowork filter (default 'all'). */
+/** Parse the optional ?source=all|claude|code|cowork|codex filter (default 'all'). */
 function parseSource(raw: unknown): SourceFilter {
-  return raw === 'code' || raw === 'cowork' ? raw : 'all';
+  return raw === 'code' || raw === 'cowork' || raw === 'codex' || raw === 'claude' ? raw : 'all';
 }
 
 app.get('/api/health', (_req, res) => {
@@ -241,7 +234,7 @@ app.get('/api/sessions', async (req, res) => {
     for (const sm of insights.sessionsMeta.values()) {
       if (sm.isSidechain || !sm.sessionId) continue; // skip subagent-only sessions
       if (sm.assistantMsgs === 0) continue;           // skip empty/aborted shells
-      if (source !== 'all' && sm.source !== source) continue; // surface filter
+      if (!sourceMatches(sm.source, source)) continue; // surface / platform filter
 
       const stats = eventStats.get(sm.sessionId);
       const agg = toolAgg.get(sm.sessionId);
@@ -283,10 +276,10 @@ app.get('/api/sessions', async (req, res) => {
 
     // Preserve older sessions whose transcripts are gone from disk but whose
     // sidecar metadata survives — append them so the list never regresses.
-    // Sidecars are Claude Code only, so skip them when scoped to Cowork.
+    // Sidecars are Claude Code only, so skip them when scoped to another surface.
     const liveIds = new Set(result.map((r) => r.session_id));
     for (const s of sidecar) {
-      if (source === 'cowork') break;
+      if (source !== 'all' && source !== 'code' && source !== 'claude') break;
       if (liveIds.has(s.session_id)) continue;
       const stats = eventStats.get(s.session_id);
       const in_tok = s.input_tokens ?? 0;
@@ -331,14 +324,16 @@ app.get('/api/sessions', async (req, res) => {
 app.get('/api/sources', async (_req, res) => {
   try {
     const { events, computedAt } = await getEvents();
-    let codeN = 0, coworkN = 0, codeLast = 0, coworkLast = 0;
+    let codeN = 0, coworkN = 0, codexN = 0, codeLast = 0, coworkLast = 0, codexLast = 0;
     for (const e of events) {
       if (e.source === 'cowork') { coworkN++; if (e.ts > coworkLast) coworkLast = e.ts; }
+      else if (e.source === 'codex') { codexN++; if (e.ts > codexLast) codexLast = e.ts; }
       else { codeN++; if (e.ts > codeLast) codeLast = e.ts; }
     }
     res.json(wrap({
       code: { events: codeN, lastTs: codeLast },
       cowork: { available: coworkN > 0, events: coworkN, lastTs: coworkLast },
+      codex: { available: codexN > 0, events: codexN, lastTs: codexLast },
     }, computedAt));
   } catch (e) {
     res.status(500).json({ error: String(e) });
@@ -443,68 +438,34 @@ app.get('/api/accounts/live', async (_req, res) => {
   }
 });
 
-// ── Auto-resume after usage-limit reset ─────────────────────────────────────
-// Backend detects the limit hit + schedules a ResumeJob; execution happens on
-// the host (scripts/resume-watcher.mjs polling /pending, or the backend itself
-// in host/dev mode). See server/auto-resume.ts.
+// ── OpenAI Codex (ChatGPT desktop) ──────────────────────────────────────────
+// Live plan limits + profile stats reuse the token Codex stores in
+// <codexDir>/auth.json (no refresh flow, PII stripped); running threads come
+// from the rollout files. Like /api/usage/live, failures of the two network
+// routes return wrap({ error }) at HTTP 200 so the frontend can show the reason.
+// See server/codex-live.ts and server/codex-agents-live.ts.
 
-app.get('/api/auto-resume/state', async (_req, res) => {
+app.get('/api/codex/live', async (_req, res) => {
   try {
-    res.json(wrap(await getAutoResumeState(), Date.now()));
-  } catch (e) {
-    res.status(500).json({ error: String(e) });
-  }
-});
-
-app.post('/api/auto-resume/state', async (req, res) => {
-  const prefs = validAutoResumePrefs(req.body);
-  if (!prefs) {
-    res.status(400).json({ error: 'invalid mode/permission' });
-    return;
-  }
-  try {
-    res.json(wrap(await setAutoResumeFromClient(prefs), Date.now()));
-  } catch (e) {
-    res.status(500).json({ error: String(e) });
-  }
-});
-
-// Watcher-facing; the poll doubles as the watcher heartbeat.
-app.get('/api/auto-resume/pending', (req, res) => {
-  const id = String(req.query.watcherId ?? '') || undefined;
-  res.json(wrap(getPendingResumeJobs(id), Date.now()));
-});
-
-app.post('/api/auto-resume/jobs/:id/claim', async (req, res) => {
-  const r = await claimResumeJob(req.params.id, String(req.body?.claimedBy ?? 'unknown'));
-  if (!r.ok) {
-    res.status(r.code).json({ error: r.reason });
-    return;
-  }
-  res.json(wrap(r.job, Date.now()));
-});
-
-app.post('/api/auto-resume/jobs/:id/complete', (req, res) => {
-  const job = completeResumeJob(req.params.id, {
-    ok: !!req.body?.ok,
-    exitCode: typeof req.body?.exitCode === 'number' ? req.body.exitCode : undefined,
-    message: typeof req.body?.message === 'string' ? req.body.message : undefined,
-  });
-  if (!job) {
-    res.status(404).json({ error: 'unknown job' });
-    return;
-  }
-  res.json(wrap(job, Date.now()));
-});
-
-// Testing/dev convenience: schedule a real resume of the most recent session
-// in delayMs, bypassing limit detection.
-app.post('/api/auto-resume/test', async (req, res) => {
-  try {
-    const delayMs = Math.max(5_000, Number(req.body?.delayMs ?? 15_000));
-    res.json(wrap(await createTestResumeJob(delayMs), Date.now()));
+    res.json(wrap(await fetchCodexUsage(), Date.now()));
   } catch (e: any) {
-    res.status(400).json({ error: e?.message || String(e) });
+    res.json(wrap({ error: e.message || String(e) }, Date.now()));
+  }
+});
+
+app.get('/api/codex/profile', async (_req, res) => {
+  try {
+    res.json(wrap(await fetchCodexProfile(), Date.now()));
+  } catch (e: any) {
+    res.json(wrap({ error: e.message || String(e) }, Date.now()));
+  }
+});
+
+app.get('/api/codex/agents/live', async (_req, res) => {
+  try {
+    res.json(wrap(await getLiveCodexAgents(), Date.now()));
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
   }
 });
 

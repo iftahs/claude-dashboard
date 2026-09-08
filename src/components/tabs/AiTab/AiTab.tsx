@@ -8,7 +8,9 @@ import { track } from '@/lib/analytics';
 export function AiTab() {
   const navigate = useNavigate();
   const { aiStatus, aiConfig, setAiConfig } = useAiInsightCtx();
-  const { source } = useSource();
+  // Scope the AI context to what the dashboard shows: the platform (claude/codex) or a Claude surface.
+  const { effectiveSource } = useSource();
+  const source = effectiveSource ?? 'all';
 
   // Warm the aggregate caches so the first question doesn't pay for a cold scan.
   useEffect(() => {

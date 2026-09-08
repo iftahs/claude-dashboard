@@ -2,12 +2,13 @@ import { useState, useMemo, useEffect } from 'react';
 import { compact, shortModel } from '@/lib/format';
 import { ExportButton } from '@/components/design-system/molecules/ExportButton/ExportButton';
 import { InfoTip } from '@/components/design-system/atoms/InfoTip/InfoTip';
+import { Badge } from '@/components/design-system/atoms/Badge/Badge';
 import { Modal } from '@/components/design-system/molecules/Modal/Modal';
 import { useTranscript } from '@/hooks/useTranscript';
 import { useSearch } from '@/hooks/useSearch';
 import type { SessionHistoryTableProps } from './types';
 import type { SessionMeta, SessionTranscriptTurn } from '@/types';
-import { formatDate, getProjectName } from './utils';
+import { formatDate, sessionLabel } from './utils';
 
 // ── Transcript viewer ──────────────────────────────────────────────────────
 
@@ -174,6 +175,7 @@ export function SessionHistoryTable({
   sessions,
   periodDays,
   onExport,
+  hideSourceBadge = false,
 }: SessionHistoryTableProps) {
   const [search, setSearch] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
@@ -275,7 +277,8 @@ export function SessionHistoryTable({
           <tbody className="divide-y divide-white/10 text-zinc-300">
             {paginatedSessions.length > 0 ? (
               paginatedSessions.map((s) => {
-                const projectName = s.source === 'cowork' ? 'Cowork' : getProjectName(s.project_path);
+                const { name: projectName, badge } = sessionLabel(s);
+                const sourceBadge = hideSourceBadge ? null : badge;
                 const totalToks = s.effective_tokens ?? (s.input_tokens ?? 0) + (s.output_tokens ?? 0);
 
                 return (
@@ -287,7 +290,14 @@ export function SessionHistoryTable({
                     <td className="py-3 font-mono text-zinc-400 text-xs">
                       {formatDate(s.start_time)}
                     </td>
-                    <td className="py-3 font-semibold text-zinc-300">{projectName}</td>
+                    <td className="py-3 font-semibold text-zinc-300">
+                      {projectName}
+                      {sourceBadge && (
+                        <span className="ml-1.5 align-middle">
+                          <Badge variant="info">{sourceBadge}</Badge>
+                        </span>
+                      )}
+                    </td>
                     <td className="py-3 text-zinc-400 truncate max-w-xs md:max-w-md" title={s.first_prompt}>
                       {s.first_prompt ? `"${s.first_prompt}"` : <span className="italic text-zinc-600">no prompt</span>}
                     </td>
@@ -348,8 +358,11 @@ export function SessionHistoryTable({
           modalSession && (
             <div className="flex items-center gap-3 min-w-0 text-sm">
               <span className="font-bold text-zinc-100 truncate">
-                {modalSession.source === 'cowork' ? 'Cowork' : getProjectName(modalSession.project_path)}
+                {sessionLabel(modalSession).name}
               </span>
+              {!hideSourceBadge && sessionLabel(modalSession).badge && (
+                <Badge variant="info">{sessionLabel(modalSession).badge}</Badge>
+              )}
               <span className="text-zinc-500 font-mono text-xs flex-none">
                 {formatDate(modalSession.start_time)}
               </span>
