@@ -25,7 +25,16 @@
  * better than the fable↔mythos and haiku-4↔haiku-3 pairs already shipping here.
  * The red steps follow the same generation rule: fable 5.1 takes the canonical hue,
  * fable 5 the brighter step (#ff8085 — ΔE 12.7 normal / 11.9 deutan / 11.3 tritan
- * from the canonical red, the widest in-family gap in the table), mythos the deep one.
+ * from the canonical red, the widest in-family gap in the table), and the mythos pair
+ * takes the deep end — mythos 5.1 the canonical mythos red #b93b3f, superseded mythos 5
+ * (and Mythos Preview) the deepest step #8e2a2f. That pair separates at ΔE 10.0 normal /
+ * 8.3 protan / 10.3 tritan, and #8e2a2f's worst cross-family pair is sonnet-5 green at
+ * deutan 9.0 — well clear of the table's worst, mythos↔sonnet-5 at deutan 3.1, so the
+ * step adds no new collision (validator all-pairs worsts are unchanged from before it:
+ * #008300↔#a86e00 protan 1.2, #2a78d6↔#3987e5 normal 4.7). #8e2a2f sits at L 0.44,
+ * just under the dark band floor, and at 2.03:1 on #1c1c24 — the superseded-generation
+ * relief the legacy opus amber and the deep GPT violets already take, and mythos is
+ * invitation-only, so it is the tier that essentially never renders.
  *
  * The four Claude family hues are validated (dataviz validate_palette.js, all-pairs,
  * both modes, surfaces #1c1c24 / #ffffff): lightness band, chroma floor, normal-vision
@@ -67,7 +76,8 @@ const MODEL_TABLE: Array<[RegExp, string]> = [
   // (mirrors the TABLE in server/pricing.ts).
   [/fable-5-1|fable-5\.1/i, '#e5484d'], // red — fable 5.1 takes the canonical hue
   [/fable/i, '#ff8085'], // red, brighter step — fable 5 (see the generation note above)
-  [/mythos/i, '#b93b3f'], // red, deeper step — same price tier as fable
+  [/mythos-5-1|mythos-5\.1/i, '#b93b3f'], // red, deep step — mythos 5.1 takes the mythos hue
+  [/mythos/i, '#8e2a2f'], // red, deepest — superseded mythos 5 / preview (see the note above)
   [/opus-5/i, '#c98500'], // amber
   [/opus-4-[5-8]|opus-4\.[5-8]/i, '#eda100'], // amber, brighter step
   [/opus/i, '#a86e00'], // legacy opus (3.0/4.0/4.1) — deep amber, see the note above

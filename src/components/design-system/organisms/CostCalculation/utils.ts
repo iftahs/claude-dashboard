@@ -14,6 +14,7 @@ export const PRICING_DATA: ModelPrice[] = [
   // ── Anthropic ────────────────────────────────────────────────────────────
   { name: 'Claude Fable 5.1', family: 'fable-5-1', platform: 'claude', input: 10, output: 50, cacheWrite: 12.5, cacheRead: 0.25, popular: true },
   { name: 'Claude Fable 5', family: 'fable', platform: 'claude', input: 10, output: 50, cacheWrite: 12.5, cacheRead: 1.0 },
+  { name: 'Claude Mythos 5.1 (limited availability)', family: 'mythos-5-1', platform: 'claude', input: 10, output: 50, cacheWrite: 12.5, cacheRead: 0.25 },
   { name: 'Claude Mythos 5 (limited availability)', family: 'mythos', platform: 'claude', input: 10, output: 50, cacheWrite: 12.5, cacheRead: 1.0 },
   { name: 'Claude Opus 5', family: 'opus-5', platform: 'claude', input: 5, output: 25, cacheWrite: 6.25, cacheRead: 0.5, popular: true },
   { name: 'Claude Opus 4.8', family: 'opus-4-8', platform: 'claude', input: 5, output: 25, cacheWrite: 6.25, cacheRead: 0.5 },
