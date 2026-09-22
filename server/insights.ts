@@ -1,7 +1,9 @@
 /**
  * insights.ts
  * Pure builder functions (no I/O) for the analytics/insights endpoints.
- * All functions take (d: InsightsData, days: number, now?: number).
+ * All functions take (d: InsightsData, days: number, now?: number). `now` defaults to
+ * Date.now(); the /api/insights routes pass the scan's computedAt so memoised output
+ * (builder-cache.ts) runs on the same clock as the envelope and the usage builders.
  */
 
 import type { InsightsData, ToolCallRecord, ToolResultRecord } from './insights-scan.ts';

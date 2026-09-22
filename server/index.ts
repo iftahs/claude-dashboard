@@ -616,7 +616,7 @@ app.get('/api/insights/errors', async (req, res) => {
     const { insights, computedAt } = await getInsights();
     const source = parseSource(req.query.source);
     const data = memoBuilder('errors', [days, source], insightsFingerprint(), () =>
-      buildErrors(scopeInsights(insights, source), days),
+      buildErrors(scopeInsights(insights, source), days, computedAt),
     );
     res.json(wrap(data, computedAt));
   } catch (e) {
@@ -630,7 +630,7 @@ app.get('/api/insights/retries', async (req, res) => {
     const { insights, computedAt } = await getInsights();
     const source = parseSource(req.query.source);
     const data = memoBuilder('retries', [days, source], insightsFingerprint(), () =>
-      buildRetries(scopeInsights(insights, source), days),
+      buildRetries(scopeInsights(insights, source), days, computedAt),
     );
     res.json(wrap(data, computedAt));
   } catch (e) {
@@ -644,7 +644,7 @@ app.get('/api/insights/languages', async (req, res) => {
     const { insights, computedAt } = await getInsights();
     const source = parseSource(req.query.source);
     const data = memoBuilder('languages', [days, source], insightsFingerprint(), () =>
-      buildLanguages(scopeInsights(insights, source), days),
+      buildLanguages(scopeInsights(insights, source), days, computedAt),
     );
     res.json(wrap(data, computedAt));
   } catch (e) {
@@ -658,7 +658,7 @@ app.get('/api/insights/branches', async (req, res) => {
     const { insights, computedAt } = await getInsights();
     const source = parseSource(req.query.source);
     const data = memoBuilder('branches', [days, source], insightsFingerprint(), () =>
-      buildBranches(scopeInsights(insights, source), days),
+      buildBranches(scopeInsights(insights, source), days, computedAt),
     );
     res.json(wrap(data, computedAt));
   } catch (e) {
@@ -672,7 +672,7 @@ app.get('/api/insights/mcp', async (req, res) => {
     const { insights, computedAt } = await getInsights();
     const source = parseSource(req.query.source);
     const data = memoBuilder('mcp', [days, source], insightsFingerprint(), () =>
-      buildMcp(scopeInsights(insights, source), days),
+      buildMcp(scopeInsights(insights, source), days, computedAt),
     );
     res.json(wrap(data, computedAt));
   } catch (e) {
@@ -686,7 +686,7 @@ app.get('/api/insights/complexity', async (req, res) => {
     const { insights, computedAt } = await getInsights();
     const source = parseSource(req.query.source);
     const data = memoBuilder('complexity', [days, source], insightsFingerprint(), () =>
-      buildComplexity(scopeInsights(insights, source), days),
+      buildComplexity(scopeInsights(insights, source), days, computedAt),
     );
     res.json(wrap(data, computedAt));
   } catch (e) {
@@ -700,7 +700,7 @@ app.get('/api/insights/yield', async (req, res) => {
     const { insights, computedAt } = await getInsights();
     const source = parseSource(req.query.source);
     const data = memoBuilder('yield', [days, source], insightsFingerprint(), () =>
-      buildYield(scopeInsights(insights, source), days),
+      buildYield(scopeInsights(insights, source), days, computedAt),
     );
     res.json(wrap(data, computedAt));
   } catch (e) {
@@ -714,7 +714,7 @@ app.get('/api/insights/rejections', async (req, res) => {
     const { insights, computedAt } = await getInsights();
     const source = parseSource(req.query.source);
     const data = memoBuilder('rejections', [days, source], insightsFingerprint(), () =>
-      buildRejections(scopeInsights(insights, source), days),
+      buildRejections(scopeInsights(insights, source), days, computedAt),
     );
     res.json(wrap(data, computedAt));
   } catch (e) {
@@ -728,7 +728,7 @@ app.get('/api/insights/subagents', async (req, res) => {
     const { insights, computedAt } = await getInsights();
     const source = parseSource(req.query.source);
     const data = memoBuilder('subagents', [days, source], insightsFingerprint(), () =>
-      buildSubagentStats(scopeInsights(insights, source), days),
+      buildSubagentStats(scopeInsights(insights, source), days, computedAt),
     );
     res.json(wrap(data, computedAt));
   } catch (e) {
@@ -743,7 +743,7 @@ app.get('/api/insights/churn', async (req, res) => {
     const { insights, computedAt } = await getInsights();
     const source = parseSource(req.query.source);
     const data = memoBuilder('churn', [days, source], insightsFingerprint(), () =>
-      buildFileChurn(scopeInsights(insights, source), days),
+      buildFileChurn(scopeInsights(insights, source), days, computedAt),
     );
     res.json(wrap(data, computedAt));
   } catch (e) {

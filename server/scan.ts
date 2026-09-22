@@ -318,7 +318,11 @@ export async function readSessionMetas(): Promise<any[]> {
       .filter(Boolean)
       .sort((a, b) => Date.parse(b.start_time) - Date.parse(a.start_time));
   } catch (e) {
-    console.error('[server] failed to read session-meta:', e);
+    // Current Claude Code no longer writes these sidecars, so a missing dir is the
+    // normal case, not an error — and this runs on every rescan.
+    if ((e as NodeJS.ErrnoException)?.code !== 'ENOENT') {
+      console.error('[server] failed to read session-meta:', e);
+    }
     return [];
   }
 }

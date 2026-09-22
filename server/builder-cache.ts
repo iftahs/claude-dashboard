@@ -6,11 +6,15 @@
  *
  * Correctness rests on two invariants:
  *  - the builders are pure functions of (events|insights, now, params);
- *  - the key bundles every param AND a validity token (the data fingerprint).
- * Callers pin `now` to the scan's `computedAt`, so a given token fully determines
- * the output. When the fingerprint flips (files changed → rescan), every prior
- * entry for that key is overwritten in place, so the map stays bounded to
- * builders × params × sources.
+ *  - the key bundles every param AND a validity token (eventsFingerprint() /
+ *    insightsFingerprint(), i.e. data.ts::dataFingerprint).
+ * Callers pin `now` to the scan's `computedAt`. The token covers the data and the
+ * minute computedAt falls in, not computedAt itself, so a hit can be built from a
+ * `now` up to a minute old: windows slide once a minute rather than once per 5s
+ * rescan. (Keyed on the data alone, as it once was, an idle dashboard served
+ * windows frozen at the last file write.) When the token flips (a file changed,
+ * or a new minute began), the prior entry for that key is overwritten in place,
+ * so the map stays bounded to builders × params × sources.
  */
 
 interface Entry {

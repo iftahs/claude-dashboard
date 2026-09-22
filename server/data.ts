@@ -20,6 +20,12 @@ import { loadRows, persistRows, pruneRows, storeReady } from './event-store.ts';
 
 const TTL_MS = 5000;
 
+/**
+ * The time resolution of the memo token (see dataFingerprint): memoised builder
+ * output never trails the scan clock by more than this.
+ */
+const MEMO_BUCKET_MS = 60_000;
+
 interface CachedFile {
   mtimeMs: number;
   size: number;
@@ -36,6 +42,16 @@ let fingerprint = -1;
 let inflight: Promise<void> | null = null;
 let loadedFromStore = false;
 
+/** What the current `events` / `insights` were merged from; null until the first merge. */
+export interface MergeBasis {
+  /** fingerprintOf() the file list. */
+  fingerprint: number;
+  /** Hash of the session-meta sidecars (they feed project paths into the merge). */
+  metaSig: number;
+}
+
+let mergedFrom: MergeBasis | null = null;
+
 export interface ScanStats {
   files: number;
   reparsed: number;
@@ -50,8 +66,8 @@ export function lastScanStats(): ScanStats {
 }
 
 /**
- * Cheap invalidation token for memoised builder output (builder-cache.ts), hashed
- * from three things:
+ * Cheap data-change token: the data half of the memo token (dataFingerprint) and
+ * part of the merge-reuse check. Hashed from three things:
  *  - the newest mtime — the usual "something was appended" signal;
  *  - the file count — a deletion lowers it without moving the newest mtime;
  *  - the total byte size — Codex guardian rollouts keep the mtime they were created
@@ -83,6 +99,37 @@ function hash53(s: string, seed = 0): number {
   h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
   h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
   return 4294967296 * (2097151 & h2) + (h1 >>> 0);
+}
+
+/**
+ * Whether the last merge result is still exact. mergeRows is a pure reduction of
+ * (rows in listing order, session metas), so with no file re-parsed, added or
+ * removed, the same fingerprint and the same sidecars it would rebuild the same
+ * events and insights, yet with the dashboard open every 5s rescan used to pay
+ * for a full-corpus merge even when idle. The fingerprint check also covers a
+ * merge that threw after the row cache had already taken new rows.
+ */
+export function canReuseMerge(
+  prev: MergeBasis | null,
+  next: MergeBasis,
+  reparsed: number,
+  removed: number,
+): boolean {
+  return (
+    prev !== null &&
+    reparsed === 0 &&
+    removed === 0 &&
+    prev.fingerprint === next.fingerprint &&
+    prev.metaSig === next.metaSig
+  );
+}
+
+/**
+ * The memo token for data fingerprint `fp` observed at `now`: the fingerprint plus
+ * the minute `now` falls in. See dataFingerprint for why time is part of it.
+ */
+export function memoToken(fp: number, now: number): number {
+  return hash53(`${fp}|${Math.floor(now / MEMO_BUCKET_MS)}`);
 }
 
 async function rescan(): Promise<void> {
@@ -123,19 +170,27 @@ async function rescan(): Promise<void> {
   for (const path of gone) rowCache.delete(path);
   if (gone.length) void pruneRows(gone);
 
-  // Merge in the same deterministic order the files were listed in — several
-  // session fields are "first file wins" and would otherwise flap between runs.
-  const ordered: FileRows[] = [];
-  for (const f of files) {
-    const hit = rowCache.get(f.path);
-    if (hit) ordered.push(hit.rows);
-  }
-
   const sessionMetas = await readSessionMetas();
-  const merged = mergeRows(ordered, sessionMetas);
-  events = merged.events;
-  insights = merged.insights;
+  const basis: MergeBasis = { fingerprint: fp, metaSig: hash53(JSON.stringify(sessionMetas)) };
+  const reused = canReuseMerge(mergedFrom, basis, stale.length, gone.length);
+
+  if (!reused) {
+    // Merge in the same deterministic order the files were listed in — several
+    // session fields are "first file wins" and would otherwise flap between runs.
+    const ordered: FileRows[] = [];
+    for (const f of files) {
+      const hit = rowCache.get(f.path);
+      if (hit) ordered.push(hit.rows);
+    }
+
+    const merged = mergeRows(ordered, sessionMetas);
+    events = merged.events;
+    insights = merged.insights;
+    mergedFrom = basis;
+  }
   fingerprint = fp;
+  // Refreshed even when the merge is reused: it is the `now` every builder is
+  // pinned to, and the TTL in ensureFresh() runs off it.
   computedAt = Date.now();
 
   lastStats = {
@@ -146,7 +201,8 @@ async function rescan(): Promise<void> {
   };
   console.log(
     `[store] ${lastStats.files} files, ${lastStats.reparsed} reparsed, ` +
-      `${lastStats.fromCache} cached, ${events.length} events in ${lastStats.ms}ms`
+      `${lastStats.fromCache} cached, ${events.length} events in ${lastStats.ms}ms` +
+      (reused ? ' (merge reused)' : '')
   );
 }
 
@@ -183,9 +239,19 @@ export async function getInsights(): Promise<{ insights: InsightsData; computedA
   };
 }
 
-/** Validity token for memoised builder output (builder-cache.ts). Never rescans. */
+/**
+ * Validity token for memoised builder output (builder-cache.ts). Never rescans.
+ *
+ * The builders read `now` as well as the data: hourly buckets, "last N days"
+ * cut-offs, today's day bucket. The file fingerprint alone only moves when a file
+ * changes, so while nothing was being written every cached window froze at the
+ * last write: the hourly chart stopped sliding and today's bucket never appeared
+ * after midnight. Folding in the minute of computedAt, the same `now` the routes
+ * pass to the builders, bounds that lag to a minute for one rebuild per key per
+ * minute.
+ */
 export function dataFingerprint(): number {
-  return fingerprint;
+  return memoToken(fingerprint, computedAt);
 }
 
 /** Prime both caches at boot — one pass now instead of two competing ones. */
