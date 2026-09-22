@@ -6,7 +6,7 @@ import { exec } from 'node:child_process';
 import { promisify } from 'node:util';
 import express from 'express';
 import { getEvents, eventsFingerprint } from './cache.ts';
-import { buildRecent, buildWeekly, buildModels, buildActivity, buildTools, buildHourlyHeatmap, buildProjectStats, filterSource, sourceMatches, type SourceFilter } from './aggregate.ts';
+import { buildRecent, buildWeekly, buildModels, buildActivity, buildTools, buildHourlyHeatmap, buildProjectStats, filterSource, sourceMatches, statsCacheApplies, type SourceFilter } from './aggregate.ts';
 import { claudeDir, readConfig, readCredentials, readStatsSummary, readSessionMetas, fetchLiveUsage, fetchLiveProfile, fetchLiveUsageFor, fetchLiveProfileFor, readAccountCredentials, expiredTokenMessage, detectLitellm, fetchLiteLlmSpend } from './scan.ts';
 import { getInsights, insightsFingerprint } from './insights-scan.ts';
 import { primeData } from './data.ts';
@@ -546,7 +546,7 @@ app.get('/api/activity', async (req, res) => {
     const days = Math.max(7, Math.min(180, Number(req.query.days ?? 126)));
     const { events, computedAt } = await getEvents();
     const source = parseSource(req.query.source);
-    const stats = await readStatsSummary();
+    const stats = statsCacheApplies(source) ? await readStatsSummary() : undefined;
     // stats-cache is only a fallback for days with no live data and is itself
     // stale, so keying on the events fingerprint is sufficient.
     const data = memoBuilder('activity', [days, source], eventsFingerprint(), () =>

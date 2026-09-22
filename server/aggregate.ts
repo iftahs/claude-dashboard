@@ -2,6 +2,7 @@ import type { UsageEvent, UsageSource } from './scan.ts';
 import { estimateCost } from './pricing.ts';
 
 const HOUR = 3600_000;
+const DAY = 24 * HOUR;
 const BLOCK_MS = 5 * HOUR;
 
 export interface TokenTotals {
@@ -50,23 +51,49 @@ function eventTokens(e: UsageEvent): number {
   return e.inputTokens + e.outputTokens + e.cacheCreateTokens + e.cacheReadTokens;
 }
 
+/**
+ * Local midnight of every calendar day from `from`'s day up to (not including) `to`.
+ * Built with calendar arithmetic rather than +24 h steps: a DST day is 23 or 25 h
+ * long, so fixed steps drift to 23:00/01:00 and then repeat or skip a date.
+ */
+export function localDayStarts(from: number, to: number): number[] {
+  const d = new Date(from);
+  const out: number[] = [];
+  for (let i = 0; ; i++) {
+    const s = new Date(d.getFullYear(), d.getMonth(), d.getDate() + i).getTime();
+    if (s >= to) return out;
+    out.push(s);
+  }
+}
+
+/** Index of the last entry of ascending `starts` that is <= t (-1 if none). */
+function floorIndex(starts: number[], t: number): number {
+  let lo = 0;
+  let hi = starts.length - 1;
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1;
+    if (starts[mid] <= t) lo = mid + 1;
+    else hi = mid - 1;
+  }
+  return hi;
+}
+
 function bucketize(events: UsageEvent[], from: number, to: number, width: number): Bucket[] {
-  const buckets: Bucket[] = [];
-  // Day-wide buckets align to local midnight (TZ-aware); narrower ones to epoch multiples.
-  let start0: number;
-  if (width === 24 * HOUR) {
-    const d = new Date(from);
-    d.setHours(0, 0, 0, 0);
-    start0 = d.getTime();
+  // Day-wide buckets start at each local midnight (TZ- and DST-aware), so an event
+  // lands on its local calendar date; narrower ones align to epoch multiples.
+  let starts: number[];
+  if (width === DAY) {
+    starts = localDayStarts(from, to);
   } else {
-    start0 = Math.floor(from / width) * width;
+    starts = [];
+    for (let s = Math.floor(from / width) * width; s < to; s += width) starts.push(s);
   }
-  for (let s = start0; s < to; s += width) {
-    buckets.push({ start: s, byModel: {}, byModelCost: {}, ...emptyTotals() });
-  }
+  const buckets: Bucket[] = starts.map((start) => ({ start, byModel: {}, byModelCost: {}, ...emptyTotals() }));
+  if (buckets.length === 0) return buckets;
+  const start0 = starts[0];
   for (const e of events) {
     if (e.ts < start0 || e.ts >= to) continue;
-    const idx = Math.floor((e.ts - start0) / width);
+    const idx = width === DAY ? floorIndex(starts, e.ts) : Math.floor((e.ts - start0) / width);
     const b = buckets[idx];
     if (!b) continue;
     add(b, e);
@@ -129,6 +156,15 @@ export function sourceMatches(s: UsageSource, f: SourceFilter): boolean {
 export function filterSource(events: UsageEvent[], source: SourceFilter): UsageEvent[] {
   if (source === 'all') return events;
   return events.filter((e) => sourceMatches(e.source, source));
+}
+
+/**
+ * May `stats-cache.json` backfill this filter's activity heatmap? Claude Code alone
+ * writes that file, so it only applies when the filter includes Code — otherwise a
+ * Codex or Cowork heatmap would show Code's history as its own.
+ */
+export function statsCacheApplies(source: SourceFilter): boolean {
+  return source === 'all' || source === 'claude' || source === 'code';
 }
 
 export interface ActiveBlock {
@@ -224,7 +260,6 @@ export function buildRecent(events: UsageEvent[], now: number, hours = 5) {
 }
 
 export function buildWeekly(events: UsageEvent[], now: number, days = 7) {
-  const DAY = 24 * HOUR;
   const from = now - days * DAY;
   const prevFrom = from - days * DAY;
   const windowEvents = events.filter((e) => e.ts >= from);
@@ -278,7 +313,6 @@ export interface DailyActivity {
 /** Daily activity derived live from JSONL events (always current, unlike the
  *  stale stats-cache.json). Fills every day in the window so the heatmap is dense. */
 export function buildActivity(events: UsageEvent[], now: number, days: number, stats?: any) {
-  const DAY = 24 * HOUR;
   const map = new Map<string, DailyActivity>();
   const from = now - days * DAY;
 
@@ -320,11 +354,10 @@ export function buildActivity(events: UsageEvent[], now: number, days: number, s
     a.messageCount += 1;
     a.toolCallCount += e.tools.length;
   }
-  // Emit one entry per day in [from, now], including empty days.
+  // Emit one entry per local calendar day in [from, now] (inclusive, hence now + 1),
+  // including empty days.
   const out: DailyActivity[] = [];
-  const start = new Date(from);
-  start.setHours(0, 0, 0, 0);
-  for (let t = start.getTime(); t <= now; t += DAY) {
+  for (const t of localDayStarts(from, now + 1)) {
     const key = localDateKey(t);
     const live = map.get(key);
     if (live) {
