@@ -20,6 +20,11 @@ import type {
 
 const POLL = 5000;
 
+/** Poll interval for a `days`-long weekly aggregate (Trends window). */
+export function weeklyPollMs(days: number): number {
+  return days > 28 ? 60_000 : POLL;
+}
+
 interface LiveDataCtx {
   // Window state shared across Live + Trends (Live's cost/day uses the Trends window).
   recentHours: number;
@@ -60,7 +65,9 @@ export function LiveDataProvider({ children }: { children: ReactNode }) {
   const [weekDays, setWeekDays] = useState(7);
 
   const recent = usePolling<RecentData>(withSrc(`/api/usage/recent?hours=${recentHours}`), POLL);
-  const weekly = usePolling<WeeklyData>(withSrc(`/api/usage/weekly?days=${weekDays}`), POLL);
+  // Long windows move slowly and their payload is large (up to 365 buckets), so
+  // they poll once a minute instead of every 5 s.
+  const weekly = usePolling<WeeklyData>(withSrc(`/api/usage/weekly?days=${weekDays}`), weeklyPollMs(weekDays));
   const models = usePolling<ModelsData>(withSrc('/api/usage/models?days=7'), POLL);
   const litellm = usePolling<LiteLlmSpendData>(
     litellmAvailable ? `/api/usage/litellm?days=${weekDays}` : '',

@@ -2,7 +2,7 @@ import { Section } from '@/components/design-system/molecules/Section/Section';
 import { UsageBarChart } from '@/components/design-system/organisms/UsageBarChart/UsageBarChart';
 import { ExportButton } from '@/components/design-system/molecules/ExportButton/ExportButton';
 import { ChartSkeleton } from '@/components/design-system/atoms/Skeleton/Skeleton';
-import { dayLabel } from '@/lib/format';
+import { dayLabel, dayLabelWithYear } from '@/lib/format';
 import type { DailyMetric, DailyTrendChartProps } from './types';
 import { trendDelta, trendExport } from './utils';
 
@@ -17,6 +17,7 @@ export function DailyTrendChart({
   metric,
   onMetricChange,
   costPerDay,
+  tokensPerDay,
   ai,
 }: DailyTrendChartProps) {
   const delta = trendDelta(data, metric);
@@ -54,8 +55,9 @@ export function DailyTrendChart({
       {data ? (
         <UsageBarChart
           buckets={data.buckets}
-          labelFor={dayLabel}
+          labelFor={weekDays > 60 ? dayLabelWithYear : dayLabel}
           projectionCostPerDay={costPerDay}
+          projectionTokensPerDay={tokensPerDay}
           metric={metric}
         />
       ) : loading ? (

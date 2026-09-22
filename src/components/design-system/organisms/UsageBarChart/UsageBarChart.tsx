@@ -56,6 +56,7 @@ export function UsageBarChart({
   buckets,
   labelFor,
   projectionCostPerDay,
+  projectionTokensPerDay,
   metric = 'tokens',
 }: UsageBarChartProps) {
   const models = new Set<string>();
@@ -89,7 +90,8 @@ export function UsageBarChart({
       let t = lastBucket.start + DAY;
 
       // Compute tokens projection based on average daily effective tokens
-      const avgTokensPerDay = buckets.reduce((acc, curr) => acc + curr.effectiveTokens, 0) / buckets.length;
+      const avgTokensPerDay =
+        projectionTokensPerDay ?? buckets.reduce((acc, curr) => acc + curr.effectiveTokens, 0) / buckets.length;
 
       while (t <= lastBucket.start + 3 * DAY && t < endOfMonthMs) {
         const projRow: Record<string, number | string | boolean> = {
@@ -145,6 +147,8 @@ export function UsageBarChart({
                 stackId="t"
                 fill={m === '__projected__' ? 'rgba(113,113,122,0.25)' : modelColor(m)}
                 radius={i === allModelList.length - 1 ? [4, 4, 0, 0] : [0, 0, 0, 0]}
+                // Long windows re-animate hundreds of bars on every poll.
+                isAnimationActive={data.length <= 60}
               />
             ))}
           </BarChart>

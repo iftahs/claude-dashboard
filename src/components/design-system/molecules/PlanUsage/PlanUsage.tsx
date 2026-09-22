@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { ProgressBar } from '@/components/design-system/atoms/ProgressBar/ProgressBar';
 import { InfoTip } from '@/components/design-system/atoms/InfoTip/InfoTip';
-import { blockBarColor } from './utils';
+import { blockBarColor, lastDaysEffective } from './utils';
 import { untilFull, dateTimeLabel } from '@/lib/format';
 import { nextWeekReset, startOfWeek } from '@/lib/week';
 import { buildWeeklyForecast } from '@/lib/forecast';
@@ -81,7 +81,7 @@ export function PlanUsage({
   const weeklyLimit = DEFAULT_WEEKLY_LIMIT;
   const weeklyPctRaw = hasLive
     ? liveUsage.seven_day.utilization
-    : Math.min(100, ((weekly?.totals.effectiveTokens ?? 0) / weeklyLimit) * 100);
+    : Math.min(100, (lastDaysEffective(weekly, 7) / weeklyLimit) * 100);
   const weeklyPct = Math.round(weeklyPctRaw);
 
   const liveWeeklyResetsAt = hasLive ? Date.parse(liveUsage.seven_day.resets_at) : null;

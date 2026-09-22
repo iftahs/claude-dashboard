@@ -16,12 +16,12 @@ import { buildSpendReport } from '@/lib/report';
 import { usePolling } from '@/hooks/usePolling';
 import { useSource } from '@/hooks/useSource';
 import { useConfigMode } from '@/hooks/useConfigMode';
-import { useLiveData } from '@/hooks/useLiveData';
+import { useLiveData, weeklyPollMs } from '@/hooks/useLiveData';
 import { useCostMetrics } from '@/hooks/useCostMetrics';
 import { useLiteLlmActual } from '@/hooks/useLiteLlmActual';
 import { useAiInsightCtx } from '@/hooks/useAiInsightContext';
 import type { ActivityData, HeatmapData, WeeklyData } from '@/types';
-import { PLATFORM_NOUN, costBasisHelp, platformSplitLabel } from './utils';
+import { PLATFORM_NOUN, TIME_WINDOWS, aiTrendsPayload, costBasisHelp, platformSplitLabel, prevPeriodLabel } from './utils';
 
 /** A stat card's own sub-text, with the Claude/Codex split on a second line. */
 function SplitSub({ sub, split }: { sub: string; split: string | null }) {
@@ -38,7 +38,7 @@ export function TrendsTab() {
   const { platform, showClaude, showSurfaceToggle, source, withSrc, effectiveSource } = useSource();
   const { litellmAvailable, litellmHost, weekStart } = useConfigMode();
   const { weekly, models, weekDays, setWeekDays } = useLiveData();
-  const { costPerDay, daysLeftInMonth, projectedMonthCost, weeklyEffective, prevWeeklyEffective } =
+  const { costPerDay, coverageDays, daysLeftInMonth, projectedMonthCost, weeklyEffective, prevWeeklyEffective } =
     useCostMetrics();
   const { litellmSpend } = useLiteLlmActual();
   const { aiProps } = useAiInsightCtx();
@@ -55,11 +55,11 @@ export function TrendsTab() {
   const bothActive = platform === 'both';
   const claudeWeekly = usePolling<WeeklyData>(
     bothActive ? `/api/usage/weekly?days=${weekDays}&source=claude` : '',
-    5000,
+    weeklyPollMs(weekDays),
   );
   const codexWeekly = usePolling<WeeklyData>(
     bothActive ? `/api/usage/weekly?days=${weekDays}&source=codex` : '',
-    5000,
+    weeklyPollMs(weekDays),
   );
 
   // Sub-labels splitting each card between the two platforms — only under Both,
@@ -75,15 +75,15 @@ export function TrendsTab() {
         <span className="text-xs uppercase tracking-wider text-zinc-500">Spending · last {weekDays} days</span>
         <div className="flex items-center gap-3">
           <div className="flex overflow-hidden rounded-lg ring-1 ring-white/10">
-            {[7, 14, 21, 28].map((d) => (
+            {TIME_WINDOWS.map(({ days, label }) => (
               <button
-                key={d}
-                onClick={() => setWeekDays(d)}
+                key={days}
+                onClick={() => setWeekDays(days)}
                 className={`px-2.5 py-1 text-xs tabular-nums transition-colors ${
-                  weekDays === d ? 'bg-clay-500/20 text-clay-400' : 'text-zinc-500 hover:text-zinc-300'
+                  weekDays === days ? 'bg-clay-500/20 text-clay-400' : 'text-zinc-500 hover:text-zinc-300'
                 }`}
               >
-                {d / 7}w
+                {label}
               </button>
             ))}
           </div>
@@ -124,7 +124,7 @@ export function TrendsTab() {
                 <SplitSub
                   sub={
                     prevWeeklyEffective > 0
-                      ? `${weekDays === 7 ? 'prev week' : `prev ${weekDays / 7} weeks`}: ${compact(prevWeeklyEffective)}`
+                      ? `${prevPeriodLabel(weekDays)}: ${compact(prevWeeklyEffective)}`
                       : `${compact(weekly.data?.totals.outputTokens ?? 0)} output`
                   }
                   split={platformSplitLabel(bs, 'effectiveTokens', compact)}
@@ -137,11 +137,11 @@ export function TrendsTab() {
               value={usd(costPerDay)}
               sub={
                 <SplitSub
-                  sub={`over ${weekDays} days`}
-                  split={platformSplitLabel(bs, 'cost', usd, 1 / weekDays)}
+                  sub={coverageDays < weekDays ? `over ${coverageDays} days with history` : `over ${weekDays} days`}
+                  split={platformSplitLabel(bs, 'cost', usd, 1 / coverageDays)}
                 />
               }
-              help="Estimated equivalent API cost averaged over the selected window (total cost ÷ days)."
+              help="Estimated equivalent API cost averaged over the selected window (total cost ÷ days). When your logs start inside the window (a new install, or Claude Code's ~30-day transcript cleanup), it divides by the days that have history instead."
             />
             <StatCard
               label="Projected this month"
@@ -149,7 +149,7 @@ export function TrendsTab() {
               sub={
                 <SplitSub
                   sub={`${daysLeftInMonth}d left in month`}
-                  split={platformSplitLabel(bs, 'cost', usd, daysThisMonth / weekDays)}
+                  split={platformSplitLabel(bs, 'cost', usd, daysThisMonth / coverageDays)}
                 />
               }
               accent="#6366f1"
@@ -193,7 +193,8 @@ export function TrendsTab() {
         metric={dailyMetric}
         onMetricChange={setDailyMetric}
         costPerDay={costPerDay}
-        ai={aiProps('trends', weekly.data)}
+        tokensPerDay={weeklyEffective / coverageDays}
+        ai={aiProps('trends', aiTrendsPayload(weekly.data))}
       />
 
       {/* Cache efficiency chart */}

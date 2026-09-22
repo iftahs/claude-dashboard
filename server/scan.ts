@@ -530,14 +530,20 @@ function localYmd(d: Date): string {
   return `${d.getFullYear()}-${m}-${day}`;
 }
 
+/** Longest selectable Trends window in days — the clamp on /api/usage/weekly and
+ *  /api/usage/litellm, and the span fetchLiteLlmBase always covers. */
+export const MAX_WINDOW_DAYS = 365;
+
 /**
- * One self-scoped /user/daily/activity fetch covering previous-month-start → today
- * (enough for month-to-date, the previous-month same-period total, and any daily
- * window up to 28 days). Cached 5 min by date range — independent of the requested
- * `days`, so switching the window reuses the cache. Throws distinct messages so the
- * route can degrade gracefully (no permission / not a LiteLLM gateway / outage).
+ * One self-scoped /user/daily/activity fetch covering the longer of the last
+ * MAX_WINDOW_DAYS days and previous-month-start → today (enough for month-to-date,
+ * the previous-month same-period total, and any daily window). The range depends
+ * only on today, never on the requested `days`, so every window shares one cache
+ * entry (5 min) — a per-window range would make two dashboards on different presets
+ * evict each other and re-page the gateway on every poll. Throws distinct messages
+ * so the route can degrade gracefully (no permission / not a LiteLLM gateway / outage).
  */
-async function fetchLiteLlmBase(days = 7): Promise<LiteLlmBase> {
+async function fetchLiteLlmBase(): Promise<LiteLlmBase> {
   const base = litellmBaseUrl();
   const token = litellmAuthToken();
   if (!base || !token) throw new Error('LiteLLM gateway not configured');
@@ -549,11 +555,13 @@ async function fetchLiteLlmBase(days = 7): Promise<LiteLlmBase> {
   // Same day-of-month in the previous month, clamped to its last day, for a
   // fair "same point in the month" comparison.
   const prevMonthEnd = new Date(today.getFullYear(), today.getMonth() - 1, Math.min(today.getDate(), prevMonthLastDay));
-  const daysStart = new Date(today.getFullYear(), today.getMonth(), today.getDate() - days);
-  const effectiveStart = daysStart < prevMonthStart ? daysStart : prevMonthStart;
-  const startYmd = localYmd(effectiveStart);
+  // The window's first day is today − (MAX_WINDOW_DAYS − 1): fetchLiteLlmSpend
+  // counts today as day 1.
+  const windowStart = new Date(today.getFullYear(), today.getMonth(), today.getDate() - (MAX_WINDOW_DAYS - 1));
+  const startYmd = localYmd(windowStart < prevMonthStart ? windowStart : prevMonthStart);
   const endYmd = localYmd(today);
   const monthStartYmd = localYmd(monthStart);
+  const prevMonthStartYmd = localYmd(prevMonthStart);
   const prevEndYmd = localYmd(prevMonthEnd);
 
   const cacheKey = `${startYmd}|${endYmd}`;
@@ -610,7 +618,9 @@ async function fetchLiteLlmBase(days = 7): Promise<LiteLlmBase> {
       monthTokens.cacheRead += num(mx.cache_read_input_tokens);
       monthTokens.cacheCreate += num(mx.cache_creation_input_tokens);
     }
-    if (date >= startYmd && date <= prevEndYmd) prevMonthToDate += num(mx.spend);
+    // Bounded by the previous month's first day, not startYmd — the fetch reaches
+    // back up to a year, and only 1st → same day-of-month is a fair comparison.
+    if (date >= prevMonthStartYmd && date <= prevEndYmd) prevMonthToDate += num(mx.spend);
   }
 
   const data: LiteLlmBase = {
@@ -663,7 +673,7 @@ async function fetchLiteLlmAccount(): Promise<{ user: number; key: number }> {
 /** Actual billed spend: month-to-date, previous-month same-period total, and the
  *  last `days` calendar days (incl. today, zero-filled) with per-model breakdown. */
 export async function fetchLiteLlmSpend(days: number): Promise<LiteLlmSpend> {
-  const b = await fetchLiteLlmBase(days);
+  const b = await fetchLiteLlmBase();
   const lifetime = await fetchLiteLlmAccount();
   const daily: LiteLlmSpend['daily'] = [];
   for (let i = days - 1; i >= 0; i--) {

@@ -34,6 +34,13 @@ export function dayLabel(ms: number): string {
   return new Date(ms).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
 }
 
+/** "Sep 22 '26" — for day axes spanning more than ~2 months, where a bare
+ *  "Mon, Sep 22" could be either year. */
+export function dayLabelWithYear(ms: number): string {
+  const d = new Date(ms);
+  return `${d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} '${String(d.getFullYear()).slice(-2)}`;
+}
+
 export function dateTimeLabel(ms: number): string {
   return new Date(ms).toLocaleString('en-US', {
     weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit',
