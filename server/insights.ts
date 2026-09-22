@@ -5,7 +5,7 @@
  */
 
 import type { InsightsData, ToolCallRecord, ToolResultRecord } from './insights-scan.ts';
-import type { UsageSource } from './scan.ts';
+import { sourceMatches, type SourceFilter } from './aggregate.ts';
 import { estimateCost } from './pricing.ts';
 
 const DAY_MS = 24 * 3600_000;
@@ -17,15 +17,15 @@ const DAY_MS = 24 * 3600_000;
  * whole — builders join them via the already-filtered tool calls / sessions,
  * so leftover entries are simply never looked up. 'all' is a pass-through.
  */
-export function scopeInsights(d: InsightsData, source: 'all' | UsageSource): InsightsData {
+export function scopeInsights(d: InsightsData, source: SourceFilter): InsightsData {
   if (source === 'all') return d;
   const sessionsMeta = new Map(
-    [...d.sessionsMeta].filter(([, sm]) => sm.source === source)
+    [...d.sessionsMeta].filter(([, sm]) => sourceMatches(sm.source, source))
   );
   return {
-    toolCalls: d.toolCalls.filter((tc) => tc.source === source),
+    toolCalls: d.toolCalls.filter((tc) => sourceMatches(tc.source, source)),
     toolResults: d.toolResults,
-    taskSpawns: d.taskSpawns.filter((t) => t.source === source),
+    taskSpawns: d.taskSpawns.filter((t) => sourceMatches(t.source, source)),
     sessionsMeta,
     searchCorpus: d.searchCorpus,
   };
@@ -62,7 +62,7 @@ function classifyError(text: string, rejected: boolean): string {
 // buildErrors
 // ---------------------------------------------------------------------------
 
-export function buildErrors(d: InsightsData, days: number, now = Date.now()) {
+export function buildErrors(d: InsightsData, days: number, now = Date.now(), perToolLimit = 12) {
   const from = cutoff(days, now);
   const filtered = d.toolCalls.filter((tc) => tc.ts >= from);
 
@@ -109,7 +109,7 @@ export function buildErrors(d: InsightsData, days: number, now = Date.now()) {
       errorRate: v.calls > 0 ? v.errors / v.calls : 0,
     }))
     .sort((a, b) => b.calls - a.calls)
-    .slice(0, 12);
+    .slice(0, perToolLimit);
 
   const trend = [...trendMap.entries()]
     .map(([date, v]) => ({ date, calls: v.calls, errors: v.errors }))
@@ -121,6 +121,7 @@ export function buildErrors(d: InsightsData, days: number, now = Date.now()) {
     errorRate: totalCalls > 0 ? errors / totalCalls : 0,
     categories,
     perTool,
+    perToolTotal: perToolMap.size, // real row count — `perTool` above is clipped
     trend,
   };
 }
@@ -262,7 +263,7 @@ export function buildLanguages(d: InsightsData, days: number, now = Date.now()) 
 // buildBranches
 // ---------------------------------------------------------------------------
 
-export function buildBranches(d: InsightsData, days: number, now = Date.now()) {
+export function buildBranches(d: InsightsData, days: number, now = Date.now(), limit = 10) {
   const from = cutoff(days, now);
   // Key by repo + branch so the same branch name (e.g. "main") in different repos
   // stays separate and each row can be attributed to its repository.
@@ -296,7 +297,7 @@ export function buildBranches(d: InsightsData, days: number, now = Date.now()) {
       sessions: v.sessions.size,
     }))
     .sort((a, b) => b.effectiveTokens - a.effectiveTokens)
-    .slice(0, 10);
+    .slice(0, limit);
 }
 
 // ---------------------------------------------------------------------------
@@ -350,7 +351,7 @@ export interface ComplexityPoint {
   date: string;
 }
 
-export function buildComplexity(d: InsightsData, days: number, now = Date.now()): ComplexityPoint[] {
+export function buildComplexity(d: InsightsData, days: number, now = Date.now(), limit = 200): ComplexityPoint[] {
   const from = cutoff(days, now);
 
   const results: ComplexityPoint[] = [];
@@ -376,14 +377,14 @@ export function buildComplexity(d: InsightsData, days: number, now = Date.now())
 
   return results
     .sort((a, b) => b.effectiveTokens - a.effectiveTokens)
-    .slice(0, 200);
+    .slice(0, limit);
 }
 
 // ---------------------------------------------------------------------------
 // buildYield
 // ---------------------------------------------------------------------------
 
-export function buildYield(d: InsightsData, days: number, now = Date.now()) {
+export function buildYield(d: InsightsData, days: number, now = Date.now(), limit = 10) {
   const from = cutoff(days, now);
 
   let committed = 0;
@@ -421,7 +422,7 @@ export function buildYield(d: InsightsData, days: number, now = Date.now()) {
     rate: total > 0 ? committed / total : 0,
     topUncommitted: topUncommitted
       .sort((a, b) => b.effectiveTokens - a.effectiveTokens)
-      .slice(0, 10),
+      .slice(0, limit),
   };
 }
 
@@ -512,7 +513,7 @@ export interface FileChurnEntry {
   lastTs: number;
 }
 
-export function buildFileChurn(d: InsightsData, days: number, now = Date.now()) {
+export function buildFileChurn(d: InsightsData, days: number, now = Date.now(), limit = 25) {
   const from = cutoff(days, now);
   const map = new Map<string, { path: string; edits: number; lastTs: number; projectPath: string }>();
   for (const tc of d.toolCalls) {
@@ -535,7 +536,7 @@ export function buildFileChurn(d: InsightsData, days: number, now = Date.now()) 
       lastTs: v.lastTs,
     }))
     .sort((a, b) => b.edits - a.edits)
-    .slice(0, 25);
+    .slice(0, limit);
   const totalEdits = [...map.values()].reduce((s, v) => s + v.edits, 0);
   return { totalEdits, uniqueFiles: map.size, files };
 }

@@ -6,4 +6,6 @@ dist
 .claude
 *.tsbuildinfo
 .agents/
+# Endpoint golden snapshots (scripts/snapshot-endpoints.mjs) — local verification only.
+snapshots/
 

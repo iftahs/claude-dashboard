@@ -1,48 +1,12 @@
-import { scanEvents, projectsFingerprint, type UsageEvent } from './scan.ts';
-
-const TTL_MS = 5000;
-
-let cached: UsageEvent[] = [];
-let cachedAt = 0;
-let cachedFingerprint = -1;
-let inflight: Promise<UsageEvent[]> | null = null;
-
-/** Return parsed+deduped events, re-scanning only when TTL elapsed or files changed. */
-export async function getEvents(): Promise<{ events: UsageEvent[]; computedAt: number }> {
-  const now = Date.now();
-  if (now - cachedAt < TTL_MS && cachedAt !== 0) {
-    return { events: cached, computedAt: cachedAt };
-  }
-  if (inflight) {
-    await inflight;
-    return { events: cached, computedAt: cachedAt };
-  }
-
-  inflight = (async () => {
-    const fp = await projectsFingerprint();
-    if (fp === cachedFingerprint && cachedAt !== 0) {
-      cachedAt = Date.now();
-      return cached;
-    }
-    cached = await scanEvents();
-    cachedFingerprint = fp;
-    cachedAt = Date.now();
-    return cached;
-  })();
-
-  try {
-    await inflight;
-  } finally {
-    inflight = null;
-  }
-  return { events: cached, computedAt: cachedAt };
-}
-
 /**
- * The current events fingerprint (newest jsonl mtime). Changes only when the
- * scanned files change — used as the validity token for builder-output memoization
- * (see builder-cache.ts). Reuses what getEvents() already computed; never rescans.
+ * cache.ts — compatibility facade over data.ts.
+ *
+ * The scan/cache stack used to live here: a 5s TTL around scan.ts::scanEvents,
+ * paralleled by a second, independent one inside insights-scan.ts. Both walked the
+ * same tree and parsed the same ~1.1 GB separately on every cold start.
+ *
+ * data.ts now owns a single pass that feeds both, backed by a per-file row cache
+ * that persists across restarts. This file stays so the existing call sites keep
+ * working unchanged.
  */
-export function eventsFingerprint(): number {
-  return cachedFingerprint;
-}
+export { getEvents, dataFingerprint as eventsFingerprint } from './data.ts';

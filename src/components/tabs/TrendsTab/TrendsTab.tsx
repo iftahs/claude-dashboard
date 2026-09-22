@@ -7,6 +7,7 @@ import { PeakHoursHeatmap } from '@/components/design-system/organisms/PeakHours
 import { ActivityHeatmap } from '@/components/design-system/organisms/ActivityHeatmap/ActivityHeatmap';
 import { LiteLlmActualBilled } from '@/components/design-system/organisms/LiteLlmActualBilled/LiteLlmActualBilled';
 import { SourcesSplitChart } from '@/components/design-system/organisms/SourcesSplitChart/SourcesSplitChart';
+import { PlatformDailyCompareChart } from '@/components/design-system/organisms/PlatformDailyCompareChart/PlatformDailyCompareChart';
 import { DailyTrendChart } from '@/components/design-system/organisms/DailyTrendChart/DailyTrendChart';
 import type { DailyMetric } from '@/components/design-system/organisms/DailyTrendChart/types';
 import { StatCardSkeleton, HeatmapSkeleton } from '@/components/design-system/atoms/Skeleton/Skeleton';
@@ -19,26 +20,22 @@ import { useLiveData } from '@/hooks/useLiveData';
 import { useCostMetrics } from '@/hooks/useCostMetrics';
 import { useLiteLlmActual } from '@/hooks/useLiteLlmActual';
 import { useAiInsightCtx } from '@/hooks/useAiInsightContext';
-import type { ActivityData, HeatmapData } from '@/types';
+import type { ActivityData, HeatmapData, WeeklyData } from '@/types';
+import { PLATFORM_NOUN, costBasisHelp, platformSplitLabel } from './utils';
 
-type TimeWindowOption = {
-  days: number;
-  label: string;
-  periodLabel: string;
-};
+/** A stat card's own sub-text, with the Claude/Codex split on a second line. */
+function SplitSub({ sub, split }: { sub: string; split: string | null }) {
+  if (!split) return <>{sub}</>;
+  return (
+    <>
+      {sub}
+      <span className="mt-0.5 block text-xs text-zinc-500">{split}</span>
+    </>
+  );
+}
 
-const TIME_WINDOWS: TimeWindowOption[] = [
-  { days: 7, label: '1w', periodLabel: 'prev week' },
-  { days: 14, label: '2w', periodLabel: 'prev 2 weeks' },
-  { days: 30, label: '1m', periodLabel: 'prev month' },
-  { days: 60, label: '2m', periodLabel: 'prev 2 months' },
-  { days: 90, label: '3m', periodLabel: 'prev 3 months' },
-  { days: 180, label: '6m', periodLabel: 'prev 6 months' },
-  { days: 365, label: '1y', periodLabel: 'prev year' },
-];
-
-export const TrendsTab = () => {
-  const { coworkAvailable, source, withSrc } = useSource();
+export function TrendsTab() {
+  const { platform, showClaude, showSurfaceToggle, source, withSrc, effectiveSource } = useSource();
   const { litellmAvailable, litellmHost, weekStart } = useConfigMode();
   const { weekly, models, weekDays, setWeekDays } = useLiveData();
   const { costPerDay, daysLeftInMonth, projectedMonthCost, weeklyEffective, prevWeeklyEffective } =
@@ -50,9 +47,25 @@ export const TrendsTab = () => {
   const heatmap = usePolling<HeatmapData>(withSrc('/api/heatmap?days=90'), 60000);
   const activity = usePolling<ActivityData>(withSrc('/api/activity'), 30000);
   const topModel = models.data?.models[0];
+  const noun = PLATFORM_NOUN[platform];
 
-  const currentWindow = TIME_WINDOWS.find((w) => w.days === weekDays);
-  const prevPeriodLabel = currentWindow ? currentWindow.periodLabel : `prev ${weekDays}d`;
+  // Under *Both* the shared weekly poll is deliberately unscoped, so the
+  // comparison needs its own two explicitly-scoped polls. An empty URL issues no
+  // request, so nothing extra is fetched on any other platform.
+  const bothActive = platform === 'both';
+  const claudeWeekly = usePolling<WeeklyData>(
+    bothActive ? `/api/usage/weekly?days=${weekDays}&source=claude` : '',
+    5000,
+  );
+  const codexWeekly = usePolling<WeeklyData>(
+    bothActive ? `/api/usage/weekly?days=${weekDays}&source=codex` : '',
+    5000,
+  );
+
+  // Sub-labels splitting each card between the two platforms — only under Both,
+  // where the card total is a sum. On a single platform it already IS that one.
+  const bs = bothActive ? weekly.data?.bySource : undefined;
+  const daysThisMonth = new Date().getDate() + daysLeftInMonth;
 
   return (
     <>
@@ -62,21 +75,23 @@ export const TrendsTab = () => {
         <span className="text-xs uppercase tracking-wider text-zinc-500">Spending · last {weekDays} days</span>
         <div className="flex items-center gap-3">
           <div className="flex overflow-hidden rounded-lg ring-1 ring-white/10">
-            {TIME_WINDOWS.map(({ days, label }) => (
+            {[7, 14, 21, 28].map((d) => (
               <button
-                key={days}
-                onClick={() => setWeekDays(days)}
+                key={d}
+                onClick={() => setWeekDays(d)}
                 className={`px-2.5 py-1 text-xs tabular-nums transition-colors ${
-                  weekDays === days ? 'bg-clay-500/20 text-clay-400' : 'text-zinc-500 hover:text-zinc-300'
+                  weekDays === d ? 'bg-clay-500/20 text-clay-400' : 'text-zinc-500 hover:text-zinc-300'
                 }`}
               >
-                {label}
+                {d / 7}w
               </button>
             ))}
           </div>
           <ExportButton
             label="Spend report"
-            getData={() => (weekly.data ? buildSpendReport(weekly.data, weekDays, source) : null)}
+            getData={() =>
+              weekly.data ? buildSpendReport(weekly.data, weekDays, effectiveSource ?? 'all') : null
+            }
           />
         </div>
       </div>
@@ -94,33 +109,49 @@ export const TrendsTab = () => {
             <StatCard
               label={`Est. equivalent cost · ${weekDays}d`}
               value={usd(weekly.data?.totals.cost ?? 0)}
-              sub={topModel ? `top: ${shortModel(topModel.model)}` : undefined}
-              help={
-                litellmAvailable
-                  ? "Estimated from your local logs at Anthropic's public API rates — a reference figure. Compare it with “Actual billed” (your gateway's real charge): the two differ because the gateway also bills failed/retried requests, uses calendar-day windows, and reflects a more up-to-date snapshot."
-                  : "What this usage would cost at Anthropic's pay-as-you-go API rates. Your subscription has no per-token bill — this is a reference figure only."
+              sub={
+                <SplitSub
+                  sub={topModel ? `top: ${shortModel(topModel.model)}` : ''}
+                  split={platformSplitLabel(bs, 'cost', usd)}
+                />
               }
+              help={costBasisHelp(platform, litellmAvailable)}
             />
             <StatCard
               label={`Effective tokens · last ${weekDays} days`}
               value={compact(weeklyEffective)}
               sub={
-                prevWeeklyEffective > 0
-                  ? `${prevPeriodLabel}: ${compact(prevWeeklyEffective)}`
-                  : `${compact(weekly.data?.totals.outputTokens ?? 0)} output`
+                <SplitSub
+                  sub={
+                    prevWeeklyEffective > 0
+                      ? `${weekDays === 7 ? 'prev week' : `prev ${weekDays / 7} weeks`}: ${compact(prevWeeklyEffective)}`
+                      : `${compact(weekly.data?.totals.outputTokens ?? 0)} output`
+                  }
+                  split={platformSplitLabel(bs, 'effectiveTokens', compact)}
+                />
               }
               help="Input + output + cache-write tokens — the tokens that count toward rate limits. Cheap cache reads are excluded. Compared against the previous period."
             />
             <StatCard
               label="Cost per day (avg)"
               value={usd(costPerDay)}
-              sub={`over ${weekDays} days`}
+              sub={
+                <SplitSub
+                  sub={`over ${weekDays} days`}
+                  split={platformSplitLabel(bs, 'cost', usd, 1 / weekDays)}
+                />
+              }
               help="Estimated equivalent API cost averaged over the selected window (total cost ÷ days)."
             />
             <StatCard
               label="Projected this month"
               value={usd(projectedMonthCost)}
-              sub={`${daysLeftInMonth}d left in month`}
+              sub={
+                <SplitSub
+                  sub={`${daysLeftInMonth}d left in month`}
+                  split={platformSplitLabel(bs, 'cost', usd, daysThisMonth / weekDays)}
+                />
+              }
               accent="#6366f1"
               help="Estimated month-end equivalent cost if your current average daily spend continues for the rest of the calendar month."
             />
@@ -128,14 +159,30 @@ export const TrendsTab = () => {
         )}
       </div>
 
-      {/* Actual billed (LiteLLM gateway): month-to-date + per-day window. */}
-      {litellmAvailable && litellmSpend && (
+      {/* Actual billed (LiteLLM gateway): month-to-date + per-day window. The
+          gateway proxies Anthropic, so it has nothing to say under Codex-only. */}
+      {showClaude && litellmAvailable && litellmSpend && (
         <LiteLlmActualBilled spend={litellmSpend} host={litellmHost} weekDays={weekDays} />
       )}
 
-      {/* Sources split (Code vs Cowork) — only under the All filter. */}
-      {coworkAvailable && source === 'all' && weekly.data?.bySource && (
+      {/* Sources split — shown only where a split is meaningful: under Both
+          (Claude Code / Cowork / Codex) or under the Claude platform's All filter
+          (Code / Cowork). Codex-only has a single surface and hides it, and
+          Code-only users reach neither branch. */}
+      {(bothActive || (showSurfaceToggle && source === 'all')) && weekly.data?.bySource && (
         <SourcesSplitChart bySource={weekly.data.bySource} weekDays={weekDays} />
+      )}
+
+      {/* Claude vs Codex, side by side — the one chart that exists only under Both. */}
+      {bothActive && (
+        <PlatformDailyCompareChart
+          claude={claudeWeekly.data}
+          codex={codexWeekly.data}
+          loading={claudeWeekly.loading || codexWeekly.loading}
+          weekDays={weekDays}
+          metric={dailyMetric}
+          onMetricChange={setDailyMetric}
+        />
       )}
 
       {/* Daily chart with projection */}
@@ -162,7 +209,7 @@ export const TrendsTab = () => {
       {/* Peak hours heatmap */}
       <Section
         title="Peak usage · tokens by hour & day of week"
-        help="Effective tokens summed into a 7-day × 24-hour grid (your local time). Darker cells are your busiest hours — when you use Claude most."
+        help={`Effective tokens summed into a 7-day × 24-hour grid (your local time). Darker cells are your busiest hours — when you use ${noun} most.`}
       >
         {heatmap.data ? (
           <PeakHoursHeatmap grid={heatmap.data.grid} weekStart={weekStart} />
@@ -176,7 +223,7 @@ export const TrendsTab = () => {
       {/* Activity heatmap */}
       <Section
         title="Daily activity · last 18 weeks"
-        help="GitHub-style calendar: one square per day, darker = more effective tokens used. Shows your day-to-day usage streaks over the last ~18 weeks."
+        help={`GitHub-style calendar: one square per day, darker = more effective tokens used. Shows your day-to-day ${noun} usage streaks over the last ~18 weeks.`}
       >
         {activity.data ? (
           <ActivityHeatmap days={activity.data.dailyActivity} weekStart={weekStart} />

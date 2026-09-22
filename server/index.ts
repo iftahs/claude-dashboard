@@ -6,9 +6,10 @@ import { exec } from 'node:child_process';
 import { promisify } from 'node:util';
 import express from 'express';
 import { getEvents, eventsFingerprint } from './cache.ts';
-import { buildRecent, buildWeekly, buildModels, buildActivity, buildTools, buildHourlyHeatmap, buildProjectStats, filterSource, type SourceFilter } from './aggregate.ts';
-import { claudeDir, readConfig, readCredentials, readStatsSummary, readSessionMetas, fetchLiveUsage, fetchLiveProfile, detectLitellm, fetchLiteLlmSpend } from './scan.ts';
+import { buildRecent, buildWeekly, buildModels, buildActivity, buildTools, buildHourlyHeatmap, buildProjectStats, filterSource, sourceMatches, type SourceFilter } from './aggregate.ts';
+import { claudeDir, readConfig, readCredentials, readStatsSummary, readSessionMetas, fetchLiveUsage, fetchLiveProfile, fetchLiveUsageFor, fetchLiveProfileFor, readAccountCredentials, expiredTokenMessage, detectLitellm, fetchLiteLlmSpend } from './scan.ts';
 import { getInsights, insightsFingerprint } from './insights-scan.ts';
+import { primeData } from './data.ts';
 import { memoBuilder } from './builder-cache.ts';
 import {
   buildErrors, buildRetries, buildLanguages, buildBranches, buildMcp,
@@ -18,19 +19,14 @@ import { buildContributors } from './contributors.ts';
 import { getCommandUsage } from './history.ts';
 import { getWorkspaceTasks, getInventory } from './workspace.ts';
 import { getLiveSubagents } from './subagents-live.ts';
+import { fetchCodexUsage, fetchCodexProfile } from './codex-live.ts';
+import { getLiveCodexAgents } from './codex-agents-live.ts';
 import { getWorkflows, getWorkflowStats } from './workflows.ts';
+import { getAgentDetail } from './workflow-agent-detail.ts';
 import { runAi, runAiStream, resolveBackend, AiUnavailableError, AiTokenRejectedError, AiCallError, type AiCreds } from './ai.ts';
-import { buildAiContext, buildChatUserMessage, CHAT_SYSTEM, buildSectionUserMessage, SECTION_SYSTEM, SUGGEST_SYSTEM, buildSuggestMessage, type ChatTurn } from './ai-context.ts';
+import { buildAiPayload, buildChatUserMessage, CHAT_SYSTEM, buildSectionUserMessage, SECTION_SYSTEM, SUGGEST_SYSTEM, buildSuggestMessage, type AiScope, type ChatTurn } from './ai-context.ts';
+import { routeDatasets } from './ai-router.ts';
 import { getVersionInfo, isDocker } from './version.ts';
-import {
-  getState as getAutoResumeState,
-  setStateFromClient as setAutoResumeFromClient,
-  validPrefs as validAutoResumePrefs,
-  getPendingJobs as getPendingResumeJobs,
-  claimJob as claimResumeJob,
-  completeJob as completeResumeJob,
-  createTestJob as createTestResumeJob,
-} from './auto-resume.ts';
 
 const execAsync = promisify(exec);
 
@@ -42,9 +38,9 @@ function wrap(data: unknown, computedAt: number) {
   return { data, computedAt, claudeDir: claudeDir() };
 }
 
-/** Parse the optional ?source=all|code|cowork filter (default 'all'). */
+/** Parse the optional ?source=all|claude|code|cowork|codex filter (default 'all'). */
 function parseSource(raw: unknown): SourceFilter {
-  return raw === 'code' || raw === 'cowork' ? raw : 'all';
+  return raw === 'code' || raw === 'cowork' || raw === 'codex' || raw === 'claude' ? raw : 'all';
 }
 
 app.get('/api/health', (_req, res) => {
@@ -77,18 +73,54 @@ app.post('/api/update/pull', async (_req, res) => {
   }
 });
 
+interface SubscriptionInfo {
+  subscriptionType: string | null;
+  rateLimitTier: string | null;
+  seatTier: string | null;
+  hasExtraUsageEnabled: boolean;
+  email: string | null;
+}
+
+/**
+ * Classify a live OAuth `/profile` response into plan/tier fields, falling back
+ * to the values baked into the local credential blob when the profile is
+ * unavailable (offline / expired token → pass `null`). Shared by `/api/config`
+ * and `/api/accounts/live` so the has_claude_max / 5x / team / … rules live once.
+ */
+function classifySubscription(
+  profile: any,
+  fallback: { subscriptionType?: string | null; rateLimitTier?: string | null },
+): SubscriptionInfo {
+  let subscriptionType: string | null = fallback.subscriptionType ?? null;
+  let rateLimitTier: string | null = fallback.rateLimitTier ?? null;
+  const account = profile?.account ?? {};
+  const org = profile?.organization ?? {};
+  const tier = String(org.rate_limit_tier ?? '');
+  if (account.has_claude_max) {
+    subscriptionType = /20x/.test(tier) ? 'max_20x' : /5x/.test(tier) ? 'max_5x' : 'max';
+  } else if (account.has_claude_pro) {
+    subscriptionType = 'pro';
+  } else if (/team/i.test(String(org.organization_type))) {
+    subscriptionType = 'team';
+  } else if (/enterprise/i.test(String(org.organization_type))) {
+    subscriptionType = 'enterprise';
+  } else if (account.uuid) {
+    subscriptionType = 'free';
+  }
+  if (org.rate_limit_tier) rateLimitTier = org.rate_limit_tier;
+  return {
+    subscriptionType,
+    rateLimitTier,
+    seatTier: org.seat_tier ?? null,
+    hasExtraUsageEnabled: !!org.has_extra_usage_enabled,
+    email: account.email ?? account.email_address ?? null,
+  };
+}
+
 app.get('/api/config', async (_req, res) => {
   try {
     const config = await readConfig();
     const credentials = await readCredentials();
-
-    // Start from the local credentials file, then override with the live profile
-    // from Anthropic — `.credentials.json` keeps a stale `subscriptionType` after
-    // a plan change until the next login, whereas the profile endpoint is current.
-    let subscriptionType: string | null = credentials?.claudeAiOauth?.subscriptionType ?? null;
-    let rateLimitTier: string | null = credentials?.claudeAiOauth?.rateLimitTier ?? null;
-    let seatTier: string | null = null;
-    let hasExtraUsageEnabled = false;
 
     // Auth mode — a Claude.ai subscription stores an OAuth token under
     // `claudeAiOauth` (used for live usage/profile); API / pay-as-you-go users
@@ -97,33 +129,33 @@ app.get('/api/config', async (_req, res) => {
     const authMode: 'api' | 'subscription' = credentials?.claudeAiOauth?.accessToken
       ? 'subscription'
       : 'api';
+
+    // Start from the local credentials file, then override with the live profile
+    // from Anthropic — `.credentials.json` keeps a stale `subscriptionType` after
+    // a plan change until the next login, whereas the profile endpoint is current.
+    let profile: any = null;
     try {
-      const profile = await fetchLiveProfile();
-      const account = profile?.account ?? {};
-      const org = profile?.organization ?? {};
-      const tier = String(org.rate_limit_tier ?? '');
-      if (account.has_claude_max) {
-        subscriptionType = /20x/.test(tier) ? 'max_20x' : /5x/.test(tier) ? 'max_5x' : 'max';
-      } else if (account.has_claude_pro) {
-        subscriptionType = 'pro';
-      } else if (/team/i.test(String(org.organization_type))) {
-        subscriptionType = 'team';
-      } else if (/enterprise/i.test(String(org.organization_type))) {
-        subscriptionType = 'enterprise';
-      } else if (account.uuid) {
-        subscriptionType = 'free';
-      }
-      if (org.rate_limit_tier) rateLimitTier = org.rate_limit_tier;
-      seatTier = org.seat_tier ?? null;
-      hasExtraUsageEnabled = !!org.has_extra_usage_enabled;
+      profile = await fetchLiveProfile();
     } catch {
       // Offline or expired token — keep the values read from the local file.
     }
+    const sub = classifySubscription(profile, {
+      subscriptionType: credentials?.claudeAiOauth?.subscriptionType ?? null,
+      rateLimitTier: credentials?.claudeAiOauth?.rateLimitTier ?? null,
+    });
 
     // LiteLLM gateway detection (pure env read) — gates the "Actual billed" cost UI.
     const litellm = detectLitellm();
 
-    const merged = { ...config, subscriptionType, rateLimitTier, seatTier, hasExtraUsageEnabled, authMode, litellm };
+    const merged = {
+      ...config,
+      subscriptionType: sub.subscriptionType,
+      rateLimitTier: sub.rateLimitTier,
+      seatTier: sub.seatTier,
+      hasExtraUsageEnabled: sub.hasExtraUsageEnabled,
+      authMode,
+      litellm,
+    };
     res.json(wrap(merged, Date.now()));
   } catch (e) {
     res.status(500).json({ error: String(e) });
@@ -202,7 +234,7 @@ app.get('/api/sessions', async (req, res) => {
     for (const sm of insights.sessionsMeta.values()) {
       if (sm.isSidechain || !sm.sessionId) continue; // skip subagent-only sessions
       if (sm.assistantMsgs === 0) continue;           // skip empty/aborted shells
-      if (source !== 'all' && sm.source !== source) continue; // surface filter
+      if (!sourceMatches(sm.source, source)) continue; // surface / platform filter
 
       const stats = eventStats.get(sm.sessionId);
       const agg = toolAgg.get(sm.sessionId);
@@ -244,10 +276,10 @@ app.get('/api/sessions', async (req, res) => {
 
     // Preserve older sessions whose transcripts are gone from disk but whose
     // sidecar metadata survives — append them so the list never regresses.
-    // Sidecars are Claude Code only, so skip them when scoped to Cowork.
+    // Sidecars are Claude Code only, so skip them when scoped to another surface.
     const liveIds = new Set(result.map((r) => r.session_id));
     for (const s of sidecar) {
-      if (source === 'cowork') break;
+      if (source !== 'all' && source !== 'code' && source !== 'claude') break;
       if (liveIds.has(s.session_id)) continue;
       const stats = eventStats.get(s.session_id);
       const in_tok = s.input_tokens ?? 0;
@@ -292,14 +324,16 @@ app.get('/api/sessions', async (req, res) => {
 app.get('/api/sources', async (_req, res) => {
   try {
     const { events, computedAt } = await getEvents();
-    let codeN = 0, coworkN = 0, codeLast = 0, coworkLast = 0;
+    let codeN = 0, coworkN = 0, codexN = 0, codeLast = 0, coworkLast = 0, codexLast = 0;
     for (const e of events) {
       if (e.source === 'cowork') { coworkN++; if (e.ts > coworkLast) coworkLast = e.ts; }
+      else if (e.source === 'codex') { codexN++; if (e.ts > codexLast) codexLast = e.ts; }
       else { codeN++; if (e.ts > codeLast) codeLast = e.ts; }
     }
     res.json(wrap({
       code: { events: codeN, lastTs: codeLast },
       cowork: { available: coworkN > 0, events: coworkN, lastTs: coworkLast },
+      codex: { available: codexN > 0, events: codexN, lastTs: codexLast },
     }, computedAt));
   } catch (e) {
     res.status(500).json({ error: String(e) });
@@ -315,68 +349,123 @@ app.get('/api/usage/live', async (_req, res) => {
   }
 });
 
-// ── Auto-resume after usage-limit reset ─────────────────────────────────────
-// Backend detects the limit hit + schedules a ResumeJob; execution happens on
-// the host (scripts/resume-watcher.mjs polling /pending, or the backend itself
-// in host/dev mode). See server/auto-resume.ts.
-
-app.get('/api/auto-resume/state', async (_req, res) => {
+// Live plan/limits for EVERY logged-in account, so the Live tab can show which
+// account still has quota. The token blob has no stable account id (org/account/
+// email come only from the profile), so we resolve identity per captured token
+// via the profile fetch, dedup to one entry per account (keeping the freshest /
+// active token), then fetch each account's usage. Each token is failure-isolated:
+// an expired/idle one yields an error marker instead of sinking the response. The
+// frontend gates the multi-account UI on accounts.length > 1, so single-account
+// users see no change.
+app.get('/api/accounts/live', async (_req, res) => {
   try {
-    res.json(wrap(await getAutoResumeState(), Date.now()));
+    const tokens = await readAccountCredentials();
+    const now = Date.now();
+
+    // 1. Resolve identity per token (profile is cached 30 min; expired tokens
+    //    skip the network entirely).
+    const resolved = await Promise.all(
+      tokens.map(async (t) => {
+        const oauth = t.claudeAiOauth;
+        const expiresAt: number | undefined = oauth.expiresAt;
+        const expired = !!expiresAt && now >= expiresAt;
+        const profile = expired
+          ? null
+          : await fetchLiveProfileFor(oauth.accessToken, oauth.accessToken, expiresAt).catch(() => null);
+        const account = profile?.account ?? {};
+        const org = profile?.organization ?? {};
+        // Stable identity when the profile resolves; otherwise a token-stable
+        // fallback so the same token maps consistently while offline.
+        const identity =
+          account.uuid || org.uuid || account.email || account.email_address ||
+          `token:${String(oauth.accessToken).slice(-12)}`;
+        return { token: t, oauth, expiresAt, expired, profile, identity: String(identity) };
+      }),
+    );
+
+    // 2. Dedup to one token per account — prefer the active token, else the
+    //    freshest — so a refreshed/duplicate token doesn't create a second card.
+    const byId = new Map<string, typeof resolved[number]>();
+    for (const r of resolved) {
+      const cur = byId.get(r.identity);
+      const better =
+        !cur ||
+        (r.token.isActive && !cur.token.isActive) ||
+        (r.token.isActive === cur.token.isActive && (r.oauth.expiresAt ?? 0) > (cur.oauth.expiresAt ?? 0));
+      if (better) byId.set(r.identity, r);
+    }
+
+    // 3. Fetch usage per account and shape the response.
+    const accounts = await Promise.all(
+      [...byId.values()].map(async (r) => {
+        const sub = classifySubscription(r.profile, {
+          subscriptionType: r.oauth.subscriptionType ?? null,
+          rateLimitTier: r.oauth.rateLimitTier ?? null,
+        });
+        const live = r.expired
+          ? { error: expiredTokenMessage() }
+          : await fetchLiveUsageFor(r.oauth.accessToken, r.oauth.accessToken, r.expiresAt).catch((e: any) => ({ error: e?.message || String(e) }));
+        // Real accounts resolve to their email; only a profile-less token (offline
+        // / invalid) falls back to plan + a short token discriminator.
+        const shortId = r.identity.startsWith('token:') ? r.identity.slice(6, 12) : r.identity.slice(0, 6);
+        const label = sub.email ?? (sub.subscriptionType ? `${sub.subscriptionType} · ${shortId}` : shortId);
+        return {
+          key: r.identity,
+          organizationUuid: r.profile?.organization?.uuid ?? null,
+          email: sub.email,
+          label,
+          subscriptionType: sub.subscriptionType,
+          rateLimitTier: sub.rateLimitTier,
+          live,
+          expired: r.expired,
+          isActive: r.token.isActive,
+          capturedAt: r.token.capturedAt,
+        };
+      }),
+    );
+
+    // Only surface accounts with live usage right now — an idle account whose
+    // snapshot expired (or a token that errored) carries no quota signal, so
+    // showing it would just be an empty card. When this leaves ≤1 account the
+    // frontend falls back to the original single-account view.
+    const liveAccounts = accounts.filter((a) => !a.expired && !(a.live as any)?.error);
+
+    // Active account first, then most-recently captured.
+    liveAccounts.sort((a, b) => Number(b.isActive) - Number(a.isActive) || b.capturedAt - a.capturedAt);
+    res.json(wrap({ accounts: liveAccounts }, Date.now()));
   } catch (e) {
     res.status(500).json({ error: String(e) });
   }
 });
 
-app.post('/api/auto-resume/state', async (req, res) => {
-  const prefs = validAutoResumePrefs(req.body);
-  if (!prefs) {
-    res.status(400).json({ error: 'invalid mode/permission' });
-    return;
-  }
+// ── OpenAI Codex (ChatGPT desktop) ──────────────────────────────────────────
+// Live plan limits + profile stats reuse the token Codex stores in
+// <codexDir>/auth.json (no refresh flow, PII stripped); running threads come
+// from the rollout files. Like /api/usage/live, failures of the two network
+// routes return wrap({ error }) at HTTP 200 so the frontend can show the reason.
+// See server/codex-live.ts and server/codex-agents-live.ts.
+
+app.get('/api/codex/live', async (_req, res) => {
   try {
-    res.json(wrap(await setAutoResumeFromClient(prefs), Date.now()));
-  } catch (e) {
-    res.status(500).json({ error: String(e) });
-  }
-});
-
-// Watcher-facing; the poll doubles as the watcher heartbeat.
-app.get('/api/auto-resume/pending', (req, res) => {
-  const id = String(req.query.watcherId ?? '') || undefined;
-  res.json(wrap(getPendingResumeJobs(id), Date.now()));
-});
-
-app.post('/api/auto-resume/jobs/:id/claim', async (req, res) => {
-  const r = await claimResumeJob(req.params.id, String(req.body?.claimedBy ?? 'unknown'));
-  if (!r.ok) {
-    res.status(r.code).json({ error: r.reason });
-    return;
-  }
-  res.json(wrap(r.job, Date.now()));
-});
-
-app.post('/api/auto-resume/jobs/:id/complete', (req, res) => {
-  const job = completeResumeJob(req.params.id, {
-    ok: !!req.body?.ok,
-    exitCode: typeof req.body?.exitCode === 'number' ? req.body.exitCode : undefined,
-    message: typeof req.body?.message === 'string' ? req.body.message : undefined,
-  });
-  if (!job) {
-    res.status(404).json({ error: 'unknown job' });
-    return;
-  }
-  res.json(wrap(job, Date.now()));
-});
-
-// Testing/dev convenience: schedule a real resume of the most recent session
-// in delayMs, bypassing limit detection.
-app.post('/api/auto-resume/test', async (req, res) => {
-  try {
-    const delayMs = Math.max(5_000, Number(req.body?.delayMs ?? 15_000));
-    res.json(wrap(await createTestResumeJob(delayMs), Date.now()));
+    res.json(wrap(await fetchCodexUsage(), Date.now()));
   } catch (e: any) {
-    res.status(400).json({ error: e?.message || String(e) });
+    res.json(wrap({ error: e.message || String(e) }, Date.now()));
+  }
+});
+
+app.get('/api/codex/profile', async (_req, res) => {
+  try {
+    res.json(wrap(await fetchCodexProfile(), Date.now()));
+  } catch (e: any) {
+    res.json(wrap({ error: e.message || String(e) }, Date.now()));
+  }
+});
+
+app.get('/api/codex/agents/live', async (_req, res) => {
+  try {
+    res.json(wrap(await getLiveCodexAgents(), Date.now()));
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
   }
 });
 
@@ -701,6 +790,18 @@ app.get('/api/workflows/stats', async (_req, res) => {
   }
 });
 
+// One agent's detail — parses its whole transcript, so it is fetched on expand
+// only, never by the /api/workflows list poll.
+app.get('/api/workflows/:runId/agents/:agentId', async (req, res) => {
+  try {
+    const data = await getAgentDetail(req.params.runId, req.params.agentId);
+    if (!data) return res.status(404).json({ error: 'Agent not found' });
+    res.json(wrap(data, Date.now()));
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
 // ---------------------------------------------------------------------------
 // AI Insights — chat over usage aggregates + per-section "explain this".
 // Backend: `claude -p` CLI when available, else Anthropic API (OAuth/api-key).
@@ -753,6 +854,24 @@ function parseSuggestions(text: string): string[] {
   return out.map((s) => s.trim()).filter(Boolean).slice(0, 4);
 }
 
+/**
+ * The chat answers over ONE window on ONE surface, both taken from what the user
+ * is actually looking at. Every overview number then shares a window, so the model
+ * can never "notice" a phantom inconsistency between two differently-scoped figures.
+ */
+function parseAiScope(body: any): AiScope {
+  return { source: parseSource(body?.source), days: clampDays(body?.days, 30) };
+}
+
+/**
+ * Full detail (branch names, file paths) only goes to a backend the user already
+ * trusts with their code — the local `claude` CLI, their Claude.ai OAuth token, or
+ * their own Anthropic key. An OpenAI/Gemini key from Settings gets those redacted.
+ */
+function shouldRedact(creds: AiCreds | null): boolean {
+  return !!creds && creds.provider !== 'claude';
+}
+
 /** Validate client-supplied AI credentials (Settings → AI Insights). */
 function parseAiCreds(raw: any): AiCreds | null {
   if (!raw || typeof raw !== 'object') return null;
@@ -781,15 +900,21 @@ app.post('/api/ai/chat', async (req, res) => {
       return;
     }
     const history = parseHistory(req.body?.history);
-    const ctx = await buildAiContext();
     const creds = parseAiCreds(req.body?.config);
+    const scope = parseAiScope(req.body);
+    const route = await routeDatasets(question, history, creds);
+    const payload = await buildAiPayload(scope, route.ids, { redact: shouldRedact(creds) });
     // Stream the answer as chunked text/plain. Headers flush on the first delta;
     // an error before any delta is still sent as JSON (headers not yet sent).
     res.setHeader('Content-Type', 'text/plain; charset=utf-8');
     res.setHeader('Cache-Control', 'no-cache, no-transform');
     res.setHeader('X-Accel-Buffering', 'no');
+    // With no tests and no HMR, these two headers are the whole debugging surface
+    // for "why did it answer from that?". They must be set before the first write.
+    res.setHeader('X-AI-Route', route.via);
+    res.setHeader('X-AI-Datasets', route.ids.join(','));
     await runAiStream(
-      { system: CHAT_SYSTEM, user: buildChatUserMessage(ctx, question, history) },
+      { system: CHAT_SYSTEM, user: buildChatUserMessage(payload, question, history), maxTokens: 1200 },
       creds,
       {
         onStart: (backend) => res.setHeader('X-AI-Backend', backend),
@@ -838,13 +963,28 @@ app.post('/api/ai/suggestions', async (req, res) => {
       res.json(wrap({ suggestions: [] }, Date.now()));
       return;
     }
-    const ctx = await buildAiContext();
     const creds = parseAiCreds(req.body?.config);
+    // Overview only: the chips just need the catalog to know what is askable.
+    const payload = await buildAiPayload(parseAiScope(req.body), [], { redact: shouldRedact(creds) });
     const { text } = await runAi(
-      { system: SUGGEST_SYSTEM, user: buildSuggestMessage(ctx, history), maxTokens: 200 },
+      { system: SUGGEST_SYSTEM, user: buildSuggestMessage(payload, history), maxTokens: 200 },
       creds,
     );
     res.json(wrap({ suggestions: parseSuggestions(text) }, Date.now()));
+  } catch (e) {
+    sendAiError(res, e);
+  }
+});
+
+/**
+ * The privacy disclosure: exactly what the chat would send to the model, before
+ * sending it. The AI tab also pings this on mount to warm the aggregate caches so
+ * the first question doesn't pay for a cold insights scan.
+ */
+app.get('/api/ai/context', async (req, res) => {
+  try {
+    const payload = await buildAiPayload(parseAiScope(req.query), []);
+    res.json(wrap(payload, Date.now()));
   } catch (e) {
     sendAiError(res, e);
   }
@@ -1057,10 +1197,11 @@ if (existsSync(distDir)) {
 
 app.listen(PORT, () => {
   console.log(`[server] listening on http://localhost:${PORT} (claudeDir=${claudeDir()})`);
-  // Prime the event + insights caches in the background so the first request
-  // (often /api/sessions, which needs both) doesn't pay the full cold-scan cost
-  // — that scan of ~100MB+ of JSONL can take several seconds. Errors are ignored;
-  // the endpoints will simply scan on demand if this fails.
-  void getEvents().catch(() => {});
-  void getInsights().catch(() => {});
+  // Prime the data layer in the background. This used to be two calls that each
+  // kicked off a full independent scan of the same files, concurrently — they
+  // fought over the disk and the libuv threadpool and doubled the cold-start cost.
+  // One pass now feeds both, and the on-disk row cache means a restart usually
+  // only re-parses the handful of files that changed. Errors are ignored; the
+  // endpoints scan on demand if this fails.
+  void primeData().catch(() => {});
 });

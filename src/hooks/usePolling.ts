@@ -25,6 +25,33 @@ interface Cached {
 // refresh the data. Keys are a finite set of API URLs, so the map stays small.
 const cache = new Map<string, Cached>();
 
+// In-flight requests keyed by URL. Two hooks polling the same endpoint (and
+// StrictMode's double-mount in dev) previously issued two identical requests that
+// both occupied one of the browser's six connections per origin. They now share one.
+const inflight = new Map<string, Promise<Cached>>();
+
+/** Fetch a URL, collapsing concurrent callers onto a single request. */
+function fetchShared(url: string): Promise<Cached> {
+  const pending = inflight.get(url);
+  if (pending) return pending;
+
+  const p = (async () => {
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const env: Envelope<unknown> = await res.json();
+    const entry: Cached = { data: env.data, computedAt: env.computedAt, claudeDir: env.claudeDir };
+    // Populate the cache even when every subscriber has unmounted — a poll that
+    // outlives its component still warms the next mount.
+    cache.set(url, entry);
+    return entry;
+  })().finally(() => {
+    inflight.delete(url);
+  });
+
+  inflight.set(url, p);
+  return p;
+}
+
 export function usePolling<T>(url: string, intervalMs = 5000): PollState<T> {
   const [state, setState] = useState<State<T>>(() => {
     const hit = cache.get(url);
@@ -55,16 +82,17 @@ export function usePolling<T>(url: string, intervalMs = 5000): PollState<T> {
     }
 
     async function tick() {
+      // A backgrounded tab used to keep polling forever — /api/subagents/live every
+      // 2.5s and /api/workflows every 4s, indefinitely. Skip while hidden; the
+      // visibilitychange handler below fires an immediate catch-up tick on return.
+      if (document.hidden) return;
       try {
-        const res = await fetch(url);
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const env: Envelope<T> = await res.json();
-        cache.set(url, { data: env.data, computedAt: env.computedAt, claudeDir: env.claudeDir });
+        const entry = await fetchShared(url);
         if (!alive.current) return;
         setState({
-          data: env.data,
-          computedAt: env.computedAt,
-          claudeDir: env.claudeDir,
+          data: entry.data as T,
+          computedAt: entry.computedAt,
+          claudeDir: entry.claudeDir,
           error: null,
           loading: false,
         });
@@ -76,11 +104,19 @@ export function usePolling<T>(url: string, intervalMs = 5000): PollState<T> {
         setLastFetch(Date.now());
       }
     }
+
     tick();
     const id = setInterval(tick, intervalMs);
+
+    const onVisible = () => {
+      if (!document.hidden) void tick();
+    };
+    document.addEventListener('visibilitychange', onVisible);
+
     return () => {
       alive.current = false;
       clearInterval(id);
+      document.removeEventListener('visibilitychange', onVisible);
     };
   }, [url, intervalMs]);
 

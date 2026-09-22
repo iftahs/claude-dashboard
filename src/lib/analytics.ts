@@ -61,6 +61,9 @@ export function initAnalytics(): void {
     capture_performance: false,
     defaults: '2026-01-30',
   });
+  // Tag every event (incl. the first pageview) with the release. Registered
+  // synchronously right after init — before any event is captured. Non-PII.
+  posthog.register({ app_version: __APP_VERSION__ });
 }
 
 type EventProps = Record<string, string | number | boolean | null | undefined>;

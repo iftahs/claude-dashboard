@@ -8,18 +8,56 @@ export interface TokenTotals {
   cost: number;
 }
 
-export type UsageSource = 'code' | 'cowork';
+export type UsageSource = 'code' | 'cowork' | 'codex';
 
-/** Effective-token totals split by surface (Code vs Cowork). */
+/** Effective-token totals split by surface (Code / Cowork / Codex). */
 export interface SourceSplit {
   code: TokenTotals;
   cowork: TokenTotals;
+  codex: TokenTotals;
 }
 
-/** /api/sources — which usage surfaces have local data. Gates all Cowork UI. */
+/** /api/sources — which usage surfaces have local data. Gates all Cowork and Codex UI. */
 export interface SourcesInfo {
   code: { events: number; lastTs: number };
   cowork: { available: boolean; events: number; lastTs: number };
+  codex: { available: boolean; events: number; lastTs: number };
+}
+
+/** One Codex rate-limit window, normalised from either the live `/wham/usage`
+ *  payload or the passive `token_count.rate_limits` snapshot in a rollout. */
+export interface CodexWindow {
+  usedPct: number;          // 0–100
+  windowSec: number;        // 18000 (5-hour) or 604800 (weekly)
+  resetsAt: string | null;  // ISO; null when the window has lapsed / is unknown
+}
+
+/** GET /api/codex/live — the ChatGPT desktop (Codex) plan limits. PII stripped. */
+export interface CodexLiveData {
+  planType: string | null;              // 'plus' | 'go' | 'pro' | 'team' | …
+  fiveHour: CodexWindow | null;
+  weekly: CodexWindow | null;
+  limitReached: boolean;
+  credits: { hasCredits: boolean; unlimited: boolean; balance: string | null; overageLimitReached: boolean } | null;
+  resetCredits: { available: number; applicable: number } | null;
+  modelAvailability: Record<string, boolean>;
+  origin: 'live' | 'passive';           // network fetch vs newest rollout snapshot
+  snapshotAt: string | null;            // passive only: timestamp of the snapshot record
+  error?: string;
+}
+
+/** GET /api/codex/profile — server-side stats from `/wham/profiles/me` (stats only, no profile). */
+export interface CodexProfileStats {
+  lifetimeTokens: number;
+  peakDailyTokens: number;
+  currentStreakDays: number;
+  longestStreakDays: number;
+  totalThreads: number;
+  longestRunningTurnSec: number;
+  mostUsedReasoningEffort: string | null;
+  mostUsedReasoningEffortPct: number | null;
+  dailyUsage: { date: string; tokens: number }[]; // UTC days, ascending
+  error?: string;
 }
 
 export interface VersionInfo {
@@ -242,6 +280,26 @@ export interface LiveUsageData {
   error?: string;
 }
 
+/** One logged-in account's live plan/limits, from GET /api/accounts/live. Claude
+ *  Code shares one credential slot, so these are snapshotted per account as each
+ *  becomes active; an idle account's token expires within hours (`expired`). */
+export interface AccountLive {
+  key: string;                       // organizationUuid (or 'default')
+  organizationUuid: string | null;
+  email: string | null;             // from the live profile; null when unavailable
+  label: string;                    // email, else "<plan> · <key prefix>"
+  subscriptionType: string | null;
+  rateLimitTier: string | null;
+  live: LiveUsageData;              // per-account usage, or { error } (incl. stale)
+  expired: boolean;                 // token past its expiresAt — data is a marker
+  isActive: boolean;                // the account currently in the shared slot
+  capturedAt: number;
+}
+
+export interface AccountsLiveData {
+  accounts: AccountLive[];
+}
+
 // "What's contributing to your limits usage?" — cost-weighted Day/Week breakdown.
 export interface ContribBehavior {
   key: string; // 'long_context' | 'subagent_heavy' | … | 'mcp:<server>' | 'skill:<name>'
@@ -423,14 +481,50 @@ export interface WorkflowAgentInfo {
   agentId: string;
   label: string;
   phaseTitle: string;
+  /** Subagent type the script asked for (`frontend-dev`, `code-reviewer`, …). */
+  agentType: string;
   model: string;
   state: WorkflowAgentState;
   tokens: number;
   toolCalls: number;
   durationMs: number;
   startedAt: number;
+  /** Spawn order within the run — rows are sorted by tokens, so this is the only trace of it. */
+  index: number;
+  attempt: number;
+  /** How long the agent sat behind the concurrency cap before starting. */
+  queuedMs: number;
   lastToolName?: string;
+  lastToolSummary?: string;
 }
+
+/** Lazily fetched from `/api/workflows/:runId/agents/:agentId` when a row is expanded. */
+export interface WorkflowAgentDetail {
+  agentId: string;
+  agentType: string;
+  label: string;
+  phaseTitle: string;
+  index: number;
+  attempt: number;
+  state: WorkflowAgentState;
+  prompt: string;
+  resultSummary: string;
+  resultFiles: string[];
+  tools: { name: string; count: number; failed: number }[];
+  toolFailures: number;
+  turns: number;
+  /** cacheRead is excluded from effective tokens — it doesn't count toward rate limits. */
+  tokens: { input: number; output: number; cacheCreate: number; cacheRead: number };
+  models: string[];
+  skills: string[];
+  mcpServers: string[];
+  queuedMs: number;
+  startedAt: number;
+  durationMs: number;
+}
+
+/** How a run's cost was priced — `per-agent` is materially more accurate. */
+export type WorkflowCostBasis = 'per-agent' | 'blended-run';
 
 export interface WorkflowRun {
   runId: string;
@@ -448,6 +542,8 @@ export interface WorkflowRun {
   agentCount: number;
   runningAgents: number;
   tokens: number;
+  cost: number; // estimated equivalent-API cost
+  costBasis: WorkflowCostBasis;
   toolCalls: number;
   defaultModel: string;
   project: string;
@@ -458,6 +554,21 @@ export interface WorkflowRun {
 export interface WorkflowsData {
   live: WorkflowRun[];
   recent: WorkflowRun[];
+}
+
+/** Path-free row safe to hand to the UI or a model. */
+export interface WorkflowRunSummary {
+  name: string;
+  project: string;
+  status: 'completed' | 'failed' | 'unknown';
+  tokens: number;
+  cost: number;
+  costBasis: WorkflowCostBasis;
+  agentCount: number;
+  toolCalls: number;
+  durationMs: number;
+  startedAt: number;
+  defaultModel: string;
 }
 
 /** All-time aggregate over every final workflow journal on disk (`/api/workflows/stats`). */
@@ -473,6 +584,8 @@ export interface WorkflowStats {
   estCostUsd: number; // rough blended equivalent-API estimate
   totalToolCalls: number;
   busiestDay: { day: number; count: number } | null; // day = local-midnight ms
+  topRunsByCost: WorkflowRunSummary[]; // all-time, cost desc — `recent` only covers 90d/200 runs
+  recentRuns: WorkflowRunSummary[]; // all-time, newest first — same rows, no full journal parse
 }
 
 // ── AI Insights ──────────────────────────────────────────────────────────────
@@ -578,61 +691,3 @@ export interface SearchResult {
   matches: number;
 }
 
-
-// ── Auto-resume after usage-limit reset (mirrors server/auto-resume.ts) ─────
-
-export type AutoResumeMode = 'off' | 'once' | 'always';
-export type AutoResumePermission = 'inherit' | 'plan' | 'acceptEdits' | 'auto' | 'bypassPermissions';
-export type ResumeJobStatus = 'pending' | 'claimed' | 'done' | 'failed' | 'skipped' | 'cancelled';
-export type ResumeWindowKind = 'session' | 'weekly';
-
-export interface ResumeJob {
-  /** `${windowKind}:${resetsAtMs}:${sessionId}` — one job per interrupted session. */
-  id: string;
-  windowKind: ResumeWindowKind;
-  sessionId: string;
-  projectPath: string;
-  sessionFile: string;
-  prompt: string;
-  permission: AutoResumePermission;
-  /** Extra --allowedTools grants for the headless run ('' = none). */
-  allowedTools: string;
-  resetsAt: number;
-  resumeAt: number;
-  createdAt: number;
-  status: ResumeJobStatus;
-  claimedAt: number | null;
-  claimedBy: string | null;
-  finishedAt: number | null;
-  exitCode: number | null;
-  message: string | null;
-}
-
-export interface AutoResumeLimitSnapshot {
-  utilization: number | null;
-  resetsAt: string | null;
-  checkedAt: number;
-}
-
-export interface AutoResumeState {
-  configured: boolean;
-  mode: AutoResumeMode;
-  prompt: string;
-  armed: boolean;
-  triggerWeekly: boolean;
-  permission: AutoResumePermission;
-  allowedTools: string;
-  limit: AutoResumeLimitSnapshot | null;
-  weeklyLimit: AutoResumeLimitSnapshot | null;
-  /** Active (pending/claimed) jobs — one per interrupted session, soonest first. */
-  jobs: ResumeJob[];
-  /** Terminal jobs, newest first (capped at 20). */
-  history: ResumeJob[];
-  watcher: { online: boolean; lastSeenAt: number | null; id: string | null };
-  internalExecutor: boolean;
-  /** Host path of the repo (dev: backend cwd; Docker: HOST_REPO_DIR or null). */
-  repoDir: string | null;
-  /** bypassPermissions usable? true/false, or null = can't determine. */
-  bypassAvailable: boolean | null;
-  serverNow: number;
-}

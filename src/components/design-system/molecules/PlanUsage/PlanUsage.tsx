@@ -22,13 +22,45 @@ const MODEL_COLORS: Record<string, string> = {
 };
 const DEFAULT_MODEL_COLOR = '#22d3ee';
 
-export function PlanUsage({ block, weekly, liveUsage, weekStart, tier }: PlanUsageProps) {
+// Anthropic's display_name is a plain family word today ("Opus"), but a generation
+// may get appended ("Opus 5") — match the family out of it rather than keying on the
+// whole string, which would silently drop every bar to DEFAULT_MODEL_COLOR.
+function modelBarColor(displayName: string): string {
+  const family = displayName.match(/fable|mythos|opus|sonnet|haiku/i)?.[0].toLowerCase();
+  const key = family && family[0].toUpperCase() + family.slice(1);
+  return (key && MODEL_COLORS[key]) || DEFAULT_MODEL_COLOR;
+}
+
+// Default copy — the Claude.ai wording. Callers for another plan system (the
+// Codex tab) override these via `help` / `labels` without touching this file.
+const DEFAULT_HELP =
+  "Your live subscription rate-limit ceilings from Claude.ai: the 5-hour window plus the weekly all-models, per-model and Cowork caps, each with % used and time to reset. Pulled from Anthropic's usage API — these are surfaced for awareness, not enforced.";
+const DEFAULT_BLOCK_LABEL = '5-hour limit';
+const DEFAULT_WEEKLY_LABEL = 'Weekly · all models';
+
+export function PlanUsage({
+  block,
+  weekly,
+  liveUsage,
+  weekStart,
+  tier,
+  accountLabel,
+  active,
+  help,
+  labels,
+  note,
+}: PlanUsageProps) {
   const [, forceUpdate] = useState(0);
 
   useEffect(() => {
     const timer = setInterval(() => forceUpdate((n) => n + 1), 60000); // refresh every minute for timers
     return () => clearInterval(timer);
   }, []);
+
+  const tierLabel = tier ? tier.replace(/_/g, ' ').toUpperCase() : null;
+  const cardClass = `card p-5 flex flex-col justify-between flex-none${active ? ' ring-1 ring-clay-500/40' : ''}`;
+  const title = accountLabel ?? 'Plan usage';
+  const titleSpanClass = accountLabel ? 'truncate normal-case' : 'uppercase';
 
   const now = Date.now();
 
@@ -80,7 +112,7 @@ export function PlanUsage({ block, weekly, liveUsage, weekStart, tier }: PlanUsa
         .filter((l) => l.group === 'weekly' && l.kind === 'weekly_scoped' && l.scope?.model?.display_name)
         .map((l) => {
           const name = l.scope!.model!.display_name!;
-          return { label: `Weekly · ${name}`, pct: Math.round(l.percent), resetsAt: l.resets_at, color: MODEL_COLORS[name] ?? DEFAULT_MODEL_COLOR };
+          return { label: `Weekly · ${name}`, pct: Math.round(l.percent), resetsAt: l.resets_at, color: modelBarColor(name) };
         })
     : [];
 
@@ -96,17 +128,15 @@ export function PlanUsage({ block, weekly, liveUsage, weekStart, tier }: PlanUsa
 
   const modelLimits: WeeklyModelBar[] = scopedFromLimits.length ? scopedFromLimits : legacyModelLimits;
 
-  const tierLabel = tier ? tier.replace(/_/g, ' ').toUpperCase() : null;
-
   return (
-    <div className="card p-5 flex flex-col justify-between flex-none">
-      <div className="mb-4 flex items-center justify-between">
-        <h3 className="flex items-center gap-1.5 text-sm font-bold uppercase tracking-wider text-zinc-300">
-          Plan usage
-          <InfoTip text="Your live subscription rate-limit ceilings from Claude.ai: the 5-hour window plus the weekly all-models, per-model and Cowork caps, each with % used and time to reset. Pulled from Anthropic's usage API — these are surfaced for awareness, not enforced." />
+    <div className={cardClass}>
+      <div className="mb-4 flex items-center justify-between gap-2">
+        <h3 className="flex min-w-0 items-center gap-1.5 text-sm font-bold tracking-wider text-zinc-300">
+          <span className={titleSpanClass}>{title}</span>
+          <InfoTip text={help ?? DEFAULT_HELP} />
         </h3>
         {tierLabel ? (
-          <span className="rounded-full bg-white/5 px-2 py-0.5 font-mono text-[10px] uppercase tracking-wide text-zinc-400 ring-1 ring-white/10">
+          <span className="shrink-0 rounded-full bg-white/5 px-2 py-0.5 font-mono text-[10px] uppercase tracking-wide text-zinc-400 ring-1 ring-white/10">
             {tierLabel}
           </span>
         ) : (
@@ -118,7 +148,7 @@ export function PlanUsage({ block, weekly, liveUsage, weekStart, tier }: PlanUsa
         {/* 5-hour limit row */}
         <div className="space-y-1.5">
           <div className="flex justify-between items-center text-xs">
-            <span className="font-semibold text-zinc-200">5-hour limit</span>
+            <span className="font-semibold text-zinc-200">{labels?.block ?? DEFAULT_BLOCK_LABEL}</span>
             <span className="text-zinc-400 font-mono">
               {blockPct}% <span className="text-zinc-600 font-sans">·</span> resets {blockResetStr}
               {!noActiveBlock && <span className="text-zinc-600"> · {dateTimeLabel(blockResetsAt)}</span>}
@@ -130,7 +160,7 @@ export function PlanUsage({ block, weekly, liveUsage, weekStart, tier }: PlanUsa
         {/* Weekly limit row */}
         <div className="space-y-1.5">
           <div className="flex justify-between items-center text-xs">
-            <span className="font-semibold text-zinc-200">Weekly · all models</span>
+            <span className="font-semibold text-zinc-200">{labels?.weekly ?? DEFAULT_WEEKLY_LABEL}</span>
             <span className="text-zinc-400 font-mono">
               {weeklyPct}% <span className="text-zinc-600 font-sans">·</span> resets {weeklyResetStr}
               {!noActiveWeekly && <span className="text-zinc-600"> · {dateTimeLabel(weeklyResetsAt)}</span>}
@@ -166,6 +196,7 @@ export function PlanUsage({ block, weekly, liveUsage, weekStart, tier }: PlanUsa
           );
         })}
       </div>
+      {note && <p className="mt-3 text-[11px] text-zinc-500">{note}</p>}
     </div>
   );
 }

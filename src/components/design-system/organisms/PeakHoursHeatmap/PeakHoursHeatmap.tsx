@@ -2,11 +2,12 @@ import { useState } from 'react';
 import { HoverTooltip } from '@/components/design-system/molecules/HoverTooltip/HoverTooltip';
 import { compact } from '@/lib/format';
 import type { PeakHoursHeatmapProps } from './types';
-import { DAYS, HOURS, dayOrder, formatHour } from './utils';
+import { DAYS, FULL_DAYS, HOURS, dayOrder, formatHour, peakCell } from './utils';
 
 export function PeakHoursHeatmap({ grid, weekStart }: PeakHoursHeatmapProps) {
   const [tooltip, setTooltip] = useState<{ day: number; hour: number; value: number } | null>(null);
   const rows = dayOrder(weekStart);
+  const peak = peakCell(grid);
 
   // Find global max for intensity scaling
   const allValues = grid.flat();
@@ -22,6 +23,16 @@ export function PeakHoursHeatmap({ grid, weekStart }: PeakHoursHeatmapProps) {
 
   return (
     <div className="relative select-none">
+      {peak && (
+        <p className="mb-3 text-xs text-zinc-500">
+          Your busiest time is{' '}
+          <span className="font-semibold text-zinc-300">
+            {FULL_DAYS[peak.day]} at {formatHour(peak.hour)}
+          </span>{' '}
+          — <span className="font-mono text-clay-400">{compact(peak.value)}</span> effective tokens.
+        </p>
+      )}
+
       {/* Hour labels */}
       <div className="flex mb-1 ml-10">
         {HOURS.map((h) => (

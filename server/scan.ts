@@ -1,8 +1,6 @@
-import { createReadStream } from 'node:fs';
-import { readdir, stat, readFile } from 'node:fs/promises';
+import { readdir, readFile, writeFile, rename } from 'node:fs/promises';
 import { homedir, platform } from 'node:os';
 import { join } from 'node:path';
-import { createInterface } from 'node:readline';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { isDocker } from './version.ts';
@@ -11,7 +9,7 @@ const execFileAsync = promisify(execFile);
 
 const CLAUDE_CODE_UA = 'claude-code/2.1.199'; // keep roughly in step with the CLI
 
-export type UsageSource = 'code' | 'cowork';
+export type UsageSource = 'code' | 'cowork' | 'codex';
 
 export interface UsageEvent {
   ts: number; // epoch ms
@@ -32,11 +30,20 @@ export interface UsageEvent {
   attributionPlugin: string; // plugin this request ran under
   projectPath: string; // decoded path of the project directory
   gitBranch: string; // git branch at the time of the message ('' if unknown)
-  source: UsageSource; // 'code' = Claude Code CLI, 'cowork' = desktop local-agent mode
+  source: UsageSource; // 'code' = Claude Code CLI, 'cowork' = desktop local-agent mode, 'codex' = OpenAI Codex (ChatGPT desktop)
 }
 
 export function claudeDir(): string {
   return process.env.CLAUDE_DIR || join(homedir(), '.claude');
+}
+
+/**
+ * OpenAI Codex home — the ChatGPT desktop app's coding agent writes its rollouts,
+ * auth and sidecars here. Same path on every OS; `CODEX_HOME` is Codex's own
+ * override and `CODEX_DIR` ours (used by the Docker mount).
+ */
+export function codexDir(): string {
+  return process.env.CODEX_DIR || process.env.CODEX_HOME || join(homedir(), '.codex');
 }
 
 function projectsDir(): string {
@@ -72,13 +79,22 @@ export interface ScanRoot {
 
 /**
  * The directories scanned for usage events. Always the Claude Code projects dir;
- * plus the Cowork desktop root when it exists on disk. Both the main scanner and
- * the insights scanner walk this same list so the two stay in sync.
+ * plus the Cowork desktop root when it exists on disk; plus the Codex sessions
+ * tree. Both the main scanner and the insights scanner walk this same list so the
+ * two stay in sync.
+ *
+ * The codex root is pushed unconditionally — the walk swallows a missing dir, and
+ * keepScanFile() admits only `rollout-*.jsonl`, so a machine without Codex yields
+ * zero codex files. Merge order within a root is the sorted path list, and several
+ * session fields are "first file wins": that relies on a parent rollout sorting
+ * before its guardian children, which holds because both live in the same
+ * YYYY/MM/DD tree and the parent is always created first.
  */
 export function scanRoots(): ScanRoot[] {
   const roots: ScanRoot[] = [{ dir: projectsDir(), source: 'code' }];
   const cw = coworkDir();
   if (cw) roots.push({ dir: cw, source: 'cowork' });
+  roots.push({ dir: join(codexDir(), 'sessions'), source: 'codex' });
   return roots;
 }
 
@@ -86,193 +102,22 @@ export function scanRoots(): ScanRoot[] {
  * Cowork roots contain metadata (`local_*.json`), audit logs (`audit.jsonl`) and
  * the nested `.claude/projects/` transcripts. Only the latter carry token usage,
  * so cowork files are kept only when their path sits under a `.claude/projects/`
- * segment. Code files are always kept.
+ * segment. Code files are always kept. Codex roots are kept only for
+ * `rollout-*.jsonl` transcripts — that name guard is what lets the Docker compose
+ * fallback (mounting `.claude` at the codex path) yield zero codex files.
  */
 export function keepScanFile(file: string, source: UsageSource): boolean {
   if (source === 'code') return true;
+  if (source === 'codex') return /[\\/]rollout-[^\\/]*\.jsonl$/i.test(file);
   return /[\\/]\.claude[\\/]projects[\\/]/.test(file);
 }
 
-async function listJsonl(dir: string, source: UsageSource = 'code'): Promise<string[]> {
-  let entries: string[] = [];
-  let dirents;
-  try {
-    dirents = await readdir(dir, { withFileTypes: true });
-  } catch {
-    return [];
-  }
-  for (const d of dirents) {
-    const full = join(dir, d.name);
-    if (d.isDirectory()) {
-      entries = entries.concat(await listJsonl(full, source));
-    } else if (d.isFile() && d.name.endsWith('.jsonl') && keepScanFile(full, source)) {
-      entries.push(full);
-    }
-  }
-  return entries;
-}
-
-/** Newest mtime across all scanned jsonl files — a cheap cache-invalidation signal. */
-export async function projectsFingerprint(): Promise<number> {
-  const fileLists = await Promise.all(scanRoots().map((r) => listJsonl(r.dir, r.source)));
-  const files = fileLists.flat();
-  let newest = 0;
-  await Promise.all(
-    files.map(async (f) => {
-      try {
-        const s = await stat(f);
-        if (s.mtimeMs > newest) newest = s.mtimeMs;
-      } catch {
-        /* ignore */
-      }
-    })
-  );
-  return newest;
-}
+// The recursive walk, the fingerprint and the JSONL parser that used to live here
+// now belong to scan-pass.ts, which does one pass feeding both usage and insights.
+// This module keeps the path/root helpers above and the sidecar/network readers below.
 
 function num(v: unknown): number {
   return typeof v === 'number' && Number.isFinite(v) ? v : 0;
-}
-
-async function parseFile(
-  file: string,
-  seen: Map<string, number>,
-  out: UsageEvent[],
-  sessionPathMap?: Map<string, string>,
-  source: UsageSource = 'code'
-): Promise<void> {
-  // Derive the OS path from the JSONL file path.
-  // Claude encodes project dirs as: <drive-letter>--<path-segments-joined-by-->
-  // e.g.  E--dev-projects-claude-dashboard  →  e:\dev-projects\claude-dashboard
-  //       C--Users-Iftah-Saar-Desktop--Dev-Projects-my-landing-page-2026  →  c:\...
-  // Rule: '--' is the OS path separator; single '-' stays as a literal dash.
-  // Cowork transcripts encode a sandbox-internal path that is meaningless on the
-  // host, so we leave projectPath empty for them (keeps them out of the Projects tab).
-  let projectPath = '';
-  if (source === 'cowork') {
-    // skip decoding — sandbox path is not a real host project
-  } else try {
-    const parts = file.replace(/\\/g, '/').split('/');
-    const projIdx = parts.lastIndexOf('projects');
-    if (projIdx !== -1 && parts[projIdx + 1]) {
-      const encoded = decodeURIComponent(parts[projIdx + 1]);
-      // Detect Windows-style encoding: starts with a drive letter followed by '--'
-      if (/^[A-Za-z]--/.test(encoded)) {
-        // Replace '--' with '\' and prefix with drive letter
-        const letter = encoded[0].toLowerCase();
-        const rest = encoded.slice(3).replace(/--/g, '\\');
-        projectPath = `${letter}:\\${rest}`;
-      } else {
-        // Unix-style: '--' → '/', single '-' stays
-        projectPath = '/' + encoded.replace(/--/g, '/');
-      }
-    }
-  } catch { /* keep empty */ }
-  // A file under a `subagents/` segment is a subagent (Task) transcript — mirrors
-  // insights-scan's isSubagentFile(). Used to attribute cost to subagent usage.
-  const fileIsSidechain = /(^|[\\/])subagents([\\/])/.test(file);
-  // The parent that spawned these subagents is the path segment before `subagents/`
-  // (…/<parentSessionId>/subagents/…) — lets us roll subagent cost up to its session.
-  const parentFromPath = file.replace(/\\/g, '/').match(/\/([^/]+)\/subagents\//)?.[1] ?? '';
-  const rl = createInterface({
-    input: createReadStream(file, { encoding: 'utf8' }),
-    crlfDelay: Infinity,
-  });
-  for await (const line of rl) {
-    if (!line || line.length < 2) continue;
-    let obj: any;
-    try {
-      obj = JSON.parse(line);
-    } catch {
-      continue;
-    }
-    if (obj?.type !== 'assistant') continue;
-    const usage = obj?.message?.usage;
-    if (!usage) continue;
-
-    const key = `${obj.requestId ?? ''}:${obj.message?.id ?? ''}`;
-
-    const ts = Date.parse(obj.timestamp);
-    if (Number.isNaN(ts)) continue;
-
-    const tools: string[] = [];
-    const content = obj.message?.content;
-    if (Array.isArray(content)) {
-      for (const block of content) {
-        if (block?.type === 'tool_use' && typeof block.name === 'string') tools.push(block.name);
-      }
-    }
-
-    const attrStr = (v: unknown): string => (typeof v === 'string' ? v : '');
-
-    const sessionId = obj.sessionId ?? obj.session_id ?? '';
-    const resolvedProjectPath = (source === 'code' && sessionPathMap && sessionId)
-      ? (sessionPathMap.get(sessionId) ?? projectPath)
-      : projectPath;
-    const gitBranch: string = typeof obj.gitBranch === 'string' ? obj.gitBranch : '';
-
-    const event: UsageEvent = {
-      ts,
-      sessionId,
-      model: obj.message?.model ?? 'unknown',
-      inputTokens: num(usage.input_tokens),
-      outputTokens: num(usage.output_tokens),
-      cacheCreateTokens: num(usage.cache_creation_input_tokens),
-      cacheReadTokens: num(usage.cache_read_input_tokens),
-      tools,
-      isSidechain: fileIsSidechain || obj.isSidechain === true,
-      rootSessionId: (fileIsSidechain && parentFromPath) ? parentFromPath : sessionId,
-      attributionAgent: attrStr(obj.attributionAgent),
-      attributionSkill: attrStr(obj.attributionSkill),
-      attributionMcpServer: attrStr(obj.attributionMcpServer),
-      attributionPlugin: attrStr(obj.attributionPlugin),
-      projectPath: resolvedProjectPath,
-      gitBranch,
-      source,
-    };
-
-    // Dedup: same logical response can appear multiple times (retries/streaming).
-    // Early duplicates carry placeholder usage; keep whichever reports the most
-    // effective tokens (input + output + cacheCreate), not the first seen.
-    if (key !== ':') {
-      const existingIdx = seen.get(key);
-      if (existingIdx !== undefined) {
-        const prev = out[existingIdx];
-        const prevEff = prev.inputTokens + prev.outputTokens + prev.cacheCreateTokens;
-        const nextEff = event.inputTokens + event.outputTokens + event.cacheCreateTokens;
-        if (nextEff > prevEff) out[existingIdx] = event;
-        continue;
-      }
-      seen.set(key, out.length);
-    }
-
-    out.push(event);
-  }
-}
-
-/** Scan all session JSONL, dedup, return events sorted ascending by time. */
-export async function scanEvents(): Promise<UsageEvent[]> {
-  const sessions = await readSessionMetas();
-  const sessionPathMap = new Map<string, string>();
-  for (const s of sessions) {
-    if (s?.session_id && s?.project_path) {
-      sessionPathMap.set(s.session_id, s.project_path);
-    }
-  }
-
-  // Shared dedup map across all roots: a session's cliSessionId can write to both
-  // the global projects dir and a cowork root, and the requestId:message.id key
-  // collapses those into one event regardless of which root it came from.
-  const seen = new Map<string, number>();
-  const out: UsageEvent[] = [];
-  for (const root of scanRoots()) {
-    const files = await listJsonl(root.dir, root.source);
-    for (const f of files) {
-      await parseFile(f, seen, out, sessionPathMap, root.source);
-    }
-  }
-  out.sort((a, b) => a.ts - b.ts);
-  return out;
 }
 
 export async function readConfig(): Promise<any> {
@@ -353,6 +198,80 @@ export async function readCredentials(): Promise<any> {
 }
 
 /**
+ * One captured token from the ring, plus whether it's the account currently in
+ * the shared Keychain/cache slot (what `readCredentials()` returns). The token
+ * blob carries NO stable account id — org/account/email come only from the OAuth
+ * profile — so identity resolution + per-account dedup happens at serve time in
+ * the `/api/accounts/live` handler, not here.
+ */
+export interface CapturedToken {
+  claudeAiOauth: any;
+  capturedAt: number;
+  isActive: boolean;
+}
+
+const ACCOUNTS_FILE = '.dashboard-accounts.json';
+const MAX_RECORDED_TOKENS = 8;
+
+async function readTokenRing(): Promise<any[]> {
+  try {
+    const parsed = JSON.parse(await readFile(join(claudeDir(), ACCOUNTS_FILE), 'utf8'));
+    return Array.isArray(parsed?.tokens)
+      ? parsed.tokens.filter((t: any) => t?.claudeAiOauth?.accessToken)
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Host-only: append the currently-active token to the ring so an account keeps
+ * showing after you switch away from it (Claude Code shares one Keychain slot,
+ * so the next login overwrites it). Deduped by accessToken, capped, network-free
+ * — mirrors `recordToken()` in `sync-macos-keychain.mjs`. Skipped in Docker: the
+ * `~/.claude` mount is read-only there, so the host sync script owns capture,
+ * exactly like `.dashboard-oauth-cache.json`. Best-effort — never throws.
+ */
+async function captureActiveToken(primary: any): Promise<void> {
+  if (isDocker()) return;
+  const oauth = primary?.claudeAiOauth;
+  if (!oauth?.accessToken) return;
+  try {
+    const tokens = await readTokenRing();
+    if (tokens.some((t) => t.claudeAiOauth.accessToken === oauth.accessToken)) return;
+    tokens.unshift({ claudeAiOauth: oauth, capturedAt: Date.now() });
+    const filePath = join(claudeDir(), ACCOUNTS_FILE);
+    const tmp = `${filePath}.tmp`;
+    await writeFile(tmp, JSON.stringify({ tokens: tokens.slice(0, MAX_RECORDED_TOKENS) }, null, 2), { encoding: 'utf8', mode: 0o600 });
+    await rename(tmp, filePath);
+  } catch {
+    // best-effort — never break the request path over a token snapshot
+  }
+}
+
+/**
+ * Every captured token the dashboard knows about (the ring) plus the
+ * currently-active one folded in, so the active account shows even before the
+ * ring is first written (e.g. Docker before the first sync captures it). The
+ * `/api/accounts/live` handler resolves identity and dedups these into accounts.
+ */
+export async function readAccountCredentials(): Promise<CapturedToken[]> {
+  const primary = await readCredentials();
+  await captureActiveToken(primary);
+
+  const primaryToken = primary?.claudeAiOauth?.accessToken;
+  const list: CapturedToken[] = (await readTokenRing()).map((t) => ({
+    claudeAiOauth: t.claudeAiOauth,
+    capturedAt: t.capturedAt ?? 0,
+    isActive: t.claudeAiOauth.accessToken === primaryToken,
+  }));
+  if (primaryToken && !list.some((t) => t.isActive)) {
+    list.unshift({ claudeAiOauth: primary.claudeAiOauth, capturedAt: Date.now(), isActive: true });
+  }
+  return list;
+}
+
+/**
  * User-facing "token expired" advice differs by runtime: on the host, running
  * any Claude Code command refreshes the Keychain/.credentials.json in place —
  * but the Docker container reads a host-written snapshot, so only re-syncing
@@ -404,15 +323,10 @@ export async function readSessionMetas(): Promise<any[]> {
   }
 }
 
-let cachedLiveUsage: {
-  data: any;
-  fetchedAt: number;
-} | null = null;
-
-let cachedLiveProfile: {
-  data: any;
-  fetchedAt: number;
-} | null = null;
+// Keyed by account (organizationUuid) so a second account can be cached
+// alongside the first — the multi-account live view fetches one entry per token.
+const liveUsageCache = new Map<string, { data: any; fetchedAt: number }>();
+const liveProfileCache = new Map<string, { data: any; fetchedAt: number }>();
 
 const CACHE_TTL = 30000; // 30 seconds local cache to avoid rate limit issues
 const PROFILE_TTL = 30 * 60 * 1000; // 30 min — the plan changes rarely
@@ -444,25 +358,28 @@ async function oauthGet(url: string, accessToken: string): Promise<Response> {
   return res;
 }
 
-export async function fetchLiveUsage(): Promise<any> {
-  if (cachedLiveUsage && (Date.now() - cachedLiveUsage.fetchedAt < CACHE_TTL)) {
-    return cachedLiveUsage.data;
+/**
+ * Live usage for a specific token, cached per `key` (an account/org id). The
+ * no-arg `fetchLiveUsage()` below wraps this for the currently-active account so
+ * `/api/usage/live` behaves exactly as before; `/api/accounts/live` calls it
+ * once per captured account.
+ */
+export async function fetchLiveUsageFor(accessToken: string, key: string, expiresAt?: number): Promise<any> {
+  const cached = liveUsageCache.get(key);
+  if (cached && (Date.now() - cached.fetchedAt < CACHE_TTL)) {
+    return cached.data;
   }
-
-  const credentials = await readCredentials();
-  if (!credentials?.claudeAiOauth?.accessToken) {
+  if (!accessToken) {
     throw new Error('No access token found in credentials');
   }
-
-  const expiresAt = credentials.claudeAiOauth.expiresAt;
   if (expiresAt && Date.now() >= expiresAt) {
     throw new Error(expiredTokenMessage());
   }
 
-  // OAUTH_API_BASE: test-only override so the auto-resume detection loop can be
-  // driven end-to-end by a local mock without exhausting a real limit.
+  // OAUTH_API_BASE: test-only override so live-usage detection can be driven
+  // end-to-end by a local mock without exhausting a real limit.
   const url = `${process.env.OAUTH_API_BASE || 'https://api.anthropic.com'}/api/oauth/usage`;
-  const res = await oauthGet(url, credentials.claudeAiOauth.accessToken);
+  const res = await oauthGet(url, accessToken);
   if (res.status === 401) {
     // Expiry the local expiresAt check misses (clock skew, server-side
     // revocation) — word it as "expired" so the frontend classifies it right.
@@ -476,11 +393,17 @@ export async function fetchLiveUsage(): Promise<any> {
   }
 
   const data = await res.json();
-  cachedLiveUsage = {
-    data,
-    fetchedAt: Date.now(),
-  };
+  liveUsageCache.set(key, { data, fetchedAt: Date.now() });
   return data;
+}
+
+export async function fetchLiveUsage(): Promise<any> {
+  const credentials = await readCredentials();
+  const oauth = credentials?.claudeAiOauth;
+  if (!oauth?.accessToken) {
+    throw new Error('No access token found in credentials');
+  }
+  return fetchLiveUsageFor(oauth.accessToken, oauth.accessToken, oauth.expiresAt);
 }
 
 /**
@@ -489,18 +412,15 @@ export async function fetchLiveUsage(): Promise<any> {
  * `.credentials.json`, which goes stale after a plan change until the next login.
  * Cached 30 min; throws (caller falls back to the local file) when offline/expired.
  */
-export async function fetchLiveProfile(): Promise<any> {
-  if (cachedLiveProfile && (Date.now() - cachedLiveProfile.fetchedAt < PROFILE_TTL)) {
-    return cachedLiveProfile.data;
+/** Live profile for a specific token, cached per `key`. See `fetchLiveUsageFor`. */
+export async function fetchLiveProfileFor(accessToken: string, key: string, expiresAt?: number): Promise<any> {
+  const cached = liveProfileCache.get(key);
+  if (cached && (Date.now() - cached.fetchedAt < PROFILE_TTL)) {
+    return cached.data;
   }
-
-  const credentials = await readCredentials();
-  const accessToken = credentials?.claudeAiOauth?.accessToken;
   if (!accessToken) {
     throw new Error('No access token found in credentials');
   }
-
-  const expiresAt = credentials.claudeAiOauth.expiresAt;
   if (expiresAt && Date.now() >= expiresAt) {
     throw new Error(expiredTokenMessage());
   }
@@ -511,8 +431,17 @@ export async function fetchLiveProfile(): Promise<any> {
   }
 
   const data = await res.json();
-  cachedLiveProfile = { data, fetchedAt: Date.now() };
+  liveProfileCache.set(key, { data, fetchedAt: Date.now() });
   return data;
+}
+
+export async function fetchLiveProfile(): Promise<any> {
+  const credentials = await readCredentials();
+  const oauth = credentials?.claudeAiOauth;
+  if (!oauth?.accessToken) {
+    throw new Error('No access token found in credentials');
+  }
+  return fetchLiveProfileFor(oauth.accessToken, oauth.accessToken, oauth.expiresAt);
 }
 
 // ── LiteLLM gateway: actual billed cost ──────────────────────────────────────
@@ -663,7 +592,7 @@ async function fetchLiteLlmBase(days = 7): Promise<LiteLlmBase> {
     entry.requests += num(mx.api_requests);
     entry.successful += num(mx.successful_requests);
     // Per-model spend is nested under `.metrics.spend`; keys carry a provider prefix
-    // (e.g. "vertex_ai/claude-opus-4-8") which we strip and merge for display.
+    // (e.g. "vertex_ai/claude-opus-5") which we strip and merge for display.
     const models = r?.breakdown?.models ?? {};
     for (const [m, v] of Object.entries<any>(models)) {
       const name = m.includes('/') ? m.slice(m.lastIndexOf('/') + 1) : m;

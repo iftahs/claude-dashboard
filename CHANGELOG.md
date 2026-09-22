@@ -5,6 +5,137 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.26] - 2026-09-08
+
+### Added
+- OpenAI Codex (ChatGPT desktop) as a second platform. The rollouts under ~/.codex are
+  parsed into the same event pipeline (source: codex), and a Claude / Codex / Both
+  switcher in the header re-points the whole dashboard — every tab reads the selected
+  platform, so there is no separate Codex tab. Guardian auto-review threads fold into
+  their parent. The original Code / Cowork / All source toggle stays as a Claude-side
+  sub-filter, and users with no ~/.codex never see the switcher at all.
+- Under Codex: live 5-hour / weekly limits, plan tier, credits and reset credits (read
+  with the token the app stores, never refreshed; passive fallback from the newest
+  rollout when offline), running threads and guardian reviews with the Claude agents
+  treatment, and a server-vs-local daily token comparison. Claude-only destinations
+  (Workflows, Workspace) and panels (git branches, permission rejections,
+  slash commands) drop out instead of rendering empty.
+- Under Both: a Claude-vs-Codex daily chart, a three-way Claude Code / Cowork / Codex
+  sources split, per-platform sub-labels on the Trends spend cards, and both vendors'
+  rate cards on Models.
+- Pricing rows for gpt-5.5 / gpt-5.6 (sol, terra, luna) / gpt-6-astra; the internal
+  codex-auto-review model is unpriced. A violet palette family for GPT models.
+- CODEX_DIR / CODEX_DIR_HOST (auto-written by npm run docker:up, blank to opt out)
+  and a read-only /data/.codex mount in docker-compose.
+
+### Fixed
+- The scan fingerprint now folds in total bytes, so a file that grows without its
+  mtime changing (Codex guardian rollouts) no longer leaves memoised aggregates stale.
+
+### Removed
+- The Auto-Resume feature (Auto-Resume page, `/api/auto-resume/*`, the host
+  resume-watcher scripts and the `HOST_REPO_DIR` env). It was unreliable and Claude
+  Code now handles limit resets itself. `~/.claude-dashboard-auto-resume.json` can be
+  deleted.
+
+## [0.1.25] - 2026-09-07
+
+### Added
+- Claude Fable 5.1 support: its own pricing row (cache reads are $0.25/MTok, a quarter
+  of Fable 5, so cached-heavy Fable 5.1 sessions were overstated), a distinct red
+  palette step so 5 and 5.1 are separable in one chart, a Cost Calculation row, and
+  the model in the AI Insights picker.
+
+### Changed
+- AI Insights requests to Fable / Mythos (5 and 5.1) send `output_config.effort: low`
+  — they always think and share `max_tokens` with the answer, and reject every
+  explicit `thinking` setting — and a `refusal` stop reason now surfaces as a named
+  error instead of "Empty response from model".
+
+## [0.1.24] - 2026-07-25
+
+### Added
+- Claude Opus 5 support across pricing, colors, labels and the Models tab. It was
+  previously falling through to the legacy-Opus row and billing at $15/$75 instead of
+  $5/$25, overstating every cost figure in the app by 3×.
+- Busiest-hour and busiest-day summaries above the two Trends heatmaps.
+
+### Changed
+- Default AI Insights model is now Claude Opus 5. Because it thinks by default and
+  `max_tokens` covers thinking plus the answer, requests to models in that class now
+  disable thinking so short replies don't truncate.
+- Amber palette steps are ordered by generation rather than price, so Opus 5 and Opus
+  4.8 are distinguishable in the same chart.
+- `PlanUsage` matches the model family out of Anthropic's `display_name`, so per-model
+  weekly bars keep their color if the API starts reporting a generation with it.
+
+## [0.1.23] - 2026-07-21
+
+### Added
+- Show live plan and limits for each logged-in account in a side-by-side view.
+- Accumulate distinct tokens in a network-free JSON file for active Keychain logins.
+- Introduce a new API endpoint to resolve account identity and return live limits for each account.
+- Update the dashboard to display account-specific live usage when multiple accounts are known.
+
+## [0.1.22] - 2026-07-19
+
+### Added
+- Documents the scan pipeline and its parser pitfalls for better user understanding.
+- Introduces a cache named volume to persist scan data, enhancing performance during restarts.
+- Adds endpoint snapshot and cold-start measurement tools to ensure output consistency.
+
+### Changed
+- Optimizes tab loading by implementing code-splitting and deferring non-essential components, improving initial load times.
+- Refactors the scan process to cache parsed rows across restarts, significantly reducing cold start times.
+- Updates the Docker setup to use the latest node base image, improving compatibility with SQLite.
+- Changes JSON line splitting logic to prevent data loss in parsing, enhancing reliability.
+
+### Fixed
+- Corrects the insights deduplication guard logic, ensuring accurate counting of tool calls.
+- Resolves issues with JSON parsing that caused records containing special characters to fail.
+- Fixes session identification logic to ensure accurate UUID resolution for auto-resume functionality.
+
+## [0.1.21] - 2026-07-18
+
+### Added
+- Allow forks to redirect analytics to their own PostHog project by passing the VITE_POSTHOG_TOKEN and VITE_POSTHOG_HOST through build arguments, enabling custom reporting.
+- Tag analytics events with `app_version` and add an `app_opened` event to improve product analytics and ensure each session is reliably segmented.
+
+### Changed
+- Update .env.example to include documentation for new environment variables related to PostHog configuration.
+- Modify the Dockerfile and docker-compose.yml to support passing new build arguments for analytics customization.
+- Enhance the analytics module to fire new events with improved attributes, ensuring better data quality without collecting new user information.
+
+## [0.1.20] - 2026-07-16
+
+### Added
+- Introduced per-agent detail and phase/label attribution for live runs.
+- Added a new route to fetch detailed agent information lazily during workflows.
+- Enhanced `WorkflowAgentInfo` to include additional fields for better agent tracking.
+- Implemented UUID filter for session files during auto-resume.
+- Added grant arrays to job types and state schema.
+- Surfaced the current 5-hour limit utilization in the browser tab title.
+
+### Changed
+- Improved model color assignment per family in the palette, ensuring consistent representation across tabs.
+- Updated the AutoResumeView to reflect asynchronous spawn behavior accurately.
+- Refactored session file processing for better handling of temporary JSON settings. 
+
+### Fixed
+- Addressed issues with array grants in the auto-resume feature.
+- Fixed session transcript handling to skip non-UUID files.
+
+## [0.1.19] - 2026-07-14
+
+### Added
+- Display per-run cost and readable timestamps in the UI for better cost tracking.
+- Enable Insights chat to access every dashboard dataset for improved inquiries about workflow costs.
+- Include per-run estimated cost and all-time run rankings in the workflow data. 
+
+### Fixed
+- Correctly format run timestamps to show relative time more accurately.
+- Resolve chat UI issues preventing proper message handling and avoiding permanent "thinking…" states.
+
 ## [0.1.18] - 2026-07-13
 
 ### Fixed
@@ -220,6 +351,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Live-API fallback to the local logs when there is no active block
   (`resets_at = null`).
 
+[0.1.23]: https://github.com/iftahs/claude-dashboard/releases/tag/v0.1.23
+[0.1.22]: https://github.com/iftahs/claude-dashboard/releases/tag/v0.1.22
+[0.1.21]: https://github.com/iftahs/claude-dashboard/releases/tag/v0.1.21
+[0.1.20]: https://github.com/iftahs/claude-dashboard/releases/tag/v0.1.20
+[0.1.19]: https://github.com/iftahs/claude-dashboard/releases/tag/v0.1.19
 [0.1.18]: https://github.com/iftahs/claude-dashboard/releases/tag/v0.1.18
 [0.1.17]: https://github.com/iftahs/claude-dashboard/releases/tag/v0.1.17
 [0.1.16]: https://github.com/iftahs/claude-dashboard/releases/tag/v0.1.16

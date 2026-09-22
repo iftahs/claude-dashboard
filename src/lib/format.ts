@@ -15,7 +15,15 @@ export function shortModel(model: string): string {
   return model
     .replace(/^claude-/, '')
     .replace(/-\d{8}$/, '')
-    .replace(/-(\d)-(\d)$/, ' $1.$2');
+    .replace(/-(\d)-(\d)$/, ' $1.$2')
+    .replace(/-(\d)$/, ' $1'); // single-digit generations: opus-5 → "opus 5"
+}
+
+/** `mcp__chrome-devtools__click` → `chrome-devtools · click`; builtin names unchanged. */
+export function toolLabel(name: string): string {
+  const m = name.match(/^mcp__(.+)__([^_]+(?:_[^_]+)*)$/);
+  if (!m) return name;
+  return `${m[1].replace(/^claude_ai_/, '').replace(/_/g, ' ')} · ${m[2]}`;
 }
 
 export function hourLabel(ms: number): string {
@@ -38,6 +46,17 @@ export function ago(ms: number): string {
   const m = Math.round(s / 60);
   if (m < 60) return `${m}m ago`;
   return `${Math.round(m / 60)}h ago`;
+}
+
+/** Relative inside 24h, absolute date+time beyond it — "385h ago" is unreadable. */
+export function timeAgoOrDate(ms: number): string {
+  const s = Math.max(0, Math.round((Date.now() - ms) / 1000));
+  if (s < 60) return `${s}s ago`;
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m}m ago`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h ${m % 60}m ago`;
+  return dateTimeLabel(ms);
 }
 
 export function untilLabel(ms: number): string {

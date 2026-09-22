@@ -2,13 +2,21 @@ import { useEffect, useRef, useState } from 'react';
 import { useAiChat } from '@/hooks/useAiChat';
 import { PROVIDER_MODELS } from '@/hooks/useAiConfig';
 import { Markdown } from '@/components/design-system/atoms/Markdown/Markdown';
+import { ToggleGroup } from '@/components/design-system/atoms/ToggleGroup/ToggleGroup';
 import type { AiChatProps } from './types';
 
 const SUGGESTIONS = [
-  'Which project costs the most?',
-  'Am I retrying edits too much?',
+  'Which workflow cost me the most?',
   "What's my error-rate trend?",
-  'Which model should I use less?',
+  'Which project costs the most?',
+  'Am I close to my weekly limit?',
+];
+
+type DayOption = '7' | '30' | '90';
+const DAY_OPTIONS: { value: DayOption; label: string }[] = [
+  { value: '7', label: '7d' },
+  { value: '30', label: '30d' },
+  { value: '90', label: '90d' },
 ];
 
 const BACKEND_NOTE: Record<string, string> = {
@@ -18,13 +26,14 @@ const BACKEND_NOTE: Record<string, string> = {
   none: '',
 };
 
-export function AiChat({ status, config, onChangeConfig, onAsked, onOpenSettings }: AiChatProps) {
+export function AiChat({ status, config, source, onChangeConfig, onAsked, onOpenSettings }: AiChatProps) {
   const { messages, loading, suggestions, send, reset } = useAiChat();
   const modelOptions = (() => {
     const list = PROVIDER_MODELS[config.provider] ?? [];
     return list.includes(config.model) ? list : [config.model, ...list];
   })();
   const [input, setInput] = useState('');
+  const [days, setDays] = useState<DayOption>('30');
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -37,7 +46,7 @@ export function AiChat({ status, config, onChangeConfig, onAsked, onOpenSettings
   function ask(q: string) {
     if (!q.trim() || loading) return;
     onAsked();
-    send(q, config);
+    send(q, config, { source, days: Number(days) });
     setInput('');
   }
 
@@ -62,6 +71,16 @@ export function AiChat({ status, config, onChangeConfig, onAsked, onOpenSettings
       <div className="mb-3 flex items-center justify-between">
         <h2 className="flex items-center gap-2 text-sm font-semibold text-zinc-300">✨ AI Insights</h2>
         <div className="flex items-center gap-3">
+          <ToggleGroup<DayOption> options={DAY_OPTIONS} value={days} onChange={setDays} />
+          <a
+            href={`/api/ai/context?days=${days}&source=${source}`}
+            target="_blank"
+            rel="noreferrer"
+            title="The exact JSON the chat sends to the model"
+            className="text-[11px] text-zinc-600 transition-colors hover:text-zinc-400"
+          >
+            What the AI can see
+          </a>
           {config.apiKey ? (
             <select
               value={config.model}
@@ -111,8 +130,8 @@ export function AiChat({ status, config, onChangeConfig, onAsked, onOpenSettings
             </div>
           </div>
         ) : (
-          messages.map((m, i) => (
-            <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+          messages.map((m) => (
+            <div key={m.id} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
               <div
                 className={`max-w-[80%] rounded-2xl px-3.5 py-2 text-sm leading-relaxed ${
                   m.role === 'user'
@@ -124,7 +143,12 @@ export function AiChat({ status, config, onChangeConfig, onAsked, onOpenSettings
               >
                 {m.role === 'assistant' && !m.error ? (
                   m.content ? (
-                    <Markdown text={m.content} />
+                    <>
+                      <Markdown text={m.content} />
+                      {m.datasets && m.datasets.length > 0 && (
+                        <p className="mt-2 text-[10px] text-zinc-600">Answered from: overview + {m.datasets.join(', ')}</p>
+                      )}
+                    </>
                   ) : (
                     <span className="text-zinc-500">
                       <span className="pulse-dot mr-1.5" />
