@@ -4,10 +4,13 @@ import { InfoTip } from '@/components/design-system/atoms/InfoTip/InfoTip';
 import type { CostCalculationProps, ModelPrice, PriceGroup, PricePlatform } from './types';
 import { billingBlurb, calcCost, priceGroups } from './utils';
 
-/** "$3.00", or "—" for the cache-write column of a vendor that has no such charge. */
+/** "$3.00" (sub-cent rates keep their digits: "$0.125"), or "—" for the cache-write
+ *  column of a model with no published write rate. */
 function rate(model: ModelPrice, field: 'input' | 'output' | 'cacheWrite' | 'cacheRead') {
-  if (field === 'cacheWrite' && model.platform === 'openai') return '—';
-  return `$${model[field].toFixed(2)}`;
+  if (field === 'cacheWrite' && model.platform === 'openai' && model.cacheWrite === 0) return '—';
+  const v = model[field];
+  const cents = v * 100;
+  return `$${Math.abs(cents - Math.round(cents)) < 1e-9 ? v.toFixed(2) : String(+v.toFixed(4))}`;
 }
 
 function PriceRow({
@@ -71,7 +74,7 @@ export function CostCalculation({ platform }: CostCalculationProps) {
       cacheRead: cacheReadTokens,
     });
 
-  const noCacheWrite = selectedModel.platform === 'openai';
+  const noCacheWrite = selectedModel.platform === 'openai' && selectedModel.cacheWrite === 0;
 
   const renderGroup = (g: PriceGroup) => (
     <div key={g.platform} className={showGroupLabels ? 'mt-5 first:mt-0' : ''}>
@@ -133,7 +136,7 @@ export function CostCalculation({ platform }: CostCalculationProps) {
         <div>
           <h2 className="flex items-center gap-2 text-lg font-bold text-zinc-100">
             Cost Calculation Explained
-            <InfoTip text="Reference pay-as-you-go API prices (per 1M tokens, by model). Your subscription has no per-token bill — these power the 'estimated equivalent cost' figures. Use the calculator to price a hypothetical request; cache reads are billed at ~10% of input." />
+            <InfoTip text="Reference pay-as-you-go API prices (per 1M tokens, by model). Your subscription has no per-token bill — these power the 'estimated equivalent cost' figures. Use the calculator to price a hypothetical request; cache reads are billed at a fraction of input (usually 10%)." />
           </h2>
           <p className="text-xs text-zinc-500">{billingBlurb(platform)}</p>
         </div>
@@ -145,9 +148,9 @@ export function CostCalculation({ platform }: CostCalculationProps) {
           {groups.map(renderGroup)}
 
           <div className="mt-4 rounded-xl bg-ink-700/30 p-3 text-xs text-zinc-400 leading-relaxed border border-white/10">
-            <span className="font-semibold text-zinc-300">💡 Prompt Caching Benefit:</span> Cache reads cost only <strong>10%</strong> of standard input price. Designing your prompts to reuse systemic instructions, codebase maps, or tool schemas leverages this pricing to achieve massive savings.
+            <span className="font-semibold text-zinc-300">💡 Prompt Caching Benefit:</span> Cache reads usually cost <strong>10%</strong> of the standard input price (5% on Opus 5.5, 2.5% on Fable 5.1 and Mythos 5.1). Designing your prompts to reuse systemic instructions, codebase maps, or tool schemas leverages this pricing to achieve massive savings.
             {platform !== 'claude' && (
-              <> OpenAI applies the same discount to cached input but charges nothing to write the cache, so its Cache Write column reads “—”.</>
+              <> OpenAI applies the same discount to cached input. GPT-5.6 and GPT-6 list a cache-write rate, but Codex never reports cache writes, so it never changes an estimate; older GPT models have no write rate and read “—”.</>
             )}
           </div>
         </div>
@@ -227,8 +230,8 @@ export function CostCalculation({ platform }: CostCalculationProps) {
               />
             </div>
 
-            {/* Cache Write Tokens — free on OpenAI, so the row says so rather than
-                implying the slider moves the total. */}
+            {/* Cache Write Tokens — OpenAI models without a published write rate say so
+                rather than implying the slider moves the total. */}
             <div
               className="group cursor-pointer select-none"
               onDoubleClick={() => setCacheWriteTokens(50_000)}

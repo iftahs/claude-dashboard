@@ -20,6 +20,8 @@
     "dev:web": "vite",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
+    "typecheck": "tsc -b",
+    "test": "tsx --test \"server/**/*.test.ts\"",
     "//docker:up": "Rebuild image from current code and (re)start the container in the background. Run this after any code change.",
     "predocker:up": "node scripts/sync-macos-keychain.mjs && node scripts/token-sync-agent.mjs ensure && node scripts/write-host-repo-dir.mjs",
     "docker:up": "docker compose up -d --build",

@@ -6,9 +6,10 @@ import type { ModelPrice, PriceGroup, PricePlatform } from './types';
  * `server/pricing.ts` — when a rate changes there, change it here too, or the
  * calculator will disagree with every cost figure in the app.
  *
- * The OpenAI rows are the Codex (ChatGPT desktop) models. OpenAI bills no cache
- * *write*, only discounted cached input, so `cacheWrite` is 0 across that group
- * and the column renders as "—".
+ * The OpenAI rows are the Codex (ChatGPT desktop) models. GPT-5.6 and GPT-6 list a
+ * cache-write rate, but Codex never reports cache writes, so it never moves an
+ * estimate; models with no published write rate keep `cacheWrite: 0` and the
+ * column renders as "—".
  */
 export const PRICING_DATA: ModelPrice[] = [
   // ── Anthropic ────────────────────────────────────────────────────────────
@@ -16,7 +17,8 @@ export const PRICING_DATA: ModelPrice[] = [
   { name: 'Claude Fable 5', family: 'fable', platform: 'claude', input: 10, output: 50, cacheWrite: 12.5, cacheRead: 1.0 },
   { name: 'Claude Mythos 5.1 (limited availability)', family: 'mythos-5-1', platform: 'claude', input: 10, output: 50, cacheWrite: 12.5, cacheRead: 0.25 },
   { name: 'Claude Mythos 5 (limited availability)', family: 'mythos', platform: 'claude', input: 10, output: 50, cacheWrite: 12.5, cacheRead: 1.0 },
-  { name: 'Claude Opus 5', family: 'opus-5', platform: 'claude', input: 5, output: 25, cacheWrite: 6.25, cacheRead: 0.5, popular: true },
+  { name: 'Claude Opus 5.5', family: 'opus-5-5', platform: 'claude', input: 4, output: 20, cacheWrite: 5, cacheRead: 0.2, popular: true },
+  { name: 'Claude Opus 5', family: 'opus-5', platform: 'claude', input: 5, output: 25, cacheWrite: 6.25, cacheRead: 0.5 },
   { name: 'Claude Opus 4.8', family: 'opus-4-8', platform: 'claude', input: 5, output: 25, cacheWrite: 6.25, cacheRead: 0.5 },
   { name: 'Claude Opus 4.7', family: 'opus-4-7', platform: 'claude', input: 5, output: 25, cacheWrite: 6.25, cacheRead: 0.5 },
   { name: 'Claude Opus 4.6', family: 'opus-4-6', platform: 'claude', input: 5, output: 25, cacheWrite: 6.25, cacheRead: 0.5 },
@@ -35,12 +37,13 @@ export const PRICING_DATA: ModelPrice[] = [
   { name: 'Claude 3 Haiku (Legacy)', family: 'haiku-legacy', platform: 'claude', input: 0.25, output: 1.25, cacheWrite: 0.3125, cacheRead: 0.03 },
 
   // ── OpenAI (Codex, via the ChatGPT desktop app) ──────────────────────────
-  // Priced tiers first, most expensive down; gpt-5.6-terra is the desktop
-  // default and codex-auto-review the model that actually dominates the charts.
-  { name: 'GPT-6 Astra', family: 'gpt-6-astra', platform: 'openai', input: 10, output: 50, cacheWrite: 0, cacheRead: 1.0, popular: true },
-  { name: 'GPT-5.6 Sol', family: 'gpt-5-6-sol', platform: 'openai', input: 5, output: 30, cacheWrite: 0, cacheRead: 0.5, popular: true },
-  { name: 'GPT-5.6 Terra', family: 'gpt-5-6-terra', platform: 'openai', input: 2, output: 12, cacheWrite: 0, cacheRead: 0.2, popular: true },
-  { name: 'GPT-5.6 Luna', family: 'gpt-5-6-luna', platform: 'openai', input: 0.2, output: 1.2, cacheWrite: 0, cacheRead: 0.02, popular: true },
+  // Current tiers first, most expensive down: GPT-6 Astra / Sol / Luna and
+  // GPT-5.6 Terra (no GPT-6 Terra exists). codex-auto-review is the guardian
+  // model that dominates the charts. Superseded tiers sit behind "Show other".
+  { name: 'GPT-6 Astra', family: 'gpt-6-astra', platform: 'openai', input: 10, output: 50, cacheWrite: 12.5, cacheRead: 1.0, popular: true },
+  { name: 'GPT-5.6 Terra', family: 'gpt-5-6-terra', platform: 'openai', input: 2, output: 12, cacheWrite: 2.5, cacheRead: 0.2, popular: true },
+  { name: 'GPT-6 Sol', family: 'gpt-6-sol', platform: 'openai', input: 2, output: 10, cacheWrite: 2.5, cacheRead: 0.2, popular: true },
+  { name: 'GPT-6 Luna', family: 'gpt-6-luna', platform: 'openai', input: 0.1, output: 0.5, cacheWrite: 0.125, cacheRead: 0.01, popular: true },
   {
     name: 'codex-auto-review',
     family: 'codex-auto-review',
@@ -52,16 +55,20 @@ export const PRICING_DATA: ModelPrice[] = [
     popular: true,
     note: 'internal review model — not billed',
   },
+  { name: 'GPT-5.6 Sol', family: 'gpt-5-6-sol', platform: 'openai', input: 4, output: 20, cacheWrite: 5, cacheRead: 0.4 },
+  { name: 'GPT-5.6 Luna', family: 'gpt-5-6-luna', platform: 'openai', input: 0.2, output: 1.2, cacheWrite: 0.25, cacheRead: 0.02 },
   { name: 'GPT-5.5', family: 'gpt-5-5', platform: 'openai', input: 5, output: 30, cacheWrite: 0, cacheRead: 0.5 },
+  { name: 'GPT-5.4 Mini', family: 'gpt-5-4-mini', platform: 'openai', input: 0.75, output: 4.5, cacheWrite: 0, cacheRead: 0.075 },
+  { name: 'GPT-5.3 Codex', family: 'gpt-5-3-codex', platform: 'openai', input: 1.75, output: 14, cacheWrite: 0, cacheRead: 0.175 },
   {
-    name: 'GPT-5.4 Mini',
-    family: 'gpt-5-4-mini',
+    name: 'gpt-reserve',
+    family: 'gpt-reserve',
     platform: 'openai',
     input: 0,
     output: 0,
     cacheWrite: 0,
     cacheRead: 0,
-    note: 'bundled tier — no published rate',
+    note: 'reserve capacity — not billed',
   },
 ];
 
@@ -92,12 +99,12 @@ export function priceGroups(platform: Platform): PriceGroup[] {
 /** The one-line "how the vendor bills" note under the panel heading. */
 export function billingBlurb(platform: Platform): string {
   if (platform === 'codex') {
-    return 'OpenAI charges by tokens processed. Cached input is discounted ~90%, and there is no separate cache-write charge.';
+    return 'OpenAI charges by tokens processed. Cached input is discounted ~90%. GPT-5.6 and GPT-6 list a cache-write rate, but Codex never reports cache writes.';
   }
   if (platform === 'both') {
-    return 'Both vendors charge by tokens processed and discount cached input by ~90%. Anthropic also bills a cache write; OpenAI does not.';
+    return 'Both vendors charge by tokens processed and discount cached input (usually by ~90%). Anthropic bills cache writes; OpenAI lists them for GPT-5.6 and GPT-6, but Codex never reports any.';
   }
-  return 'Anthropic charges based on the number of tokens processed. Cache reads are discounted by 90%.';
+  return 'Anthropic charges based on the number of tokens processed. Cache reads are discounted by 90% (95% on Opus 5.5, 97.5% on Fable 5.1 and Mythos 5.1).';
 }
 
 export interface TokenCounts {

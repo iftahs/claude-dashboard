@@ -40,7 +40,7 @@ export class AiUnavailableError extends Error {}
 export class AiTokenRejectedError extends Error {}
 export class AiCallError extends Error {}
 
-const DEFAULT_MODEL = process.env.AI_MODEL || 'claude-opus-5';
+const DEFAULT_MODEL = process.env.AI_MODEL || 'claude-opus-5-5';
 const CALL_TIMEOUT_MS = Number(process.env.AI_TIMEOUT_MS || 60_000);
 const MAX_OUTPUT_TOKENS = 1024;
 const CLI_PROBE_TTL = 5 * 60_000;
@@ -157,8 +157,8 @@ function runViaCli(input: AiCallInput, model: string): Promise<string> {
  * Models that think by default when `thinking` is omitted. They share `max_tokens`
  * between the thinking and the visible answer, so at our small budget the reply
  * would truncate — we turn thinking off instead, which is legal at effort ≤ high
- * (the default). Fable and Mythos (5 and 5.1) are deliberately absent: they reject
- * `thinking:{type:'disabled'}` with a 400 — see ALWAYS_THINKS below.
+ * (the default). Fable and Mythos (5 and 5.1) and Opus 5.5 are deliberately absent:
+ * they reject `thinking:{type:'disabled'}` with a 400 — see ALWAYS_THINKS below.
  */
 const THINKS_BY_DEFAULT = new Set(['claude-opus-5', 'claude-sonnet-5']);
 
@@ -167,7 +167,14 @@ const THINKS_BY_DEFAULT = new Set(['claude-opus-5', 'claude-sonnet-5']);
  * 400. The only lever that keeps the visible answer from being crowded out of our
  * small `max_tokens` is effort, so these get `output_config.effort: 'low'`.
  */
-const ALWAYS_THINKS = new Set(['claude-fable-5', 'claude-fable-5-1', 'claude-mythos-5', 'claude-mythos-5-1']);
+const ALWAYS_THINKS = new Set([
+  'claude-fable-5',
+  'claude-fable-5-1',
+  'claude-mythos-5',
+  'claude-mythos-5-1',
+  // Opus 5.5 rejects `thinking:{type:'disabled'}` at every effort level.
+  'claude-opus-5-5',
+]);
 
 /**
  * Exact alias, not a substring test. Gateway and provider prefixes are stripped
