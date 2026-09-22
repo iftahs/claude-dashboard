@@ -181,8 +181,6 @@ export interface ClaudeConfig {
   extraKnownMarketplaces?: Record<string, unknown>;
   permissions?: {
     allow?: string[];
-    deny?: string[];
-    ask?: string[];
     defaultMode?: string;
     additionalDirectories?: string[];
   };

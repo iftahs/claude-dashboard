@@ -16,7 +16,7 @@ npm run typecheck    # tsc -b (typecheck only, no emit)
 npm test             # node:test unit tests (server/**/*.test.ts, run by tsx; no extra deps)
 ```
 
-Docker (single Express process serves API + built UI on :8787, mounts `~/.claude` read-only):
+Docker (single Express process serves API + built UI on :8787, mounts `~/.claude` read-only; published on `127.0.0.1` only unless `DASHBOARD_BIND`/`ALLOWED_HOSTS` opt into LAN access):
 
 ```bash
 npm run docker:up    # docker compose up -d --build  (rebuild + restart after code changes)
@@ -30,7 +30,7 @@ npm run docker:logs
 
 1. `scripts/sync-macos-keychain.mjs` (macOS only) — copies the Claude.ai OAuth token from the Keychain into `~/.claude/.dashboard-oauth-cache.json`; see `readCredentials()` below for why.
 2. `scripts/token-sync-agent.mjs ensure` (macOS only) — installs a **launchd LaunchAgent** (`com.claude-dashboard.token-sync`, log at `~/Library/Logs/claude-dashboard/token-sync.log`) that re-runs that sync every 15 min. Without the agent the cache is a one-shot snapshot whose access token expires within hours and Docker live usage degrades to "OAuth token expired"; the container re-reads the cache file on every request, so a host-side re-sync heals it instantly with no rebuild. Manual controls: `npm run token-sync` (one-shot), `token-sync:install` / `token-sync:status` / `token-sync:uninstall`. **Deliberately no in-container `refresh_token` flow** — Anthropic rotates refresh tokens, and a second consumer could invalidate the host's Claude Code login.
-3. `scripts/write-host-repo-dir.mjs` (all OSes) — **sets `CODEX_DIR_HOST=~/.codex` only if absent** into `.env` when that folder has a `sessions/` dir (a blank `CODEX_DIR_HOST=` is the opt-out and must survive).
+3. `scripts/write-host-repo-dir.mjs` (all OSes) — upserts `CLAUDE_JSON_HOST=~/.claude.json` (mounted at `/data/claude-json`; `workspace.ts` reads it through `CLAUDE_JSON` for the MCP inventory), **sets `CODEX_DIR_HOST=~/.codex` only if absent** when that folder has a `sessions/` dir, and **sets `TZ` to the host's IANA zone only if absent** (a blank `CODEX_DIR_HOST=` / `TZ=` is an opt-out and must survive).
 
 Steps 1–2 are a no-op on non-macOS hosts (there, Claude Code refreshes `.credentials.json` itself).
 
@@ -56,7 +56,7 @@ Two processes in dev; one in Docker. The data flow on the backend is always **sc
 
 There used to be **two** independent scanners — `scan.ts::scanEvents` and `insights-scan.ts::scanInsights` — each with its own recursive walk, its own fingerprint, its own TTL cache, and its own `JSON.parse` over the same ~1.1 GB. Both were primed concurrently at boot and fought over the disk and the libuv threadpool, making a cold start ~10s. Now:
 
-- **`scan-pass.ts`** — the only code that reads transcript JSONL. One walk, one read, one `JSON.parse` per line, emitting flat per-file rows for *both* consumers. Pure extraction: **no cross-file reduction happens here.** Reads with a bounded pool of `PARSE_CONCURRENCY = 8` (measured optimum: 1→4.28s, 8→3.11s, 16→3.27s, 24→3.74s — the scan is CPU-bound on `JSON.parse`, not I/O; the raw read floor is 0.69s). Preserves two inherited behaviours deliberately: usage rows come from every file, but **insight rows only from files ≤ 5 MB**; and cowork transcripts get an empty `projectPath`.
+- **`scan-pass.ts`** — the only code that reads transcript JSONL. One walk, one read, one `JSON.parse` per line, emitting flat per-file rows for *both* consumers. Pure extraction: **no cross-file reduction happens here.** Reads with a bounded pool of `PARSE_CONCURRENCY = 8` (measured optimum: 1→4.28s, 8→3.11s, 16→3.27s, 24→3.74s — the scan is CPU-bound on `JSON.parse`, not I/O; the raw read floor is 0.69s). Preserves two inherited behaviours deliberately: usage rows come from every file, but **insight rows only from files ≤ `INSIGHTS_MAX_FILE_BYTES` (64 MB)**; and cowork transcripts get an empty `projectPath`.
 - **`merge.ts`** — pure, no I/O. Reduces per-file rows into `UsageEvent[]` + `InsightsData`. **All dedup lives here and must stay here:** 28.4% of dedup keys appear in more than one file and 75 of 189 sessions span multiple files, so per-file aggregates cannot be pre-summed without double-counting. `sessionsMeta` is *derived* at merge time, never persisted pre-summed.
 - **`data.ts`** — owns the pipeline and both public getters (`getEvents`, `getInsights`), with a 5s TTL and single-flight. Caches parsed rows per file by `(path, mtime, size)`, so a re-scan only re-parses files that actually changed (typically ~27/day out of 2,431).
 - **`event-store.ts`** — persists those rows to SQLite (built-in `node:sqlite`, hence the node 24 base image) at `DASHBOARD_CACHE_DIR`, one JSON blob per file version. This is what makes a restart cheap: **cold start went 10.8s → ~2.6s in Docker.** Fail-soft by design — if SQLite is unavailable the app just parses from scratch. Bump `SCHEMA_VERSION` when `FileRows` changes.
@@ -79,15 +79,21 @@ Two parser subtleties worth not re-breaking:
 - **`pricing.ts`** — regex→price table for the *estimated equivalent API cost* only (subscription usage has no real per-token bill). **Order in `TABLE` matters**: specific patterns (e.g. `opus-4-[5-8]`) must precede generic fallbacks (`opus`), first match wins. Fable 5.1 has its own row because its cache-read rate (0.25) differs from Fable 5 (1.0) — keep it above `/fable/`. Mythos 5.1 is the same split for the same reason — keep it above `/mythos/`, which still serves Mythos 5 and Mythos Preview at 1.0. Opus 5.5 (4 / 20, cache read 0.20 = 0.05×) has its own row above `/opus-5/`, which would otherwise match `opus-5-5`. The OpenAI rows are OpenAI's standard-tier list prices; GPT-5.6/6 list a cache-write rate but Codex never reports cache writes. **Adding or repricing a model** touches: `pricing.ts` (+ `pricing.test.ts`), `CostCalculation/utils.ts` `PRICING_DATA` (mirror it), `lib/palette.ts` (reuse a validated step or re-run the dataviz validator), and for Claude models `server/ai.ts` (`THINKS_BY_DEFAULT` / `ALWAYS_THINKS`, `DEFAULT_MODEL`) + `useAiConfig.ts` `PROVIDER_MODELS`.
 - **`index.ts`** — Express routes. Every response is wrapped as `{ data, computedAt, claudeDir }` (the `Envelope`). Query params are clamped server-side (e.g. `hours` 1–72, `days` 7–28). Usage/sessions routes accept `?source=all|claude|code|cowork|codex` (`filterSource()` narrows events before the builder runs; `claude` = code + cowork, i.e. everything that isn't Codex). **`GET /api/sources`** reports per-surface event counts plus `cowork.available` and `codex.available` — the frontend gates **all** Cowork UI on the first and the whole platform switcher on the second, so Code-only users see the original dashboard unchanged. When `dist/` exists it also serves the static UI with an SPA fallback for non-`/api` routes.
 
+### Security boundary (`http-guard.ts`)
+
+The API serves transcripts and can spend the user's Claude quota (AI Insights), so it stays local: the server listens on `127.0.0.1` outside Docker (`BIND_HOST` overrides; the Dockerfile sets `0.0.0.0` and compose publishes `127.0.0.1:8787`); every request's **hostname** (never port — the Vite proxy forwards `Host: localhost:5180`) must be localhost / 127.0.0.1 / ::1 or in `ALLOWED_HOSTS`; every non-GET must be `application/json` with an allowed `Origin` if one is sent. `/api/config` returns an **allow-list** of settings fields (`publicSettings()`) — never spread `settings.json` (it can hold `env` API keys, `apiKeyHelper`, hook commands). `/api/ai/insight` refuses the branch/churn panels for non-Anthropic providers, like the chat routes redact them. AI Insights' `claude --print` runs with `--no-session-persistence` so the dashboard never counts its own calls.
+
 ### Domain rules to preserve
 
 These are deliberate and easy to break:
 
 - **Effective tokens = input + output + cacheCreate.** Cheap cache *reads* are excluded because they don't count toward rate limits. `totalTokens` includes cache reads; `effectiveTokens` does not. Keep the two distinct.
 - **The "current 5-hour block"** is anchored on the **most recent `sessionId`**, not a wall-clock window — it mirrors how Anthropic starts a 5h window at a session's first message. `prevTotals` is the session immediately before it.
-- **Weekly reset** is computed as the next Monday 01:00 UTC (`nextMondayReset`).
+- **Weekly reset** is computed as the next Monday 01:00 UTC (`nextMondayReset`) when nothing better exists; the AI context prefers the live `seven_day.resets_at`.
 - `<synthetic>` model and zero-token models are filtered out of model shares.
-- The activity heatmap is derived **live from events**, falling back to `stats-cache.json` only for days with no live data (the cache is otherwise stale).
+- The activity heatmap is derived **live from events**, falling back to `stats-cache.json` only for days with no live data (the cache is otherwise stale) — and **only for sources that can contain Claude Code** (`all`/`claude`/`code`, `statsCacheApplies()`); stats-cache is Code-only, so Codex/Cowork heatmaps never get it.
+- **Day buckets are calendar days**, not 24 h steps (`localDayStarts()`): a DST change inside a window must not shift or duplicate a day.
+- **Rejections** are `is_error` tool results whose text starts with Claude Code's own decline wording (`isRejectedToolResult()` in `scan-pass.ts`, shared with `subagents-live.ts`); a Read of a file that merely contains "reject" is not one. Codex: a `declined` item, or a guardian verdict with `outcome: deny` (one review per verdict, not per rollout).
 
 ### Frontend (`src/`)
 

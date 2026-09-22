@@ -159,6 +159,15 @@ Want the dashboard always available without running `npm` each time? Run it as a
 
 3. Open <http://localhost:8787>.
 
+**It only answers on this machine.** The port is published on `127.0.0.1`, and the server rejects requests whose `Host` isn't `localhost`, `127.0.0.1` or `::1` (DNS-rebinding defense) and any cross-site or non-JSON `POST`. The API serves your transcripts and can spend your Claude quota through AI Insights, so it is not exposed to your network by default. To open it from another device on your LAN, set both in `.env` and rerun `npm run docker:up`:
+
+```
+DASHBOARD_BIND=0.0.0.0
+ALLOWED_HOSTS=192.168.1.20,my-desktop.local
+```
+
+Anyone who can reach that address can then read everything the dashboard shows. `npm run docker:up` also writes your host's timezone into `.env` (`TZ`, only if absent) so day buckets match your local days.
+
 The container uses `restart: unless-stopped`, so it comes back automatically after a crash or reboot (as long as Docker Desktop is set to start on login). Stop it with `npm run docker:down`. To change the host port, edit the `ports` mapping in `docker-compose.yml` (e.g. `"9000:8787"`).
 
 > **Docker has no hot reload.** After any code change, run `npm run docker:up` again to rebuild and restart.

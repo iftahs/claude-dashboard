@@ -118,13 +118,14 @@ const REDACTED = {
 // the dashboard just ran. Two rules keep the keys interchangeable — break either
 // and the dashboard's own route cache is silently poisoned:
 //   - event builders are called with now = computedAt from getEvents();
-//   - insights builders are called WITHOUT `now` (they default it).
+//   - insights builders are called with now = computedAt from getInsights(), as the
+//     /api/insights/* routes do (the memo token already folds in the minute).
 // The five `limit: Infinity` variants get their own ':full' keys because their
 // output differs from what the routes cache under the bare name.
 
 async function scopedInsights(source: SourceFilter) {
-  const { insights } = await getInsights();
-  return scopeInsights(insights, source);
+  const { insights, computedAt } = await getInsights();
+  return { d: scopeInsights(insights, source), now: computedAt };
 }
 
 // ── Row projections (the allowlist) ──────────────────────────────────────────
@@ -195,9 +196,9 @@ export const DATASETS: DatasetDef[] = [
       'Tool-call failures: overall error rate, error categories, worst tools by call volume, and a DAY-BY-DAY error-rate trend.',
     trigger: /\berrors?\b|\bfail(s|ed|ing|ure|ures)?\b|\berror[\s-]?rate\b|\bbroke\b|\bflaky\b/i,
     async load({ days, source, limit }) {
-      const d = await scopedInsights(source);
+      const { d, now } = await scopedInsights(source);
       const e = memoBuilder('errors:full', [days, source], insightsFingerprint(), () =>
-        buildErrors(d, days, undefined, Number.POSITIVE_INFINITY),
+        buildErrors(d, days, now, Number.POSITIVE_INFINITY),
       );
       return {
         window: win(days, Date.now()),
@@ -216,8 +217,8 @@ export const DATASETS: DatasetDef[] = [
     describes: 'Edit-retry analysis: one-shot success rate on Edit/Write, how many edits were retried, and the tokens/cost wasted on retries.',
     trigger: /\bretr(y|ies|ied)\b|\bone[\s-]?shot\b|\bwasted?\b|\bre[\s-]?edit/i,
     async load({ days, source }) {
-      const d = await scopedInsights(source);
-      const r = memoBuilder('retries', [days, source], insightsFingerprint(), () => buildRetries(d, days));
+      const { d, now } = await scopedInsights(source);
+      const r = memoBuilder('retries', [days, source], insightsFingerprint(), () => buildRetries(d, days, now));
       return {
         window: win(days, Date.now()),
         source,
@@ -235,9 +236,9 @@ export const DATASETS: DatasetDef[] = [
     trigger: /\bbranch(es)?\b|\bgit\b|\brepo(sitor(y|ies))?\b|\bpr\b/i,
     async load({ days, source, limit, redact }) {
       if (redact) return REDACTED;
-      const d = await scopedInsights(source);
+      const { d, now } = await scopedInsights(source);
       const rows = memoBuilder('branches:full', [days, source], insightsFingerprint(), () =>
-        buildBranches(d, days, undefined, Number.POSITIVE_INFINITY),
+        buildBranches(d, days, now, Number.POSITIVE_INFINITY),
       );
       return {
         window: win(days, Date.now()),
@@ -266,9 +267,9 @@ export const DATASETS: DatasetDef[] = [
     trigger: /\bchurn\b|\bfiles?\b|\bmost[\s-]?edited\b|\brewrit/i,
     async load({ days, source, limit, redact }) {
       if (redact) return REDACTED;
-      const d = await scopedInsights(source);
+      const { d, now } = await scopedInsights(source);
       const c = memoBuilder('churn:full', [days, source], insightsFingerprint(), () =>
-        buildFileChurn(d, days, undefined, Number.POSITIVE_INFINITY),
+        buildFileChurn(d, days, now, Number.POSITIVE_INFINITY),
       );
       return {
         window: win(days, Date.now()),
@@ -291,9 +292,9 @@ export const DATASETS: DatasetDef[] = [
       'Use this for "which session was heaviest/longest/most expensive". A session is NOT a project and NOT a workflow.',
     trigger: /\bsessions?\b|\bconversations?\b|\bchats?\b|\bcomplexit|\bheaviest\b|\blongest\b/i,
     async load({ days, source, limit }) {
-      const d = await scopedInsights(source);
+      const { d, now } = await scopedInsights(source);
       const rows = memoBuilder('complexity:full', [days, source], insightsFingerprint(), () =>
-        buildComplexity(d, days, undefined, Number.POSITIVE_INFINITY),
+        buildComplexity(d, days, now, Number.POSITIVE_INFINITY),
       );
       return {
         window: win(days, Date.now()),
@@ -339,8 +340,8 @@ export const DATASETS: DatasetDef[] = [
     describes: 'Subagent delegation: how many Task subagents were spawned, by agent type and by model, and the share of sessions that delegate.',
     trigger: /\bsub[\s-]?agents?\b|\bdelegat|\btask tool\b|\bspawn/i,
     async load({ days, source }) {
-      const d = await scopedInsights(source);
-      const s = memoBuilder('subagents', [days, source], insightsFingerprint(), () => buildSubagentStats(d, days));
+      const { d, now } = await scopedInsights(source);
+      const s = memoBuilder('subagents', [days, source], insightsFingerprint(), () => buildSubagentStats(d, days, now));
       return {
         window: win(days, Date.now()),
         source,
@@ -357,8 +358,8 @@ export const DATASETS: DatasetDef[] = [
     describes: 'MCP vs built-in tool split: how many calls went to MCP servers vs built-in tools, and per-MCP-server call and error counts.',
     trigger: /\bmcp\b|\bservers?\b|\bbuilt[\s-]?in\b|\bintegrations?\b/i,
     async load({ days, source, limit }) {
-      const d = await scopedInsights(source);
-      const m = memoBuilder('mcp', [days, source], insightsFingerprint(), () => buildMcp(d, days));
+      const { d, now } = await scopedInsights(source);
+      const m = memoBuilder('mcp', [days, source], insightsFingerprint(), () => buildMcp(d, days, now));
       return {
         window: win(days, Date.now()),
         source,
@@ -373,8 +374,8 @@ export const DATASETS: DatasetDef[] = [
     describes: 'Permission rejections: how many tool calls the user denied, broken down per tool.',
     trigger: /\breject|\bdenied?\b|\bpermissions?\b|\bblocked\b/i,
     async load({ days, source, limit }) {
-      const d = await scopedInsights(source);
-      const r = memoBuilder('rejections', [days, source], insightsFingerprint(), () => buildRejections(d, days));
+      const { d, now } = await scopedInsights(source);
+      const r = memoBuilder('rejections', [days, source], insightsFingerprint(), () => buildRejections(d, days, now));
       return {
         window: win(days, Date.now()),
         source,
@@ -388,8 +389,8 @@ export const DATASETS: DatasetDef[] = [
     describes: 'Language / file-type breakdown: which languages were edited and read most.',
     trigger: /\blanguages?\b|\bfile[\s-]?types?\b|\btypescript\b|\bpython\b|\bwhat.*(do i|am i) (writ|cod)/i,
     async load({ days, source, limit }) {
-      const d = await scopedInsights(source);
-      const langs = memoBuilder('languages', [days, source], insightsFingerprint(), () => buildLanguages(d, days));
+      const { d, now } = await scopedInsights(source);
+      const langs = memoBuilder('languages', [days, source], insightsFingerprint(), () => buildLanguages(d, days, now));
       return {
         window: win(days, Date.now()),
         source,
@@ -402,9 +403,9 @@ export const DATASETS: DatasetDef[] = [
     describes: 'Committed-vs-uncommitted yield: what share of sessions ended in a git commit, and the tokens spent on sessions that never landed.',
     trigger: /\byield\b|\bcommit(s|ted|ting)?\b|\buncommitted\b|\bland(ed)?\b|\bshipped?\b/i,
     async load({ days, source, limit }) {
-      const d = await scopedInsights(source);
+      const { d, now } = await scopedInsights(source);
       const y = memoBuilder('yield:full', [days, source], insightsFingerprint(), () =>
-        buildYield(d, days, undefined, Number.POSITIVE_INFINITY),
+        buildYield(d, days, now, Number.POSITIVE_INFINITY),
       );
       return {
         window: win(days, Date.now()),

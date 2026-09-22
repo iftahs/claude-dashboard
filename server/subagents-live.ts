@@ -12,6 +12,7 @@ import { readdir, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import { createInterface } from 'node:readline';
 import { claudeDir } from './scan.ts';
+import { isRejectedToolResult } from './scan-pass.ts';
 
 /**
  * Traffic-light status for an agent:
@@ -299,8 +300,9 @@ async function parseFileForAgentSpawns(file: string): Promise<{
             // Track the latest tool_result for the parent's waiting heuristic.
             // Only a user rejection counts toward "waiting" (red) — a benign tool
             // failure (non-zero bash exit, empty grep, missing file) is not "needs
-            // attention"; the agent gets the error and keeps going.
-            const isErr = /reject|denied|doesn't want to proceed/i.test(resultText);
+            // attention"; the agent gets the error and keeps going. Same classifier
+            // as the scanner, so a Read of a file that merely says "reject" is not one.
+            const isErr = isRejectedToolResult(block);
             if (ts >= main.lastToolResultTs) {
               main.lastToolResultTs = ts;
               main.lastResultIsError = isErr;

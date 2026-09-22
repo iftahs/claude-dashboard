@@ -135,12 +135,12 @@ async function assemble(scope: AiScope, ids: DatasetId[], redact: boolean): Prom
   const tools = memoBuilder('tools', [days, source], fp, () => buildTools(scoped, computedAt, days));
   const projects = memoBuilder('projects', [days, source], fp, () => buildProjectStats(scoped, computedAt, days));
 
-  const errors = memoBuilder('errors', [days, source], ifp, () => buildErrors(si, days));
-  const retries = memoBuilder('retries', [days, source], ifp, () => buildRetries(si, days));
-  const mcp = memoBuilder('mcp', [days, source], ifp, () => buildMcp(si, days));
-  const yld = memoBuilder('yield', [days, source], ifp, () => buildYield(si, days));
-  const rej = memoBuilder('rejections', [days, source], ifp, () => buildRejections(si, days));
-  const sub = memoBuilder('subagents', [days, source], ifp, () => buildSubagentStats(si, days));
+  const errors = memoBuilder('errors', [days, source], ifp, () => buildErrors(si, days, computedAt));
+  const retries = memoBuilder('retries', [days, source], ifp, () => buildRetries(si, days, computedAt));
+  const mcp = memoBuilder('mcp', [days, source], ifp, () => buildMcp(si, days, computedAt));
+  const yld = memoBuilder('yield', [days, source], ifp, () => buildYield(si, days, computedAt));
+  const rej = memoBuilder('rejections', [days, source], ifp, () => buildRejections(si, days, computedAt));
+  const sub = memoBuilder('subagents', [days, source], ifp, () => buildSubagentStats(si, days, computedAt));
 
   const notes = [...NOTES];
   const detail = await loadDetail(ids, { days, source, redact }, notes);
