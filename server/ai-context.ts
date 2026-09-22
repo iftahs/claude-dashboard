@@ -145,6 +145,7 @@ async function assemble(scope: AiScope, ids: DatasetId[], redact: boolean): Prom
   const notes = [...NOTES];
   const detail = await loadDetail(ids, { days, source, redact }, notes);
   const loaded = new Set(Object.keys(detail));
+  const live = await liveUsage();
 
   return {
     generatedAt: new Date(computedAt).toISOString(),
@@ -171,9 +172,9 @@ async function assemble(scope: AiScope, ids: DatasetId[], redact: boolean): Prom
       cacheReadTokens: weekly.totals.cacheReadTokens,
       estCostUsd: round2(weekly.totals.cost),
       prevWindowEstCostUsd: round2(weekly.prevTotals.cost),
-      weeklyResetsAt: new Date(weekly.weeklyResetsAt).toISOString(),
+      weeklyResetsAt: weeklyResetIso('usage' in live ? live.usage : null, weekly.weeklyResetsAt),
     },
-    limits: await liveLimits(),
+    limits: liveLimits(live),
     topModels: topN(
       models.models.map((m) => ({ model: m.model, effectiveTokens: m.effectiveTokens, estCostUsd: round2(m.cost) })),
       6,
@@ -209,21 +210,40 @@ async function assemble(scope: AiScope, ids: DatasetId[], redact: boolean): Prom
   };
 }
 
-/** The account's live quota is the single most-asked thing and was never in the context. */
-async function liveLimits(): Promise<AiPayload['limits']> {
+type LiveUsage = { usage: any } | { unavailable: string };
+
+/** One live-usage read feeds both `limits` and `account.weeklyResetsAt`. Never throws. */
+async function liveUsage(): Promise<LiveUsage> {
   try {
     const live: any = await fetchLiveUsage();
     if (!live || live.error) return { unavailable: String(live?.error ?? 'live usage API unreachable') };
-    return {
-      fiveHourPct: live.five_hour?.utilization ?? null,
-      sevenDayPct: live.seven_day?.utilization ?? null,
-      fiveHourResetsAt: live.five_hour?.resets_at ?? null,
-      sevenDayResetsAt: live.seven_day?.resets_at ?? null,
-      note: 'Live Anthropic account quota, as a percentage of the plan allowance. Covers all surfaces; ignores scope.source. Not dollars.',
-    };
+    return { usage: live };
   } catch (e) {
     return { unavailable: e instanceof Error ? e.message : String(e) };
   }
+}
+
+/** The account's live quota is the single most-asked thing and was never in the context. */
+function liveLimits(live: LiveUsage): AiPayload['limits'] {
+  if (!('usage' in live)) return live;
+  const u = live.usage;
+  return {
+    fiveHourPct: u.five_hour?.utilization ?? null,
+    sevenDayPct: u.seven_day?.utilization ?? null,
+    fiveHourResetsAt: u.five_hour?.resets_at ?? null,
+    sevenDayResetsAt: u.seven_day?.resets_at ?? null,
+    note: 'Live Anthropic account quota, as a percentage of the plan allowance. Covers all surfaces; ignores scope.source. Not dollars.',
+  };
+}
+
+/**
+ * Anthropic's live `seven_day.resets_at` when the usage API has one, else
+ * buildWeekly's nominal Monday 01:00 UTC. The real window is anchored per
+ * account and can land hours off that, so the model gets the live value.
+ */
+export function weeklyResetIso(usage: any, fallbackMs: number): string {
+  const live = Date.parse(usage?.seven_day?.resets_at ?? '');
+  return new Date(Number.isFinite(live) ? live : fallbackMs).toISOString();
 }
 
 /**

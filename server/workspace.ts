@@ -119,12 +119,24 @@ export interface InventoryData {
 
 let invCache: { at: number; data: InventoryData } | null = null;
 
+// A directory at the path (see claudeJsonPath) throws EISDIR here → null, i.e. absent.
 async function readJson(path: string): Promise<any> {
   try {
     return JSON.parse(await readFile(path, 'utf8'));
   } catch {
     return null;
   }
+}
+
+/**
+ * Where ~/.claude.json (the MCP server config) lives. On the host it sits beside
+ * the .claude dir; in Docker that would be /data/.claude.json, which isn't
+ * mounted — compose mounts the file on its own and points CLAUDE_JSON at it.
+ * With CLAUDE_JSON_HOST unset, compose mounts a directory there instead, which
+ * readJson treats as absent.
+ */
+export function claudeJsonPath(dir: string, env: NodeJS.ProcessEnv = process.env): string {
+  return env.CLAUDE_JSON?.trim() || join(dirname(dir), '.claude.json');
 }
 
 export async function getInventory(now = Date.now()): Promise<InventoryData> {
@@ -134,8 +146,7 @@ export async function getInventory(now = Date.now()): Promise<InventoryData> {
   const installed = await readJson(join(dir, 'plugins', 'installed_plugins.json'));
   const marketplacesJson = await readJson(join(dir, 'plugins', 'known_marketplaces.json'));
   const settings = await readJson(join(dir, 'settings.json'));
-  // The MCP server config lives in ~/.claude.json (sibling of the .claude dir).
-  const claudeJson = await readJson(join(dirname(dir), '.claude.json'));
+  const claudeJson = await readJson(claudeJsonPath(dir));
 
   const plugins: InventoryData['plugins'] = [];
   if (installed?.plugins && typeof installed.plugins === 'object') {

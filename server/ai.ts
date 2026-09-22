@@ -132,14 +132,34 @@ function callProvider(creds: AiCreds, input: AiCallInput): Promise<string> {
 
 // ── CLI ──────────────────────────────────────────────────────────────────────
 
+// `claude -p` saves every session as a transcript under <config>/projects — on
+// the host that is ~/.claude/projects, the very folder this dashboard scans, so
+// each AI Insights call would come back as Claude Code usage (and a session).
+// --no-session-persistence (print mode only) skips the write. A CLI old enough
+// to predate the flag rejects it as an unknown option: drop it and retry once.
+const NO_PERSIST = '--no-session-persistence';
+let cliNoPersist = true;
+
+function printArgs(model: string): string[] {
+  return ['--print', ...(cliNoPersist ? [NO_PERSIST] : []), '--model', model, '--output-format', 'text'];
+}
+
+/** True (and the flag is dropped for good) when this call's CLI rejected it. */
+function rejectedNoPersist(args: string[], stderr: string): boolean {
+  if (!args.includes(NO_PERSIST) || !/unknown option.*--no-session-persistence/i.test(stderr)) return false;
+  cliNoPersist = false;
+  return true;
+}
+
 function runViaCli(input: AiCallInput, model: string): Promise<string> {
   return new Promise((resolve, reject) => {
-    const { file, args } = cliInvocation(['--print', '--model', model, '--output-format', 'text']);
+    const { file, args } = cliInvocation(printArgs(model));
     const child = execFile(
       file,
       args,
       { timeout: CALL_TIMEOUT_MS, maxBuffer: 8 * 1024 * 1024, windowsHide: true },
       (err, stdout, stderr) => {
+        if (err && rejectedNoPersist(args, String(stderr))) return resolve(runViaCli(input, model));
         if (err) return reject(new AiCallError(`claude CLI failed: ${stderr || err.message}`));
         const out = String(stdout).trim();
         out ? resolve(out) : reject(new AiCallError('Empty CLI response'));
@@ -435,7 +455,7 @@ async function callGeminiStream(apiKey: string, input: AiCallInput, model: strin
 
 function runViaCliStream(input: AiCallInput, model: string, onDelta: (t: string) => void): Promise<void> {
   return new Promise((resolve, reject) => {
-    const { file, args } = cliInvocation(['--print', '--model', model, '--output-format', 'text']);
+    const { file, args } = cliInvocation(printArgs(model));
     const child = spawn(file, args, { windowsHide: true });
     let any = false;
     let err = '';
@@ -468,7 +488,8 @@ function runViaCliStream(input: AiCallInput, model: string, onDelta: (t: string)
     child.on('error', (e) => settle(() => reject(new AiCallError(`claude CLI failed: ${e.message}`))));
     child.on('close', (code) =>
       settle(() => {
-        if (code !== 0 && !any) reject(new AiCallError(`claude CLI failed: ${err || `exit ${code}`}`));
+        if (code !== 0 && !any && rejectedNoPersist(args, err)) runViaCliStream(input, model, onDelta).then(resolve, reject);
+        else if (code !== 0 && !any) reject(new AiCallError(`claude CLI failed: ${err || `exit ${code}`}`));
         else resolve();
       }),
     );

@@ -38,10 +38,10 @@ services:
       # boots. Only sessions/**/rollout-*.jsonl, session_index.jsonl and auth.json
       # (for the live limits call) are ever read.
       - "${CODEX_DIR_HOST:-${CLAUDE_DIR_HOST}}:/data/.codex:ro"
-      # ~/.claude.json (bypassPermissionsModeAccepted etc.), read-only. Optional:
-      # CLAUDE_JSON_HOST is written to .env automatically by `npm run docker:up`;
-      # when unset this falls back to mounting the .claude DIR here, which the
-      # backend detects (not a file) and treats as "can't determine".
+      # ~/.claude.json, read-only — the Workspace tab lists the MCP servers
+      # configured in it. Optional: CLAUDE_JSON_HOST is written to .env
+      # automatically by `npm run docker:up`; when unset this falls back to
+      # mounting the .claude DIR here, which the backend reads as "no MCP servers".
       - "${CLAUDE_JSON_HOST:-${CLAUDE_DIR_HOST}}:/data/claude-json:ro"
       # Parsed-scan cache. MUST be a named volume, not a bind or an anonymous one:
       # `npm run docker:up` runs `up -d --build`, which replaces the container, and
@@ -76,10 +76,11 @@ services:
       # ANTHROPIC_AUTH_TOKEN; set these only if the spend-read key/url differs.
       - LITELLM_BASE_URL=${LITELLM_BASE_URL:-}
       - LITELLM_API_KEY=${LITELLM_API_KEY:-}
-      # Container path of the ~/.claude.json mount above (bypass detection).
+      # Container path of the ~/.claude.json mount above (Workspace MCP inventory).
       - CLAUDE_JSON=/data/claude-json
-      # Day buckets follow the container clock — pin it to your local timezone
-      # (override TZ in .env if you are not in Asia/Jerusalem).
+      # Day buckets follow the container clock. `npm run docker:up` writes your
+      # host's zone into .env as TZ (only if absent); the default below applies
+      # when it is unset or blank.
       - TZ=${TZ:-Asia/Jerusalem}
     # Always available: restarts on crash and on machine reboot
     # (as long as Docker Desktop is set to start at login).
