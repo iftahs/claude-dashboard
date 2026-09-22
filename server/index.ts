@@ -27,12 +27,34 @@ import { runAi, runAiStream, resolveBackend, AiUnavailableError, AiTokenRejected
 import { buildAiPayload, buildChatUserMessage, CHAT_SYSTEM, buildSectionUserMessage, SECTION_SYSTEM, SUGGEST_SYSTEM, buildSuggestMessage, type AiScope, type ChatTurn } from './ai-context.ts';
 import { routeDatasets } from './ai-router.ts';
 import { getVersionInfo, isDocker } from './version.ts';
+import { allowedHosts, checkRequest, publicSettings } from './http-guard.ts';
 
 const execAsync = promisify(exec);
 
 const app = express();
-app.use(express.json({ limit: '1mb' }));
 const PORT = Number(process.env.SERVER_PORT ?? 8787);
+// Loopback only on the host. The container must listen on every interface for
+// Docker's port mapping to reach it; docker-compose then publishes the port on
+// 127.0.0.1 unless DASHBOARD_BIND opts into LAN access.
+const BIND_HOST = process.env.BIND_HOST?.trim() || (isDocker() ? '0.0.0.0' : '127.0.0.1');
+const ALLOWED_HOSTS = allowedHosts(process.env.ALLOWED_HOSTS);
+
+// Host (DNS-rebinding) and write (CSRF) checks run before anything else — before
+// body parsing, static files and every route. See server/http-guard.ts.
+app.use((req, res, next) => {
+  const rejected = checkRequest(
+    {
+      method: req.method,
+      host: req.headers.host,
+      origin: req.headers.origin,
+      contentType: req.headers['content-type'],
+    },
+    ALLOWED_HOSTS,
+  );
+  if (rejected) return void res.status(rejected.status).json({ error: rejected.error });
+  next();
+});
+app.use(express.json({ limit: '1mb' }));
 
 function wrap(data: unknown, computedAt: number) {
   return { data, computedAt, claudeDir: claudeDir() };
@@ -57,6 +79,8 @@ app.get('/api/version', async (_req, res) => {
 
 // Dev-only self-update: pull latest code (tsx watch + Vite HMR then reload).
 // Docker users can't do this from inside the container — they get instructions.
+// It runs a shell command, so the JSON + Origin write check above is what stops
+// a cross-site form from triggering it.
 app.post('/api/update/pull', async (_req, res) => {
   if (isDocker()) {
     res.status(400).json({ ok: false, error: 'Running in Docker — run `git pull && npm run docker:up` on the host.' });
@@ -147,8 +171,10 @@ app.get('/api/config', async (_req, res) => {
     // LiteLLM gateway detection (pure env read) — gates the "Actual billed" cost UI.
     const litellm = detectLitellm();
 
+    // Allowlisted settings.json fields only — never the whole file (env keys,
+    // apiKeyHelper and hook commands live there).
     const merged = {
-      ...config,
+      ...publicSettings(config),
       subscriptionType: sub.subscriptionType,
       rateLimitTier: sub.rateLimitTier,
       seatTier: sub.seatTier,
@@ -872,6 +898,14 @@ function shouldRedact(creds: AiCreds | null): boolean {
   return !!creds && creds.provider !== 'claude';
 }
 
+/**
+ * Insight panels whose data IS branch or file names — the per-section twins of
+ * the `branches` / `churn` datasets that ai-datasets.ts replaces with a redaction
+ * marker under shouldRedact(). Here nothing is sent at all: with the names gone
+ * the panel has nothing left to explain.
+ */
+const REDACTED_SECTIONS = new Set(['branches', 'churn']);
+
 /** Validate client-supplied AI credentials (Settings → AI Insights). */
 function parseAiCreds(raw: any): AiCreds | null {
   if (!raw || typeof raw !== 'object') return null;
@@ -941,6 +975,12 @@ app.post('/api/ai/insight', async (req, res) => {
       return;
     }
     const creds = parseAiCreds(req.body?.config);
+    if (shouldRedact(creds) && REDACTED_SECTIONS.has(section)) {
+      res.status(403).json({
+        error: 'Branch and file names are not sent to third-party model providers. Pick Claude (or clear the key to use the local backend) in Settings → AI Insights to explain this panel.',
+      });
+      return;
+    }
     const { text, backend } = await runAi(
       {
         system: SECTION_SYSTEM,
@@ -1195,8 +1235,8 @@ if (existsSync(distDir)) {
   });
 }
 
-app.listen(PORT, () => {
-  console.log(`[server] listening on http://localhost:${PORT} (claudeDir=${claudeDir()})`);
+app.listen(PORT, BIND_HOST, () => {
+  console.log(`[server] listening on ${BIND_HOST}:${PORT} (claudeDir=${claudeDir()})`);
   // Prime the data layer in the background. This used to be two calls that each
   // kicked off a full independent scan of the same files, concurrently — they
   // fought over the disk and the libuv threadpool and doubled the cold-start cost.

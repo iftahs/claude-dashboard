@@ -39,7 +39,10 @@ export default defineConfig({
   server: {
     port: 5180,
     proxy: {
-      '/api': `http://localhost:${SERVER_PORT}`,
+      // 127.0.0.1, not localhost: the backend binds IPv4 loopback only, and Node
+      // may resolve localhost to ::1 first. The string form keeps the browser's
+      // Host header (localhost:5180), which the backend's Host check accepts.
+      '/api': `http://127.0.0.1:${SERVER_PORT}`,
     },
   },
 });

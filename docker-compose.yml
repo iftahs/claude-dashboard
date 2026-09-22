@@ -17,7 +17,11 @@ services:
     image: claude-dashboard
     container_name: claude-dashboard
     ports:
-      - "8787:8787"
+      # Loopback only by default: the dashboard has no login and serves your
+      # transcripts. For LAN access set DASHBOARD_BIND=0.0.0.0 in .env AND list
+      # the name/IP you'll browse to in ALLOWED_HOSTS (e.g. 192.168.1.20) — the
+      # server rejects any Host header that isn't localhost or on that list.
+      - "${DASHBOARD_BIND:-127.0.0.1}:8787:8787"
     volumes:
       # Mount your real ~/.claude into the container, read-only.
       # Set CLAUDE_DIR_HOST in a .env file (see .env.example).
@@ -52,6 +56,9 @@ services:
       - CODEX_DIR=/data/.codex
       - SERVER_PORT=8787
       - APP_RUNTIME=docker
+      # Extra hostnames/IPs (comma-separated) the server answers to besides
+      # localhost — only needed with DASHBOARD_BIND above. See .env.example.
+      - ALLOWED_HOSTS=${ALLOWED_HOSTS:-}
       # AI Insights (chat + per-section buttons). In Docker there's no `claude`
       # CLI, so set ANTHROPIC_API_KEY in .env for a dedicated, un-throttled
       # backend. Unset → falls back to the Claude.ai OAuth token (works, but is

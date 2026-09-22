@@ -284,12 +284,18 @@ async function callOpenAI(apiKey: string, input: AiCallInput, model: string): Pr
 }
 
 // ── Google Gemini ────────────────────────────────────────────────────────────
+// The key goes in the x-goog-api-key header, never a ?key= query parameter: URLs
+// end up in proxy logs, error messages and stack traces.
+
+function geminiHeaders(apiKey: string): Record<string, string> {
+  return { 'x-goog-api-key': apiKey, 'content-type': 'application/json' };
+}
 
 async function callGemini(apiKey: string, input: AiCallInput, model: string): Promise<string> {
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`;
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`;
   const res = await fetch(url, {
     method: 'POST',
-    headers: { 'content-type': 'application/json' },
+    headers: geminiHeaders(apiKey),
     body: JSON.stringify({
       systemInstruction: { parts: [{ text: input.system }] },
       contents: [{ role: 'user', parts: [{ text: input.user }] }],
@@ -404,10 +410,10 @@ async function callOpenAIStream(apiKey: string, input: AiCallInput, model: strin
 }
 
 async function callGeminiStream(apiKey: string, input: AiCallInput, model: string, onDelta: (t: string) => void): Promise<void> {
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:streamGenerateContent?alt=sse&key=${encodeURIComponent(apiKey)}`;
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:streamGenerateContent?alt=sse`;
   const res = await fetch(url, {
     method: 'POST',
-    headers: { 'content-type': 'application/json' },
+    headers: geminiHeaders(apiKey),
     body: JSON.stringify({
       systemInstruction: { parts: [{ text: input.system }] },
       contents: [{ role: 'user', parts: [{ text: input.user }] }],

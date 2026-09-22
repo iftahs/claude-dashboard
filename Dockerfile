@@ -20,6 +20,10 @@ FROM node:24-alpine AS runtime
 WORKDIR /app
 ENV NODE_ENV=production
 ENV SERVER_PORT=8787
+# Listen on every interface inside the container so Docker's port mapping can
+# reach it. What is exposed on the host is decided by docker-compose's port
+# binding (127.0.0.1 by default), and the server's Host check still applies.
+ENV BIND_HOST=0.0.0.0
 ENV CLAUDE_DIR=/data/.claude
 ENV APP_RUNTIME=docker
 # Parsed-scan cache (SQLite via the built-in node:sqlite, hence node 24). Backed by
