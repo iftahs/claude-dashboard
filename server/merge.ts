@@ -247,7 +247,7 @@ export function mergeRows(files: FileRows[], sessionMetas: any[]): MergeResult {
   }
 
   // Per-session tokens and cost from globally deduped usage, restricted to the
-  // files insights actually reads (<= 5 MB), preserving the original scope.
+  // files insights actually reads (<= INSIGHTS_MAX_FILE_BYTES), preserving the original scope.
   for (const r of dedupUsage(insightUsage)) {
     if (r.dedupKey === ':') continue; // matches the original `key !== ':' && usage` guard
     const sm = sessionsMeta.get(r.sessionId);

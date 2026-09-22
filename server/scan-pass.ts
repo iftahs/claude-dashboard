@@ -31,8 +31,16 @@ import { parseCodexFileRows } from './scan-pass-codex.ts';
 /** Measured optimum on an NVMe SSD: 1→4.28s, 8→3.11s, 16→3.27s, 24→3.74s. */
 export const PARSE_CONCURRENCY = 8;
 
-/** insights-scan.ts has always skipped files above this size; preserved verbatim. */
-export const INSIGHTS_MAX_FILE_BYTES = 5 * 1024 * 1024;
+/**
+ * Files above this size feed usage rows only, not insights. It was 5 MB (inherited
+ * from insights-scan.ts), which silently dropped the longest sessions from the
+ * Sessions and Insights tabs. Every file is read whole for its usage rows anyway;
+ * parsing the rest of a big one costs CPU once (the row cache keeps the result) and
+ * adds rows that grow with tool calls, not bytes. Measured on 31 files over 5 MB
+ * (largest 24 MB): +0.3s once, ~1 MB more retained heap, ~5 MB more in the SQLite
+ * cache. The cap now only guards against pathological transcripts.
+ */
+export const INSIGHTS_MAX_FILE_BYTES = 64 * 1024 * 1024;
 
 /** Per-session search-corpus cap applied at parse time (and again globally in merge.ts). */
 export const CORPUS_CAP_BYTES = 20 * 1024;
@@ -277,6 +285,45 @@ function attrStr(v: unknown): string {
   return typeof v === 'string' ? v : '';
 }
 
+/** A tool_result's text: the string itself, or its text blocks concatenated. */
+function toolResultText(content: unknown): string {
+  if (typeof content === 'string') return content;
+  let text = '';
+  if (Array.isArray(content)) {
+    for (const tb of content) {
+      if (tb?.type === 'text' && typeof tb.text === 'string') text += tb.text;
+    }
+  }
+  return text;
+}
+
+/**
+ * How Claude Code words a call the permission layer refused, as opposed to one
+ * that ran and failed. Anchored at the start: a failed command whose output merely
+ * quotes one of these (or says "Permission denied" from the OS) must not count.
+ */
+const REJECTION_PATTERNS: RegExp[] = [
+  /^The user doesn['’]t want to proceed with this tool use\b/, // declined at the prompt
+  /^Permission for this tool use was denied\b/, // the same decline, as a subagent sees it
+  /^User rejected\b/, // the toolUseResult wording of that decline
+  /^Permission to use .+? has been denied\b/, // a deny rule
+  /^Permission for this action was denied by the Claude Code auto mode classifier\b/,
+  /^Claude requested permissions to .+ but you haven['’]t granted it yet\b/, // no prompt available
+];
+
+/**
+ * Whether a tool_result is a permission rejection. Only an is_error result can be:
+ * the old test ran /reject|doesn't want to proceed|denied/ over every result, so a
+ * successful Read of a file that mentions "reject" counted as a rejection, and
+ * those false positives outnumbered real declines by more than 30 to 1.
+ */
+export function isRejectedToolResult(block: any): boolean {
+  if (!block || block.is_error !== true) return false;
+  if (block.rejected === true) return true;
+  const text = toolResultText(block.content).trimStart().replace(/^<tool_use_error>\s*/, '');
+  return REJECTION_PATTERNS.some((re) => re.test(text));
+}
+
 // ---------------------------------------------------------------------------
 // Per-file parse
 // ---------------------------------------------------------------------------
@@ -284,9 +331,9 @@ function attrStr(v: unknown): string {
 /**
  * Parse one JSONL file into flat rows.
  *
- * Two behaviours are preserved deliberately from the code this replaces:
- *  - usage rows come from every file; insight rows only from files <= 5 MB
- *    (insights-scan.ts:237-241 has always skipped larger ones)
+ * Two behaviours are deliberate:
+ *  - usage rows come from every file; insight rows only from files up to
+ *    INSIGHTS_MAX_FILE_BYTES (the insights-scan.ts this replaces stopped at 5 MB)
  *  - cowork transcripts get an empty projectPath, because the path they encode is
  *    sandbox-internal and meaningless on the host
  *
@@ -422,7 +469,7 @@ export async function parseFileRows(file: ScannedFile): Promise<FileRows> {
 
     if (insightsSkipped) continue;
 
-    // ---- insight rows (files <= 5 MB only) ----
+    // ---- insight rows (files <= INSIGHTS_MAX_FILE_BYTES only) ----
     const sm = sessionRow(sessionId, ts, gitBranch);
 
     if (obj.type === 'summary') {
@@ -454,9 +501,7 @@ export async function parseFileRows(file: ScannedFile): Promise<FileRows> {
           if (block.type === 'tool_result') {
             const toolId: string = block.tool_use_id ?? '';
             const isError: boolean = block.is_error === true;
-            const rejected: boolean =
-              block.rejected === true ||
-              (typeof block.content === 'string' && /reject|doesn't want to proceed|denied/i.test(block.content));
+            const rejected = isRejectedToolResult(block);
 
             let errorText = '';
             if (isError) {
@@ -472,14 +517,7 @@ export async function parseFileRows(file: ScannedFile): Promise<FileRows> {
             if (rejected) sm.rejectionCount++;
             if (!isError) sm.nonErrorResultIds.push(toolId);
 
-            let resultText = '';
-            if (typeof block.content === 'string') {
-              resultText = block.content;
-            } else if (Array.isArray(block.content)) {
-              for (const tb of block.content) {
-                if (tb?.type === 'text' && typeof tb.text === 'string') resultText += tb.text;
-              }
-            }
+            const resultText = toolResultText(block.content);
             const agentIdMatch = resultText ? resultText.match(/agentId:\s*([a-z0-9]+)/) : null;
 
             rows.toolResults.push({
@@ -557,7 +595,7 @@ export async function parseFileRows(file: ScannedFile): Promise<FileRows> {
   if (keylessAssistant > 0) {
     const first = sessions.values().next().value;
     if (first) {
-      for (let i = 0; i < keylessAssistant; i++) first.assistantKeys.push(` keyless:${path}:${i}`);
+      for (let i = 0; i < keylessAssistant; i++) first.assistantKeys.push(`\0keyless:${path}:${i}`);
     }
   }
 

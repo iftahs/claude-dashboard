@@ -276,7 +276,7 @@ export function buildBranches(d: InsightsData, days: number, now = Date.now(), l
     const repo = sm.projectPath
       ? sm.projectPath.split(/[\\/]/).filter(Boolean).pop() ?? sm.projectPath
       : 'unknown';
-    const key = `${repo} ${sm.gitBranch}`;
+    const key = `${repo}\0${sm.gitBranch}`;
 
     let entry = branchMap.get(key);
     if (!entry) {

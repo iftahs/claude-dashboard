@@ -24,8 +24,9 @@ import type { FileRows } from './scan-pass.ts';
  * Bump when the shape of FileRows — or what a parser puts in it — changes;
  * invalidates every cached blob.
  *   2: Codex rollouts (scan-pass-codex.ts) join the store; `source: 'codex'` rows.
+ *   4: `rejected` requires an is_error result; insight rows from files up to 64 MB.
  */
-const SCHEMA_VERSION = 3;
+const SCHEMA_VERSION = 4;
 
 export function cacheDir(): string {
   return process.env.DASHBOARD_CACHE_DIR || join(homedir(), '.claude-dashboard-cache');
