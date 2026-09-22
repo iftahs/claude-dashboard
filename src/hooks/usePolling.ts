@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { Envelope } from '../types';
 
 interface State<T> {
@@ -60,10 +60,13 @@ export function usePolling<T>(url: string, intervalMs = 5000): PollState<T> {
       : { data: null, computedAt: null, claudeDir: null, error: null, loading: true };
   });
   const [lastFetch, setLastFetch] = useState(0);
-  const alive = useRef(true);
 
   useEffect(() => {
-    alive.current = true;
+    // Per effect run, not a shared ref: on a URL switch (platform/range filter) a
+    // fetch for the old URL can resolve after this run has started. A ref reset to
+    // true here would let it through and paint the previous filter's data over the
+    // new one — for up to a whole interval on the 60s polls.
+    let cancelled = false;
     // An empty URL means "disabled" (e.g. a feature-gated poll): make no request,
     // settle to an idle/empty state, and skip the interval entirely.
     if (!url) {
@@ -88,7 +91,7 @@ export function usePolling<T>(url: string, intervalMs = 5000): PollState<T> {
       if (document.hidden) return;
       try {
         const entry = await fetchShared(url);
-        if (!alive.current) return;
+        if (cancelled) return;
         setState({
           data: entry.data as T,
           computedAt: entry.computedAt,
@@ -98,7 +101,7 @@ export function usePolling<T>(url: string, intervalMs = 5000): PollState<T> {
         });
         setLastFetch(Date.now());
       } catch (e) {
-        if (!alive.current) return;
+        if (cancelled) return;
         // Keep any cached/last data on screen; just surface the error.
         setState((s) => ({ ...s, error: String(e), loading: false }));
         setLastFetch(Date.now());
@@ -114,7 +117,7 @@ export function usePolling<T>(url: string, intervalMs = 5000): PollState<T> {
     document.addEventListener('visibilitychange', onVisible);
 
     return () => {
-      alive.current = false;
+      cancelled = true;
       clearInterval(id);
       document.removeEventListener('visibilitychange', onVisible);
     };

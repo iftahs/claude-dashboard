@@ -71,9 +71,10 @@ export function LiveTab({ limits }: LiveTabProps) {
   const { litellmActual } = useLiteLlmActual();
 
   // Live plan/limits per logged-in account (only polled while the Live tab is
-  // mounted). >1 account swaps the single card for the side-by-side panel; with
-  // one account this stays empty and the dashboard is byte-identical to before.
-  const accountsLive = usePolling<AccountsLiveData>('/api/accounts/live', 15000);
+  // mounted, and not under Codex, where the Claude plan card never renders).
+  // >1 account swaps the single card for the side-by-side panel; with one
+  // account this stays empty and the dashboard is byte-identical to before.
+  const accountsLive = usePolling<AccountsLiveData>(platform !== 'codex' ? '/api/accounts/live' : '', 15000);
   const accounts = accountsLive.data?.accounts ?? [];
   const multiAccount = accounts.length > 1;
 

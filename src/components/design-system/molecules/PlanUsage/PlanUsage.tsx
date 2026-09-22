@@ -70,14 +70,19 @@ export function PlanUsage({
   const showBlock = !hasLive || liveUsage.five_hour != null;
   const showWeekly = !hasLive || liveUsage.seven_day != null;
 
-  // 5-Hour Limit calculations
+  // 5-Hour Limit calculations. Offline, an expired local block reads as "no active
+  // block" (0%, resets on next msg) rather than the last session's tokens; the
+  // client-clock check covers a server block memoised before it expired.
+  const blockEnded = !hasLive && !!block && (!block.isActive || block.resetsAt <= now);
   const blockLimit = DEFAULT_BLOCK_LIMIT;
   const blockPct = hasLive
     ? Math.round(liveUsage.five_hour?.utilization ?? 0)
+    : blockEnded
+    ? 0
     : Math.min(100, Math.round(((block?.totals.effectiveTokens ?? 0) / blockLimit) * 100));
 
   const liveResetsAt = hasLive ? Date.parse(liveUsage.five_hour?.resets_at ?? '') : null;
-  const noActiveBlock = hasLive && liveUsage.five_hour?.resets_at == null;
+  const noActiveBlock = hasLive ? liveUsage.five_hour?.resets_at == null : blockEnded;
   const blockResetsAt = liveResetsAt && !isNaN(liveResetsAt) ? liveResetsAt : (block?.resetsAt ?? (now + 5 * 3600_000));
   const blockResetStr = noActiveBlock ? 'on next msg' : untilFull(blockResetsAt);
 

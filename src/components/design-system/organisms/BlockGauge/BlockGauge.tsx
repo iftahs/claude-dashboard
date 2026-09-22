@@ -4,10 +4,11 @@ import { useBlockGauge } from '@/hooks/useBlockGauge';
 import type { BlockGaugeProps } from './types';
 
 export function BlockGauge(props: BlockGaugeProps) {
-  const { block, liveUsage, isApi = false, todayActualCost = null } = props;
+  const { liveUsage, isApi = false, todayActualCost = null } = props;
   const {
     effective,
     prevEffective,
+    cacheReads,
     cost,
     prevCost,
     capPct,
@@ -132,7 +133,7 @@ export function BlockGauge(props: BlockGaugeProps) {
             )}
             <div className="flex justify-between text-zinc-500">
               <span>Cache reads</span>
-              <span className="tabular-nums">{compact(block?.totals.cacheReadTokens ?? 0)}</span>
+              <span className="tabular-nums">{compact(cacheReads)}</span>
             </div>
             <div className="flex justify-between text-zinc-500">
               <span>Block resets in</span>
@@ -153,7 +154,7 @@ export function BlockGauge(props: BlockGaugeProps) {
             )}
             <div className="flex justify-between text-zinc-500">
               <span>Cache reads</span>
-              <span className="tabular-nums">{compact(block?.totals.cacheReadTokens ?? 0)}</span>
+              <span className="tabular-nums">{compact(cacheReads)}</span>
             </div>
             <div className="flex justify-between text-zinc-500">
               <span>Resets in</span>

@@ -11,6 +11,7 @@ import type { BlockGaugeProps } from '@/components/design-system/organisms/Block
 export interface BlockGaugeView {
   effective: number;
   prevEffective: number;
+  cacheReads: number;
   cost: number;
   prevCost: number;
   capPct: number | null;
@@ -48,16 +49,24 @@ export function useBlockGauge({
   }, []);
 
   const now = Date.now();
-  const effective = block?.totals.effectiveTokens ?? 0;
-  const prevEffective = block?.prevTotals.effectiveTokens ?? 0;
+  const hasLive = !isApi && !!liveUsage && !liveUsage.error;
+
+  // Without live data the local block drives the numbers, so an expired one must
+  // read as ended, not as the last session's tokens against the 6M guess. The
+  // client-clock check covers a server block memoised before it expired. Once it
+  // has ended, that block is the previous one.
+  const blockEnded = !hasLive && !!block && (!block.isActive || block.resetsAt <= now);
+  const current = blockEnded ? null : block?.totals;
+  const previous = blockEnded ? block?.totals : block?.prevTotals;
+  const effective = current?.effectiveTokens ?? 0;
+  const prevEffective = previous?.effectiveTokens ?? 0;
+  const cacheReads = current?.cacheReadTokens ?? 0;
 
   const blockLimit = DEFAULT_BLOCK_LIMIT;
 
-  const hasLive = !isApi && !!liveUsage && !liveUsage.error;
-
   // ── API / pay-as-you-go: cost-based ring ──────────────────────────────────
-  const cost = block?.totals.cost ?? 0;
-  const prevCost = block?.prevTotals.cost ?? 0;
+  const cost = current?.cost ?? 0;
+  const prevCost = previous?.cost ?? 0;
   // Daily-cap ring: prefer real billed spend so far today (gateway) over the
   // estimated average $/day, so the cap warning reflects actual money spent.
   const dailySpend = todayActualCost ?? costPerDay;
@@ -76,9 +85,10 @@ export function useBlockGauge({
   const dash = c * Math.max(0, Math.min(1, ringFrac));
   const ringColor = ringPct > 90 ? '#ef4444' : ringPct > 70 ? '#f59e0b' : '#d97757';
 
-  // Resets in — when live API has no active block (resets_at=null), show helpful hint
+  // Resets in — when there is no active block (live resets_at=null, or the local
+  // block has ended), show helpful hint
   const liveResetsAt = hasLive ? Date.parse(liveUsage!.five_hour.resets_at) : null;
-  const noActiveBlock = hasLive && liveUsage!.five_hour.resets_at == null;
+  const noActiveBlock = hasLive ? liveUsage!.five_hour.resets_at == null : blockEnded;
   const blockResetsAt = liveResetsAt && !isNaN(liveResetsAt) ? liveResetsAt : (block?.resetsAt ?? (now + BLOCK_MS));
   const remainingMs = Math.max(0, blockResetsAt - now);
   const resetStr = noActiveBlock ? 'on next message' : formatRemaining(remainingMs);
@@ -120,6 +130,7 @@ export function useBlockGauge({
   return {
     effective,
     prevEffective,
+    cacheReads,
     cost,
     prevCost,
     capPct,

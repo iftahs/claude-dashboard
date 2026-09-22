@@ -50,11 +50,12 @@ const LiveDataContext = createContext<LiveDataCtx | null>(null);
  * window state shared between Live and Trends. Source-aware polls run through
  * `withSrc`; the LiteLLM poll is gated on gateway detection so Code-only /
  * direct-Anthropic users poll nothing; the Codex polls are gated the same way on
- * `codexAvailable` (they feed the Codex tab, the sidebar badge and the header
- * agent traffic signal).
+ * `codexAvailable` (they feed the Codex panels, the sidebar badge and the header
+ * agent traffic signal). The 2.5s/4s agent and workflow polls are further gated
+ * on the platform switcher (`showClaude` / `showCodex`).
  */
 export function LiveDataProvider({ children }: { children: ReactNode }) {
-  const { withSrc, codexAvailable } = useSource();
+  const { withSrc, codexAvailable, showClaude, showCodex } = useSource();
   const { litellmAvailable } = useConfigMode();
   const [recentHours, setRecentHours] = useState(12);
   const [weekDays, setWeekDays] = useState(7);
@@ -66,15 +67,19 @@ export function LiveDataProvider({ children }: { children: ReactNode }) {
     litellmAvailable ? `/api/usage/litellm?days=${weekDays}` : '',
     POLL,
   );
+  // Live limits stay app-wide on both platforms (the sidebar badge, tab title and
+  // notifications read them). The fast agent/workflow polls run only while their
+  // platform is on screen — every consumer already hides the other side's data.
   const liveUsage = usePolling<LiveUsageData>('/api/usage/live', 15000);
-  const liveSubagents = usePolling<LiveSubagents>('/api/subagents/live', 2500);
-  const workflows = usePolling<WorkflowsData>('/api/workflows', 4000);
+  const liveSubagents = usePolling<LiveSubagents>(showClaude ? '/api/subagents/live' : '', 2500);
+  const workflows = usePolling<WorkflowsData>(showClaude ? '/api/workflows' : '', 4000);
   const workflowStats = usePolling<WorkflowStats>('/api/workflows/stats', 30000);
   const version = usePolling<VersionInfo>('/api/version', 1_800_000);
   // Codex: live limits mirror the Claude live cadence, agents the Claude agents
   // cadence; the profile endpoint is server-cached for 30 min so poll it that often.
+  // showCodex implies codexAvailable (the platform is pinned to Claude otherwise).
   const codexLive = usePolling<CodexLiveData>(codexAvailable ? '/api/codex/live' : '', 15000);
-  const codexAgents = usePolling<LiveSubagents>(codexAvailable ? '/api/codex/agents/live' : '', 2500);
+  const codexAgents = usePolling<LiveSubagents>(showCodex ? '/api/codex/agents/live' : '', 2500);
   const codexProfile = usePolling<CodexProfileStats>(codexAvailable ? '/api/codex/profile' : '', 1_800_000);
 
   const value = useMemo<LiveDataCtx>(
