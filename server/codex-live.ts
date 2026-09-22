@@ -37,6 +37,8 @@ export interface CodexLiveData {
   modelAvailability: Record<string, boolean>;
   origin: 'live' | 'passive';
   snapshotAt: string | null;
+  /** Passive only: why live failed. Non-fatal — the payload is still usable data. */
+  warning?: string;
   error?: string;
 }
 
@@ -283,9 +285,10 @@ let usageCache: { data: CodexLiveData; fetchedAt: number } | null = null;
 
 /**
  * Current Codex plan limits. Live from ChatGPT when the stored token works;
- * otherwise the newest local `token_count` snapshot (origin 'passive', with an
- * `error` describing why live failed). Auth problems (no login, expired,
- * 401/403) throw — those need the user, not a stale snapshot.
+ * otherwise the newest local `token_count` snapshot (origin 'passive', with a
+ * `warning` describing why live failed — never `error`, which the UI reads as
+ * "nothing to show"). Auth problems (expired, 401/403) throw — those need the
+ * user, not a stale snapshot.
  */
 export async function fetchCodexUsage(): Promise<CodexLiveData> {
   if (usageCache && Date.now() - usageCache.fetchedAt < USAGE_TTL_MS) return usageCache.data;
@@ -311,7 +314,7 @@ export async function fetchCodexUsage(): Promise<CodexLiveData> {
   const data: CodexLiveData = {
     ...passive,
     planType: passive.planType ?? auth?.planType ?? null,
-    error: `Live usage unavailable (${liveError}) — showing the newest local snapshot.`,
+    warning: `live usage unavailable: ${liveError.replace(/\.$/, '')}`,
   };
   usageCache = { data, fetchedAt: Date.now() };
   return data;
@@ -393,13 +396,23 @@ export async function lastRecordTs(path: string): Promise<number | null> {
   return null;
 }
 
+/** The snapshot can be days old — true when this window's reset has already passed. */
+function hasLapsed(w: any, now: number): boolean {
+  const resetsMs = num(w?.resets_at) * 1000;
+  return resetsMs > 0 && now >= resetsMs;
+}
+
+/**
+ * One snapshot window → CodexWindow; null only when the plan has no such window.
+ * A lapsed window has emptied since the snapshot, so it reads 0% with no reset
+ * time ("resets on next msg") instead of its stale percentage.
+ */
 function passiveWindow(w: any, now: number): CodexWindow | null {
   if (!w || typeof w !== 'object') return null;
   const windowSec = num(w.window_minutes) * 60;
   if (windowSec <= 0) return null;
+  if (hasLapsed(w, now)) return { usedPct: 0, windowSec, resetsAt: null };
   const resetsMs = num(w.resets_at) * 1000;
-  // The snapshot can be days old — a window whose reset already passed says nothing about now.
-  if (resetsMs > 0 && now >= resetsMs) return null;
   return {
     usedPct: clampPct(w.used_percent),
     windowSec,
@@ -407,14 +420,15 @@ function passiveWindow(w: any, now: number): CodexWindow | null {
   };
 }
 
-/** Last `token_count` record with `rate_limits` in the file's tail → CodexLiveData, or null. */
-async function snapshotFromTail(path: string, now: number): Promise<CodexLiveData | null> {
-  let lines: string[];
-  try {
-    lines = (await readTail(path, PASSIVE_TAIL_BYTES)).split('\n');
-  } catch {
-    return null;
-  }
+/**
+ * The newest `token_count.rate_limits` for the Codex plan among rollout lines →
+ * CodexLiveData, or null. Records for another bucket (`limit_id` 'premium') are
+ * skipped and the search goes on backwards: their windows are null, and they are
+ * written milliseconds before a usage-limit error — exactly when this fallback is
+ * read — so taking one would show empty bars at a limit hit. No `limit_id` (older
+ * CLIs) means the Codex bucket.
+ */
+export function snapshotFromLines(lines: string[], now: number): CodexLiveData | null {
   for (let i = lines.length - 1; i >= 0; i--) {
     const line = lines[i];
     // Cheap string gates before the JSON.parse: it's an event_msg, a token_count, and carries rate_limits.
@@ -424,20 +438,24 @@ async function snapshotFromTail(path: string, now: number): Promise<CodexLiveDat
     if (obj?.type !== 'event_msg' || obj.payload?.type !== 'token_count') continue;
     const rl = obj.payload.rate_limits;
     if (!rl || typeof rl !== 'object') continue;
+    if (typeof rl.limit_id === 'string' && rl.limit_id !== 'codex') continue;
 
     const windows: CodexWindow[] = [];
     for (const w of [passiveWindow(rl.primary, now), passiveWindow(rl.secondary, now)]) {
       if (w) windows.push(w);
     }
     const { fiveHour, weekly } = assignWindows(windows);
+    // A "reached" flag only means something while the window it refers to hasn't
+    // lapsed. rate_limit_reached_type has been null in every snapshot seen so far,
+    // so an open window at 100% counts as reached too.
+    const open = [rl.primary, rl.secondary].filter((w) => passiveWindow(w, now) !== null && !hasLapsed(w, now));
     const c = rl.credits;
     const snapshotTs = Date.parse(obj.timestamp ?? '');
     return {
       planType: typeof rl.plan_type === 'string' ? rl.plan_type : null,
       fiveHour,
       weekly,
-      // A "reached" flag only means something while the window it refers to hasn't lapsed.
-      limitReached: rl.rate_limit_reached_type != null && (fiveHour !== null || weekly !== null),
+      limitReached: open.length > 0 && (rl.rate_limit_reached_type != null || open.some((w) => clampPct(w.used_percent) >= 100)),
       credits: c && typeof c === 'object'
         ? { hasCredits: !!c.has_credits, unlimited: !!c.unlimited, balance: c.balance != null ? String(c.balance) : null, overageLimitReached: false }
         : null,
@@ -450,10 +468,18 @@ async function snapshotFromTail(path: string, now: number): Promise<CodexLiveDat
   return null;
 }
 
+async function snapshotFromTail(path: string, now: number): Promise<CodexLiveData | null> {
+  try {
+    return snapshotFromLines((await readTail(path, PASSIVE_TAIL_BYTES)).split('\n'), now);
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Offline fallback: the newest rollout — by LAST RECORD TIMESTAMP, since guardian
- * files never update their mtime — and its last `token_count.rate_limits`. Tries
- * the next-newest few files when the newest tail has none. Null when nothing usable.
+ * files never update their mtime — and its last Codex-bucket `token_count.rate_limits`.
+ * Tries the next-newest few files when the newest tail has none. Null when nothing usable.
  */
 export async function readPassiveRateLimits(): Promise<CodexLiveData | null> {
   const now = Date.now();

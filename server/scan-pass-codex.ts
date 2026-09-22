@@ -27,10 +27,19 @@
  *  - IDENTITY: `session_meta` (always line 0). A guardian review thread
  *    (thread_source 'guardian_review' / object-valued `source`) is a subagent of
  *    `parent_thread_id`: its rows are sidechain, sessionId = parent, agentId = own
- *    id, and one TaskSpawnRow makes it visible to the Subagents insight.
+ *    id. One guardian thread is a long-lived reviewer that answers many approval
+ *    requests (up to ~20), one per turn: each `task_complete` carries a JSON
+ *    verdict in `last_agent_message`, and each verdict becomes one TaskSpawnRow
+ *    (id `<thread>:<turn>`) — so the Subagents insight counts reviews, not threads.
+ *    Only the `outcome` enum is read; the free-text rationale quotes commands and
+ *    paths and is never stored. A 'deny' also becomes a rejected `GuardianReview`
+ *    call on the parent thread — the denied action never runs, so nothing else
+ *    records it.
  *  - TOOLS: `event_msg/item_completed` only. The `response_item`
  *    custom_tool_call / function_call lines are JS-sandbox wrappers of the same
- *    items and would double-count. Item types are PascalCase.
+ *    items and would double-count. Item types are PascalCase. An item whose
+ *    status is 'declined' (the user said no to the approval) is a rejection, not a
+ *    success and not an error — the same split the Claude parser makes.
  *
  * Performance: a ~140-char header regex is the only work most lines get; JSON.parse
  * is paid for the handful of record types above, and `compacted` lines (1.3–3.8 MB
@@ -56,8 +65,8 @@ const EVENT_SCAN = 260;
 
 const HEADER_RE =
   /^\{"timestamp":"([^"]+)",(?:"ordinal":(\d+),)?"type":"(session_meta|turn_context|token_usage_record|event_msg|compacted|world_state)"/;
-/** event_msg sub-types we parse. task_complete carries nothing we need, so it is not here. */
-const EVENT_RE = /"payload":\{"type":"(token_count|task_started|item_completed|thread_settings_applied)"/;
+/** event_msg sub-types we parse. task_complete only matters in guardian threads (the verdict). */
+const EVENT_RE = /"payload":\{"type":"(token_count|task_started|task_complete|item_completed|thread_settings_applied)"/;
 const ITEM_RE = /"item":\{"type":"([A-Za-z]+)"/;
 /** item_completed kinds that never yield a row — rejected from the header, before JSON.parse. */
 const SKIP_ITEMS = new Set(['Reasoning', 'AgentMessage', 'FunctionCallOutput', 'ContextCompaction']);
@@ -69,6 +78,8 @@ const ATTACHMENT_MANIFEST_RE = /^#\s*Files mentioned by the user:/i;
 const COMMAND_NAMES: Record<string, string> = { read: 'Read', search: 'Grep', list_files: 'LS' };
 /** FileChange change.type → dashboard tool name. */
 const CHANGE_NAMES: Record<string, string> = { add: 'Write', update: 'Edit', delete: 'Delete' };
+/** Tool name for an action a guardian review denied — the verdict does not say which tool it was. */
+export const GUARDIAN_DENY_TOOL = 'GuardianReview';
 
 function str(v: unknown): string {
   return typeof v === 'string' ? v : '';
@@ -107,6 +118,21 @@ function threadIdFromFileName(path: string): string {
 
 function effective(r: UsageRow): number {
   return r.inputTokens + r.outputTokens + r.cacheCreateTokens;
+}
+
+/**
+ * The `outcome` of a guardian verdict ('allow' | 'deny'), or '' when the turn
+ * ended without one (interrupted, errored). Nothing else leaves this function —
+ * `rationale` is free text that quotes the reviewed command.
+ */
+function verdictOutcome(msg: unknown): string {
+  if (typeof msg !== 'string' || !msg.trimStart().startsWith('{')) return '';
+  try {
+    const v = JSON.parse(msg);
+    return typeof v?.outcome === 'string' ? v.outcome : '';
+  } catch {
+    return '';
+  }
 }
 
 /** A usage row whose model is resolved after the whole file has been read. */
@@ -159,6 +185,7 @@ export async function parseCodexFileRows(file: ScannedFile): Promise<FileRows> {
   let turns = 0;
   let compactions = 0;
   let errorCount = 0;
+  let rejectionCount = 0;
   let firstTs = Infinity;
   let lastTs = -Infinity;
 
@@ -195,13 +222,14 @@ export async function parseCodexFileRows(file: ScannedFile): Promise<FileRows> {
   // pushes through toolResults only, never through the call row itself.
   const emitTool = (
     toolId: string, ts: number, turnId: string, name: string,
-    filePath: string | null, isError: boolean, errorText: string,
+    filePath: string | null, isError: boolean, errorText: string, rejected = false,
   ) => {
     rows.toolCalls.push({
       toolId, ts, sessionId: sessionId(), name, isSidechain: guardian,
       mcpServer: extractMcpServer(name), filePath, gitBranch: '', projectPath: '', source,
     });
-    rows.toolResults.push({ toolId, sessionId: sessionId(), isError, rejected: false, errorText, agentIdFromResult: null });
+    rows.toolResults.push({ toolId, sessionId: sessionId(), isError, rejected, errorText, agentIdFromResult: null });
+    if (rejected) rejectionCount++;
     if (isError) errorCount++;
     else nonErrorResultIds.push(toolId);
     if (turnId) {
@@ -217,6 +245,8 @@ export async function parseCodexFileRows(file: ScannedFile): Promise<FileRows> {
     const turnId = str(p.turn_id) || currentTurnId;
     const ts = num(p.completed_at_ms) || num(p.started_at_ms) || lineTs;
     const id = str(it.id);
+    // The user declined the approval: the action never ran, so it is neither a success nor an error.
+    const declined = it.status === 'declined';
 
     switch (it.type) {
       case 'UserMessage': {
@@ -244,13 +274,13 @@ export async function parseCodexFileRows(file: ScannedFile): Promise<FileRows> {
         const first = parsed[0];
         const name = COMMAND_NAMES[str(first?.type)] ?? 'Bash';
         const filePath = name !== 'Bash' ? str(first?.path) : '';
-        const failed = it.status === 'failed' || (typeof it.exit_code === 'number' && it.exit_code !== 0);
+        const failed = !declined && (it.status === 'failed' || (typeof it.exit_code === 'number' && it.exit_code !== 0));
         let errorText = '';
         if (failed) {
           errorText = (str(it.stderr) || str(it.stdout) || str(it.aggregated_output)).slice(0, 200);
           if (!errorText && typeof it.exit_code === 'number') errorText = `exit code ${it.exit_code}`;
         }
-        emitTool(id, ts, turnId, name, filePath ? hostPath(filePath) : null, failed, errorText);
+        emitTool(id, ts, turnId, name, filePath ? hostPath(filePath) : null, failed, errorText, declined);
         for (const pc of parsed) {
           const cmd = str(pc?.cmd);
           if (/git\s+commit/.test(cmd)) gitCommitIds.push(id);
@@ -261,12 +291,14 @@ export async function parseCodexFileRows(file: ScannedFile): Promise<FileRows> {
       case 'FileChange': {
         // One row per changed file. merge.ts dedups tool rows by id, so each file
         // after the first gets a suffixed id instead of collapsing into one edit.
+        // A declined patch changed nothing and was one decision: a single rejected row.
         const changes = it.changes && typeof it.changes === 'object' ? it.changes : {};
         const failed = it.status === 'failed';
         let n = 0;
         for (const [fp, ch] of Object.entries<any>(changes)) {
           const name = CHANGE_NAMES[str(ch?.type)] ?? 'Edit';
-          emitTool(n === 0 ? id : `${id}#${n}`, ts, turnId, name, hostPath(fp), failed, '');
+          emitTool(n === 0 ? id : `${id}#${n}`, ts, turnId, name, hostPath(fp), failed, '', declined);
+          if (declined) break;
           n++;
         }
         return;
@@ -274,13 +306,13 @@ export async function parseCodexFileRows(file: ScannedFile): Promise<FileRows> {
       case 'McpToolCall': {
         // `mcp__<server>__<tool>` so the shared extractMcpServer() regex applies unchanged.
         const name = `mcp__${str(it.server) || 'unknown'}__${str(it.tool) || 'unknown'}`;
-        const isError = it.result?.isError === true || it.status === 'failed';
+        const isError = !declined && (it.result?.isError === true || it.status === 'failed');
         let errorText = '';
         if (isError && Array.isArray(it.result?.content)) {
           const tb = it.result.content.find((b: any) => b?.type === 'text' && typeof b.text === 'string');
           if (tb) errorText = String(tb.text).slice(0, 200);
         }
-        emitTool(id, ts, turnId, name, null, isError, errorText);
+        emitTool(id, ts, turnId, name, null, isError, errorText, declined);
         return;
       }
       case 'WebSearch':
@@ -325,6 +357,7 @@ export async function parseCodexFileRows(file: ScannedFile): Promise<FileRows> {
       const head = line.length > EVENT_SCAN ? line.slice(0, EVENT_SCAN) : line;
       const em = EVENT_RE.exec(head);
       if (!em) continue;
+      if (em[1] === 'task_complete' && !guardian) continue;
       if (em[1] === 'item_completed') {
         const im = ITEM_RE.exec(head);
         if (im && SKIP_ITEMS.has(im[1])) continue;
@@ -414,6 +447,33 @@ export async function parseCodexFileRows(file: ScannedFile): Promise<FileRows> {
           case 'item_completed':
             handleItem(p, ts);
             break;
+          case 'task_complete': {
+            // Guardian threads only (pre-filtered above): one review per verdict. A
+            // turn that ended without one (interrupted, errored) reviewed nothing.
+            const outcome = verdictOutcome(p.last_agent_message);
+            if (!outcome) break;
+            const reviewId = `${ownId}:${str(p.turn_id) || ordinal}`;
+            const rejected = outcome === 'deny';
+            rows.taskSpawns.push({
+              toolId: reviewId, ts, sessionId: sessionId(),
+              subagentType: 'guardian_review', model: 'codex-auto-review', description: 'Guardian review',
+              gitBranch: '', projectPath: '', source,
+            });
+            if (rejected) {
+              // Main-thread, like the Claude tool_use a user rejects: it was the parent's action.
+              rows.toolCalls.push({
+                toolId: reviewId, ts, sessionId: sessionId(), name: GUARDIAN_DENY_TOOL, isSidechain: false,
+                mcpServer: null, filePath: null, gitBranch: '', projectPath: '', source,
+              });
+              rejectionCount++;
+            }
+            // One result row serves both: agentIdFromResult marks the spawn completed in
+            // merge.ts, and `rejected` reaches the rejections insight through the call above.
+            rows.toolResults.push({
+              toolId: reviewId, sessionId: sessionId(), isError: false, rejected, errorText: '', agentIdFromResult: ownId,
+            });
+            break;
+          }
         }
         break;
       }
@@ -437,6 +497,7 @@ export async function parseCodexFileRows(file: ScannedFile): Promise<FileRows> {
   const projectPath = projectPathOf(metaCwd || ctxCwd);
   for (const r of rows.usage) r.projectPathRaw = projectPath;
   for (const t of rows.toolCalls) t.projectPath = projectPath;
+  for (const t of rows.taskSpawns) t.projectPath = projectPath;
 
   if (firstTs === Infinity) return rows; // nothing recognisable in the file
 
@@ -446,7 +507,7 @@ export async function parseCodexFileRows(file: ScannedFile): Promise<FileRows> {
     fileIsSidechain: guardian,
     firstTs, lastTs,
     turns: guardian ? 0 : turns,
-    compactions, errorCount, rejectionCount: 0,
+    compactions, errorCount, rejectionCount,
     firstPrompt: guardian ? '' : firstPrompt,
     gitBranch: '', projectPath, file: path,
     agentId: guardian ? ownId : null,
@@ -456,20 +517,6 @@ export async function parseCodexFileRows(file: ScannedFile): Promise<FileRows> {
     assistantKeys: rows.usage.map((r) => r.dedupKey),
     gitCommitIds, gitPushIds, nonErrorResultIds,
   });
-
-  if (guardian) {
-    rows.taskSpawns.push({
-      toolId: ownId, ts: firstTs, sessionId: sid,
-      subagentType: 'guardian_review', model: 'codex-auto-review', description: 'Guardian review',
-      gitBranch: '', projectPath, source,
-    });
-    // merge.ts marks a spawn completed — and links it to the agent's session —
-    // only through a result row carrying agentIdFromResult; the rollout's
-    // existence is that completion.
-    rows.toolResults.push({
-      toolId: ownId, sessionId: sid, isError: false, rejected: false, errorText: '', agentIdFromResult: ownId,
-    });
-  }
 
   if (snippets.length) rows.corpus.push({ sessionId: sid, snippets });
   return rows;

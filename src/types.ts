@@ -43,7 +43,8 @@ export interface CodexLiveData {
   modelAvailability: Record<string, boolean>;
   origin: 'live' | 'passive';           // network fetch vs newest rollout snapshot
   snapshotAt: string | null;            // passive only: timestamp of the snapshot record
-  error?: string;
+  warning?: string;                     // passive only: why live failed — non-fatal, the data still renders
+  error?: string;                       // nothing usable (auth problem, no snapshot)
 }
 
 /** GET /api/codex/profile — server-side stats from `/wham/profiles/me` (stats only, no profile). */

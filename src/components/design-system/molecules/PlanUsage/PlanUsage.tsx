@@ -65,27 +65,31 @@ export function PlanUsage({
   const now = Date.now();
 
   const hasLive = liveUsage && !liveUsage.error;
+  // A live payload can leave out a window the plan does not have (Codex's 'go' plan
+  // has no 5-hour window): that row is hidden rather than drawn as a fake 0%.
+  const showBlock = !hasLive || liveUsage.five_hour != null;
+  const showWeekly = !hasLive || liveUsage.seven_day != null;
 
   // 5-Hour Limit calculations
   const blockLimit = DEFAULT_BLOCK_LIMIT;
   const blockPct = hasLive
-    ? Math.round(liveUsage.five_hour.utilization)
+    ? Math.round(liveUsage.five_hour?.utilization ?? 0)
     : Math.min(100, Math.round(((block?.totals.effectiveTokens ?? 0) / blockLimit) * 100));
 
-  const liveResetsAt = hasLive ? Date.parse(liveUsage.five_hour.resets_at) : null;
-  const noActiveBlock = hasLive && liveUsage.five_hour.resets_at == null;
+  const liveResetsAt = hasLive ? Date.parse(liveUsage.five_hour?.resets_at ?? '') : null;
+  const noActiveBlock = hasLive && liveUsage.five_hour?.resets_at == null;
   const blockResetsAt = liveResetsAt && !isNaN(liveResetsAt) ? liveResetsAt : (block?.resetsAt ?? (now + 5 * 3600_000));
   const blockResetStr = noActiveBlock ? 'on next msg' : untilFull(blockResetsAt);
 
   // Weekly calculations
   const weeklyLimit = DEFAULT_WEEKLY_LIMIT;
   const weeklyPctRaw = hasLive
-    ? liveUsage.seven_day.utilization
+    ? (liveUsage.seven_day?.utilization ?? 0)
     : Math.min(100, ((weekly?.totals.effectiveTokens ?? 0) / weeklyLimit) * 100);
   const weeklyPct = Math.round(weeklyPctRaw);
 
-  const liveWeeklyResetsAt = hasLive ? Date.parse(liveUsage.seven_day.resets_at) : null;
-  const noActiveWeekly = hasLive && liveUsage.seven_day.resets_at == null;
+  const liveWeeklyResetsAt = hasLive ? Date.parse(liveUsage.seven_day?.resets_at ?? '') : null;
+  const noActiveWeekly = hasLive && liveUsage.seven_day?.resets_at == null;
   // Live Anthropic reset wins; otherwise fall back to the user's configured week start.
   const weeklyResetsAt = liveWeeklyResetsAt && !isNaN(liveWeeklyResetsAt)
     ? liveWeeklyResetsAt
@@ -146,34 +150,38 @@ export function PlanUsage({
 
       <div className="space-y-4">
         {/* 5-hour limit row */}
-        <div className="space-y-1.5">
-          <div className="flex justify-between items-center text-xs">
-            <span className="font-semibold text-zinc-200">{labels?.block ?? DEFAULT_BLOCK_LABEL}</span>
-            <span className="text-zinc-400 font-mono">
-              {blockPct}% <span className="text-zinc-600 font-sans">·</span> resets {blockResetStr}
-              {!noActiveBlock && <span className="text-zinc-600"> · {dateTimeLabel(blockResetsAt)}</span>}
-            </span>
+        {showBlock && (
+          <div className="space-y-1.5">
+            <div className="flex justify-between items-center text-xs">
+              <span className="font-semibold text-zinc-200">{labels?.block ?? DEFAULT_BLOCK_LABEL}</span>
+              <span className="text-zinc-400 font-mono">
+                {blockPct}% <span className="text-zinc-600 font-sans">·</span> resets {blockResetStr}
+                {!noActiveBlock && <span className="text-zinc-600"> · {dateTimeLabel(blockResetsAt)}</span>}
+              </span>
+            </div>
+            <ProgressBar pct={blockPct} color={blockBarColor(blockPct)} />
           </div>
-          <ProgressBar pct={blockPct} color={blockBarColor(blockPct)} />
-        </div>
+        )}
 
         {/* Weekly limit row */}
-        <div className="space-y-1.5">
-          <div className="flex justify-between items-center text-xs">
-            <span className="font-semibold text-zinc-200">{labels?.weekly ?? DEFAULT_WEEKLY_LABEL}</span>
-            <span className="text-zinc-400 font-mono">
-              {weeklyPct}% <span className="text-zinc-600 font-sans">·</span> resets {weeklyResetStr}
-              {!noActiveWeekly && <span className="text-zinc-600"> · {dateTimeLabel(weeklyResetsAt)}</span>}
-            </span>
-          </div>
-          <ProgressBar pct={weeklyPct} variant="blue" />
-          {weeklyForecast && (
-            <div className="flex items-center gap-1 text-[11px]" style={{ color: weeklyForecast.color }}>
-              <span>{weeklyForecast.willExceed ? '⚠' : '↗'}</span>
-              <span>{weeklyForecast.label}</span>
+        {showWeekly && (
+          <div className="space-y-1.5">
+            <div className="flex justify-between items-center text-xs">
+              <span className="font-semibold text-zinc-200">{labels?.weekly ?? DEFAULT_WEEKLY_LABEL}</span>
+              <span className="text-zinc-400 font-mono">
+                {weeklyPct}% <span className="text-zinc-600 font-sans">·</span> resets {weeklyResetStr}
+                {!noActiveWeekly && <span className="text-zinc-600"> · {dateTimeLabel(weeklyResetsAt)}</span>}
+              </span>
             </div>
-          )}
-        </div>
+            <ProgressBar pct={weeklyPct} variant="blue" />
+            {weeklyForecast && (
+              <div className="flex items-center gap-1 text-[11px]" style={{ color: weeklyForecast.color }}>
+                <span>{weeklyForecast.willExceed ? '⚠' : '↗'}</span>
+                <span>{weeklyForecast.label}</span>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Per-model weekly limits (shown only when the live API reports them) */}
         {modelLimits.map(({ label, pct, resetsAt, color }) => {

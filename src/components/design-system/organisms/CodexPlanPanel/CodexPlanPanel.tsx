@@ -44,8 +44,9 @@ function PlanUnavailable({ error }: { error: string }) {
 export function CodexPlanCard({ live, weekStart }: CodexPlanCardProps) {
   const data = live.data;
   const ok = !!data && !data.error;
-  // Either the endpoint returned `{ error }` (token expired, offline…) or the
-  // request itself failed (e.g. a backend without the Codex routes → HTTP 404).
+  // Either the endpoint returned `{ error }` (token expired, offline with no local
+  // snapshot…) or the request itself failed (e.g. a backend without the Codex
+  // routes → HTTP 404). A passive snapshot carries `warning`, not `error`, and renders.
   const error = data?.error ?? live.error;
 
   if (ok) {

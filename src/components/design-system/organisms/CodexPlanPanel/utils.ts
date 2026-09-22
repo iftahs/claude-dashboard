@@ -13,11 +13,12 @@ export const CODEX_PLAN_LABELS = { block: '5-hour limit', weekly: 'Weekly limit'
  * Map one Codex window onto the `{ utilization, resets_at }` shape PlanUsage reads.
  * `resets_at` is null when the window has lapsed or is unknown — PlanUsage already
  * treats a null reset as "no active window" (Anthropic's payload does the same at
- * runtime; the `LiveLimitInfo` type just doesn't say so), hence the single cast in
- * `toPlanUsageLive`.
+ * runtime; the `LiveLimitInfo` type just doesn't say so). A window the plan does
+ * not have (e.g. 'go' has no 5-hour window) stays null so PlanUsage hides its row
+ * instead of drawing a fake 0% — hence the single cast in `toPlanUsageLive`.
  */
 function planWindow(w: CodexWindow | null) {
-  return { utilization: w?.usedPct ?? 0, resets_at: w?.resetsAt ?? null };
+  return w ? { utilization: w.usedPct, resets_at: w.resetsAt } : null;
 }
 
 /** Adapt a (non-error) Codex live payload to the LiveUsageData subset PlanUsage reads. */
@@ -37,11 +38,12 @@ export function planLabel(planType: string | null): string {
   return planType.charAt(0).toUpperCase() + planType.slice(1).replace(/_/g, ' ');
 }
 
-/** Footnote for a passive (rollout-snapshot) reading of the limits. */
+/** Footnote for a passive (rollout-snapshot) reading of the limits, with the server's reason when it sent one. */
 export function snapshotNote(live: CodexLiveData): string {
   const at = live.snapshotAt ? Date.parse(live.snapshotAt) : NaN;
   const age = Number.isNaN(at) ? 'age unknown' : ago(at);
-  return `passive snapshot · ${age} — from the newest local rollout; open the ChatGPT app for live numbers`;
+  const why = live.warning ? ` · ${live.warning}` : '';
+  return `passive snapshot · ${age} — from the newest local rollout; open the ChatGPT app for live numbers${why}`;
 }
 
 /** "1h 12m" / "4m 20s" / "45s" for a duration in seconds. */
