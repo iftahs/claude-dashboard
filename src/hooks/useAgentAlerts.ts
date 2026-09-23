@@ -66,9 +66,12 @@ export function agentAlertText(claude: number, codex: number): { title: string; 
  */
 export function useAgentAlerts(_viewWaiting: number, mode: Settings['agentAlert']) {
   const { liveSubagents, codexAgents } = useLiveData();
-  const { showClaude, showCodex, codexAvailable } = useSource();
+  const { showClaude, showCodex, claudeAvailable, codexAvailable } = useSource();
   const alertsOn = mode !== 'visual';
-  const hiddenClaude = usePolling<LiveSubagents>(alertsOn && !showClaude ? '/api/subagents/live' : '', HIDDEN_POLL_MS);
+  const hiddenClaude = usePolling<LiveSubagents>(
+    alertsOn && claudeAvailable && !showClaude ? '/api/subagents/live' : '',
+    HIDDEN_POLL_MS,
+  );
   const hiddenCodex = usePolling<LiveSubagents>(
     alertsOn && codexAvailable && !showCodex ? '/api/codex/agents/live' : '',
     HIDDEN_POLL_MS,
@@ -76,7 +79,7 @@ export function useAgentAlerts(_viewWaiting: number, mode: Settings['agentAlert'
   // null = no data yet (loading, or mid-handover on a platform switch) — never read as a drop to zero, or it would re-alert an old wait.
   const claudeFeed = showClaude ? liveSubagents.data : hiddenClaude.data;
   const codexFeed = showCodex ? codexAgents.data : hiddenCodex.data;
-  const claude = claudeFeed ? claudeFeed.counts.waiting : null;
+  const claude = claudeAvailable ? (claudeFeed ? claudeFeed.counts.waiting : null) : 0;
   const codex = codexAvailable ? (codexFeed ? codexFeed.counts.waiting : null) : 0;
 
   const prev = useRef({ claude: 0, codex: 0 });

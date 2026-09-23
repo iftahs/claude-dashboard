@@ -1,15 +1,3 @@
-/**
- * codex-config.ts — a minimal, read-only view of Codex's `~/.codex/config.toml`
- * (and the `automation.toml` files beside it) for the Workspace tab.
- *
- * Not a general TOML parser with a filter on top — the scanner only *locates*
- * keys, and a value is decoded solely when its key path is on the allowlist
- * (TOP_LEVEL/profile/notify/plugins/marketplaces/mcp name+command-basename/project
- * trust-level). Everything else (env, headers, args, tokens, project paths) is
- * skipped undecoded. Every read is fail-soft: a missing/malformed file is an
- * empty result, never an error.
- */
-
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { codexDir } from './scan.ts';

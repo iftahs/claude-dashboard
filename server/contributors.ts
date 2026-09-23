@@ -58,9 +58,14 @@ export interface ContributorsData {
 type Platform = 'claude' | 'codex';
 type BehaviourKey = 'subagent_heavy' | 'long_context' | 'high_parallel' | 'cron';
 
-/** Codex-only input gets Codex weighting and copy; anything with Claude usage keeps the CLI's. */
+/** Codex-only input gets Codex copy; anything with Claude usage keeps the CLI's. */
 function platformOf(events: UsageEvent[]): Platform {
   return events.length > 0 && events.every((e) => e.source === 'codex') ? 'codex' : 'claude';
+}
+
+/** Any Codex usage switches to effective-token weighting, or the $0 Guardian would vanish from a mixed scope's split. */
+function weightOf(events: UsageEvent[]): ContributorsData['weight'] {
+  return events.some((e) => e.source === 'codex') ? 'effectiveTokens' : 'cost';
 }
 
 const COPY: Record<Platform, Record<BehaviourKey, { headline: (p: number) => string; body: string }>> = {
@@ -129,7 +134,7 @@ function makeConcurrency(intervals: Array<[number, number]>): (ts: number) => nu
   };
 }
 
-function buildWindow(events: UsageEvent[], platform: Platform): ContribWindow {
+function buildWindow(events: UsageEvent[], platform: Platform, weightBy: ContributorsData['weight']): ContribWindow {
   // Per-session first/last ts + whether it is a top-level (non-subagent) session.
   // Subagent sub-sessions are excluded from the "parallel" / "8h" behaviours: a
   // workflow fanning out 16 agents isn't "16 sessions in parallel", and a subagent's
@@ -168,7 +173,7 @@ function buildWindow(events: UsageEvent[], platform: Platform): ContribWindow {
   let totalWeight = 0;
   for (const e of events) {
     const cost = estimateCost(e.model, e);
-    const weight = platform === 'codex' ? e.inputTokens + e.outputTokens + e.cacheCreateTokens : cost;
+    const weight = weightBy === 'effectiveTokens' ? e.inputTokens + e.outputTokens + e.cacheCreateTokens : cost;
     if (weight <= 0) continue;
     totalCost += cost;
     totalWeight += weight;
@@ -234,9 +239,10 @@ function buildWindow(events: UsageEvent[], platform: Platform): ContribWindow {
 
 export function buildContributors(events: UsageEvent[], now: number): ContributorsData {
   const platform = platformOf(events);
+  const weight = weightOf(events);
   const windowOf = (windowMs: number): ContribWindow => {
     const from = now - windowMs;
-    return buildWindow(events.filter((e) => e.ts >= from && e.ts <= now), platform);
+    return buildWindow(events.filter((e) => e.ts >= from && e.ts <= now), platform, weight);
   };
-  return { day: windowOf(DAY_MS), week: windowOf(WEEK_MS), weight: platform === 'codex' ? 'effectiveTokens' : 'cost' };
+  return { day: windowOf(DAY_MS), week: windowOf(WEEK_MS), weight };
 }

@@ -1,17 +1,3 @@
-/**
- * transcript.ts — the session modal's turn-by-turn transcript, for both platforms.
- *
- * `/api/sessions/:id/transcript` reads one file on demand and returns the same Turn
- * shape whatever wrote it: Claude/Cowork `user`/`assistant` lines (tool_use blocks
- * become tool chips), or Codex `event_msg/item_completed` items — UserMessage,
- * AgentMessage/Plan (text), and CommandExecution/FileChange/McpToolCall/web search as
- * tool chips on the assistant turn they follow. Model comes from `turn_context`,
- * joined at the end since a turn's items can precede its context line.
- *
- * Split on '\n' only — never readline (legal U+2028/U+2029 inside JSON strings).
- * Codex lines share scan-pass-codex.ts's cheap header prefilter. Text is capped per
- * turn; nothing here is persisted.
- */
 import { createReadStream } from 'node:fs';
 import type { UsageSource } from './scan.ts';
 

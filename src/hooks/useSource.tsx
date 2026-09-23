@@ -61,6 +61,8 @@ interface SourceCtx {
   platformOptions: { value: Platform; label: string; title: string }[];
   /** Render the Claude-side panels (platform is Claude or Both). */
   showClaude: boolean;
+  /** Any Claude Code / Cowork events exist locally (false until /api/sources answers). */
+  claudeAvailable: boolean;
   /** Render the Codex-side panels (platform is Codex or Both). */
   showCodex: boolean;
   /** Claude surface sub-filter (All / Code / Cowork). Meaningful only under the Claude platform. */
@@ -103,6 +105,7 @@ export function SourceProvider({ children }: { children: ReactNode }) {
   const codeN = sources?.code?.events ?? 0;
   const coworkN = sources?.cowork?.events ?? 0;
   const codexN = sources?.codex?.events ?? 0;
+  const claudeAvailable = codeN + coworkN > 0;
   const [storedPlatform, setStoredPlatform] = useState<Platform | null>(loadPlatform);
   const [source, setSourceState] = useState<SourceFilter>('all');
 
@@ -180,6 +183,7 @@ export function SourceProvider({ children }: { children: ReactNode }) {
       showSurfaceToggle,
       available,
       coworkAvailable,
+      claudeAvailable,
       codexAvailable,
       secondaryAvailable,
       effectiveSource,
@@ -190,7 +194,7 @@ export function SourceProvider({ children }: { children: ReactNode }) {
       dataDirs,
     };
   }, [
-    platform, source, available, coworkAvailable, codexAvailable, secondaryAvailable,
+    platform, source, available, coworkAvailable, claudeAvailable, codexAvailable, secondaryAvailable,
     sourcesLoaded, sourcesError, hasScopeData, dataDirs,
   ]);
 

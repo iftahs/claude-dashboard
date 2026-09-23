@@ -7,7 +7,7 @@ import { getEvents, eventsFingerprint } from './cache.ts';
 import { buildRecent, buildWeekly, buildModels, buildActivity, buildHourlyHeatmap, buildProjectStats, buildUsageSummary, buildEffort, filterSource, statsCacheApplies, type SourceFilter, type UsageSummaryData } from './aggregate.ts';
 import { claudeDir, readConfig, readCredentials, readStatsSummary, readSessionMetas, fetchLiveUsage, fetchLiveProfile, fetchLiveUsageFor, fetchLiveProfileFor, readAccountCredentials, expiredTokenMessage, detectLitellm, fetchLiteLlmSpend, MAX_WINDOW_DAYS } from './scan.ts';
 import { getInsights, insightsFingerprint } from './insights-scan.ts';
-import { archiveSummary, forgetArchivedHistory, primeData } from './data.ts';
+import { archiveSummary, forgetArchivedHistory, hash53, primeData } from './data.ts';
 import { memoBuilder } from './builder-cache.ts';
 import {
   buildErrors, buildRetries, buildLanguages, buildBranches, buildMcp,
@@ -221,7 +221,12 @@ async function sessionRowsFor(source: SourceFilter) {
   const [{ events }, { insights }, sidecar, codexTitles] = await Promise.all([
     getEvents(), getInsights(), readSessionMetas(), readCodexTitles(),
   ]);
-  return { rows: buildSessionRows(events, insights, sidecar, source, codexTitles), insights };
+  // Sidecars and titles are small and rarely change; the events fingerprint carries the rest.
+  const token = hash53(`${eventsFingerprint()}|${JSON.stringify(sidecar)}|${[...codexTitles].join('\0')}`);
+  const rows = memoBuilder('sessions', [source], token, () =>
+    buildSessionRows(events, insights, sidecar, source, codexTitles),
+  );
+  return { rows, insights };
 }
 
 app.get('/api/sessions', async (req, res) => {

@@ -1,10 +1,3 @@
-/**
- * codex-titles.ts — Codex thread titles from `<codexDir>/session_index.jsonl`.
- *
- * Append-only; the desktop app appends `{id, thread_name, updated_at}` on every
- * (re)name, so the LAST entry per id wins. Rollouts carry no title themselves.
- * Read-only, fail-soft, and cheap — re-read only when the file's size/mtime changes.
- */
 import { readFile, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import { codexDir } from './scan.ts';

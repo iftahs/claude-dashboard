@@ -1,16 +1,3 @@
-/**
- * project-path.ts — the one derivation of a session's project path.
- *
- * Claude Code files every transcript under `projects/<encoded cwd>/`, replacing
- * every non-alphanumeric char with '-' — a lossy encoding (`E:\dev-projects\iftah.dev`
- * and `E:\dev-projects-iftah-dev` both encode the same way, so decoding can only guess).
- *
- * Every transcript line also carries the real `cwd`, which is now the source of
- * truth (merge.ts, workflows.ts, subagents-live.ts); the folder decode stays only
- * as the fallback, exported because older UI tags are keyed by it.
- *
- * Cowork is untouched: its cwd is a sandbox-internal path and stays blank.
- */
 import { open } from 'node:fs/promises';
 
 // ---------------------------------------------------------------------------

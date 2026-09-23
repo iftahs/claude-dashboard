@@ -1,15 +1,3 @@
-/**
- * sessions.ts — pure builders behind the Sessions tab routes in index.ts:
- * `/api/sessions`, `/api/sessions/summary`, `/api/search`, and the legacy-path
- * map `/api/projects` returns for the tag-key migration. No I/O.
- *
- * Both platforms share fields: `turn_count` counts answered user turns (from
- * merge.ts's deduped TurnRows); `assistant_message_count` counts distinct model
- * responses, subagents included; `active_ms` sums those turns' durations while
- * `duration_minutes` is the wall-clock span; `lines_added`/`lines_removed`/
- * `pr_urls` come from merge.ts history rows; `title` is Claude's custom/AI title
- * or Codex's session_index.jsonl name.
- */
 import { sourceMatches, type SourceFilter } from './aggregate.ts';
 import { codexTitleOf } from './codex-titles.ts';
 import { legacyProjectPathFromFile, normalizeProjectPath, projectNameOf } from './project-path.ts';

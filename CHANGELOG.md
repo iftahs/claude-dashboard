@@ -29,7 +29,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - App-wide rate-limit alerts for both platforms, per-platform spending caps, and Settings
   for alert thresholds, Codex status and the archive.
 - Pricing for Claude Opus 5.5 ($4 / $20, cache reads $0.20) and OpenAI GPT-6 Sol ($2 / $10)
-  and GPT-6 Luna ($0.10 / $0.50); AI Insights defaults to Opus 5.5.
+  and GPT-6 Luna ($0.10 / $0.50); AI Insights defaults to Opus 5.5. gpt-5.4-mini is now
+  priced ($0.75 / $4.50, cache reads $0.075) instead of counted as an unmetered bundled
+  tier, so historical Codex cost estimates that include it rise.
 
 ### Changed
 - The dashboard is branded "AI Usage"; the tab title and sidebar badge show the binding

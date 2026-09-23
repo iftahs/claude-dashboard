@@ -48,6 +48,9 @@ let archiveGen = 0;
 let archiveMerge: { key: string; count: number; reduced: ReducedArchive | null } | null = null;
 /** Vanished paths whose root looked unmounted/empty (see classifyGone) — held out of the merge until archivable or the files return. */
 const pendingGone = new Set<string>();
+/** Consecutive rescans a vanished file may sit in pendingGone before it is dropped instead. */
+const WAIT_MAX_RESCANS = 60;
+const waitRescans = new Map<string, number>();
 
 let events: UsageEvent[] = [];
 let insights: InsightsData | null = null;
@@ -104,7 +107,7 @@ function fingerprintOf(files: ScannedFile[]): number {
 }
 
 /** cyrb53 — a small, well-distributed 53-bit string hash; never returns the -1 sentinel. */
-function hash53(s: string, seed = 0): number {
+export function hash53(s: string, seed = 0): number {
   let h1 = 0xdeadbeef ^ seed;
   let h2 = 0x41c6ce57 ^ seed;
   for (let i = 0; i < s.length; i++) {
@@ -308,7 +311,7 @@ async function rescan(): Promise<void> {
   }
 
   // Files that disappeared: dropped (no retention), archived (slim), or held in pendingGone if their root looks unmounted.
-  for (const path of pendingGone) if (live.has(path)) pendingGone.delete(path);
+  for (const path of pendingGone) if (live.has(path)) { pendingGone.delete(path); waitRescans.delete(path); }
   const gone: string[] = [];
   for (const path of rowCache.keys()) if (!live.has(path)) gone.push(path);
 
@@ -324,7 +327,14 @@ async function rescan(): Promise<void> {
       const toArchive: FileRows[] = [];
       const archivedAt = Date.now();
       for (const path of gone) {
-        const action = actions.get(path);
+        let action = actions.get(path);
+        if (action === 'wait') {
+          // A root that never returns (a platform opted out) must not pin full rows in memory and the store forever.
+          const n = (waitRescans.get(path) ?? 0) + 1;
+          waitRescans.set(path, n);
+          if (n > WAIT_MAX_RESCANS) action = 'drop';
+        }
+        if (action !== 'wait') waitRescans.delete(path);
         if (action === 'archive') {
           const slim = slimRows(rowCache.get(path)!.rows);
           archive.set(path, { path, source: slim.source, archivedAt, rows: slim });
@@ -357,6 +367,7 @@ async function rescan(): Promise<void> {
         drop.push(path);
       }
       pendingGone.clear();
+      waitRescans.clear();
       removed = drop.length;
     }
     if (drop.length) void pruneRows(drop);
@@ -493,10 +504,11 @@ export async function archiveSummary(): Promise<ArchiveSummary> {
 /** Waits out an in-flight scan first, so it cannot re-add what was just forgotten; resolves false when the store could not delete it. */
 export async function forgetArchivedHistory(): Promise<boolean> {
   if (inflight) await inflight;
+  const ok = await forgetArchive();
+  if (!ok) return false; // the store still holds it, so the merge must keep it too
   archive.clear();
   archiveMerge = null;
   archiveGen++;
-  const ok = await forgetArchive();
   invalidateData();
-  return ok;
+  return true;
 }

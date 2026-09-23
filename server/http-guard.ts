@@ -1,18 +1,3 @@
-/**
- * http-guard.ts — the request/response rules that keep a local-only API local.
- *
- * No login, so "who may call it" is decided by origin: a Host check (defends DNS
- * rebinding — only loopback names, plus ALLOWED_HOSTS, are served) and a write
- * check (defends CSRF — unsafe methods must be application/json with an allowed
- * Origin if one is sent). Only the HOSTNAME is compared, never the port: Vite's
- * dev proxy forwards the browser's own Host unchanged (changeOrigin: false).
- *
- * Neither check is access control — any client that sends `Host: localhost` gets
- * through. Only binding to loopback keeps the API local.
- *
- * Pure functions only — index.ts wires them into Express middleware.
- */
-
 const LOOPBACK_HOSTS = ['localhost', '127.0.0.1', '::1'];
 
 /** Loopback names plus the comma-separated ALLOWED_HOSTS list (hostnames or IPs). */
