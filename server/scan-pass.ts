@@ -414,6 +414,189 @@ export function isRejectedToolResult(block: any): boolean {
 }
 
 // ---------------------------------------------------------------------------
+// History-row helpers (Claude transcripts). Exported for the unit tests.
+// ---------------------------------------------------------------------------
+
+/**
+ * A turn is clamped at this length. Its end is the last assistant line or tool result
+ * before the next prompt, so the idle gap between turns never counts; the cap only
+ * bounds a turn that sat on something for hours (a permission prompt left overnight,
+ * a machine asleep mid-turn), where the gap is not work either.
+ */
+export const TURN_CAP_MS = 6 * 60 * 60 * 1000;
+
+function countTextLines(s: string): number {
+  if (!s) return 0;
+  let n = 1;
+  for (let i = s.indexOf('\n'); i !== -1; i = s.indexOf('\n', i + 1)) n++;
+  return s.endsWith('\n') ? n - 1 : n;
+}
+
+/**
+ * Lines added/removed by one Edit/MultiEdit/Write result (`toolUseResult`), or null
+ * when the result is not a file edit. `structuredPatch` hunks carry only body lines
+ * (' ', '+', '-', '\'), never '@@'/'+++' headers, so the first character decides.
+ * A Write that creates a file has an empty patch; its content lines are all added.
+ * Counts only: the patch text itself is never kept.
+ */
+export function countPatchLines(tur: any): { added: number; removed: number } | null {
+  if (!tur || typeof tur !== 'object' || Array.isArray(tur)) return null;
+  const patch: unknown[] | null = Array.isArray(tur.structuredPatch) ? tur.structuredPatch : null;
+  const isCreate = tur.type === 'create' && typeof tur.content === 'string';
+  if (!patch && !isCreate) return null;
+  let added = 0;
+  let removed = 0;
+  for (const hunk of patch ?? []) {
+    const lines = (hunk as any)?.lines;
+    if (!Array.isArray(lines)) continue;
+    for (const l of lines) {
+      if (typeof l !== 'string') continue;
+      const c = l.charCodeAt(0);
+      if (c === 43) added++; // '+'
+      else if (c === 45) removed++; // '-'
+    }
+  }
+  if (isCreate && added === 0 && removed === 0) added = countTextLines(tur.content);
+  return { added, removed };
+}
+
+/** `owner/repo` from a GitHub-style pull-request URL. */
+function repoFromPrUrl(url: string): string | null {
+  return url.match(/^https?:\/\/[^/]+\/([^/]+\/[^/]+)\/pull\//)?.[1] ?? null;
+}
+
+/** Claude Code's own wording when a usage limit refuses a request (a `<synthetic>` assistant line). */
+const LIMIT_TEXT = /\b(?:hit|reached) your (?:[\w.-]+ ){0,2}limit\b|\busage limit reached\b/i;
+
+function limitKindFromType(t: unknown): LimitHitRow['kind'] | null {
+  if (typeof t !== 'string') return null;
+  if (t === 'five_hour') return 'session';
+  if (t === 'seven_day') return 'weekly';
+  if (/opus|sonnet|haiku|fable|mythos|model/i.test(t)) return 'model'; // seven_day_opus, …
+  return null;
+}
+
+function limitKindFromText(text: string): LimitHitRow['kind'] {
+  if (/\bsession limit\b|\b(?:5|five)[- ]hour limit\b/i.test(text)) return 'session';
+  if (/\bweekly limit\b/i.test(text)) return 'weekly';
+  if (/\busage limit\b/i.test(text)) return 'unknown';
+  // "You've reached your Fable limit" — any other named limit is a per-model cap.
+  if (/\b(?:hit|reached) your [\w.-]+(?: [\w.-]+)? limit\b/i.test(text)) return 'model';
+  return 'unknown';
+}
+
+const tzFormatters = new Map<string, Intl.DateTimeFormat>();
+
+/** Offset of `timeZone` from UTC at instant `ts`, in ms (throws on an unknown zone). */
+function tzOffsetMs(ts: number, timeZone: string): number {
+  let f = tzFormatters.get(timeZone);
+  if (!f) {
+    f = new Intl.DateTimeFormat('en-US', {
+      timeZone, hourCycle: 'h23',
+      year: 'numeric', month: 'numeric', day: 'numeric', hour: 'numeric', minute: 'numeric', second: 'numeric',
+    });
+    tzFormatters.set(timeZone, f);
+  }
+  const p: Record<string, number> = {};
+  for (const part of f.formatToParts(ts)) p[part.type] = Number(part.value);
+  const wall = Date.UTC(p.year, p.month - 1, p.day, p.hour, p.minute, p.second);
+  return wall - Math.floor(ts / 1000) * 1000;
+}
+
+/** The first instant after `after` whose wall-clock time in `timeZone` is hour:minute; null on a bad zone. */
+export function nextWallClock(after: number, hour: number, minute: number, timeZone: string): number | null {
+  try {
+    const local = new Date(after + tzOffsetMs(after, timeZone));
+    for (let day = 0; day <= 2; day++) {
+      const wall = Date.UTC(local.getUTCFullYear(), local.getUTCMonth(), local.getUTCDate() + day, hour, minute);
+      let t = wall - tzOffsetMs(wall, timeZone);
+      t = wall - tzOffsetMs(t, timeZone); // settle across a DST change
+      if (t > after) return t;
+    }
+  } catch {
+    /* unknown time zone */
+  }
+  return null;
+}
+
+function epochMs(v: unknown): number | null {
+  if (typeof v === 'number' && Number.isFinite(v) && v > 0) return v < 1e12 ? v * 1000 : v;
+  if (typeof v === 'string') {
+    const n = Date.parse(v);
+    if (!Number.isNaN(n)) return n;
+  }
+  return null;
+}
+
+/**
+ * Whether an assistant line is a request refused for a usage limit, and which one.
+ * Current Claude Code flags it (`isApiErrorMessage`, `error: 'rate_limit'`, status 429,
+ * `quotaLimits{rateLimitType, resetsAt (epoch s)}`); older lines only carry the
+ * `<synthetic>` "You've hit your session limit · resets 4am (Europe/London)" text,
+ * whose wall-clock reset is resolved against the line's own timestamp.
+ */
+export function limitHitOf(obj: any, ts: number): { kind: LimitHitRow['kind']; resetsAt: number | null } | null {
+  if (obj?.type !== 'assistant') return null;
+  const ql = obj.quotaLimits && typeof obj.quotaLimits === 'object' ? obj.quotaLimits : null;
+  const flagged = obj.isApiErrorMessage === true && (obj.error === 'rate_limit' || obj.apiErrorStatus === 429 || ql !== null);
+  if (!flagged && obj.message?.model !== '<synthetic>') return null;
+  const text = toolResultText(obj.message?.content); // an assistant message's text blocks, same shape
+  if (!flagged && !LIMIT_TEXT.test(text)) return null;
+
+  const kind = limitKindFromType(ql?.rateLimitType) ?? limitKindFromText(text);
+  let resetsAt = epochMs(ql?.resetsAt);
+  if (resetsAt === null) {
+    const pipe = text.match(/limit reached\|(\d{9,13})\b/i);
+    if (pipe) resetsAt = epochMs(Number(pipe[1]));
+  }
+  if (resetsAt === null) {
+    const m = text.match(/\bresets (\d{1,2})(?::(\d{2}))?\s*(am|pm)\s*\(([A-Za-z_]+(?:\/[A-Za-z0-9_+-]+)*)\)/i);
+    if (m) {
+      const h12 = Number(m[1]) % 12;
+      const hour = m[3].toLowerCase() === 'pm' ? h12 + 12 : h12;
+      resetsAt = nextWallClock(ts, hour, Number(m[2] ?? 0), m[4]);
+    }
+  }
+  return { kind, resetsAt };
+}
+
+/**
+ * What a user line means for turn timing:
+ *  - 'prompt': starts a turn — typed input, or input Claude Code injects the same way
+ *    (a scheduled task, a background-task notification, a slash command)
+ *  - 'work': part of the running turn — a tool result, or the marker left when the
+ *    user interrupts it (the turn ran until then)
+ *  - null: neither — meta lines, compaction summaries, a local command's echoed
+ *    output. These can be written long after a turn ended, so they never extend one.
+ *
+ * `dequeued` is true when this is the first user line after a queue-operation `dequeue`
+ * (attachments may sit between, an assistant line may not): that is Claude Code
+ * delivering queued input, which starts a turn even when it is flagged isMeta (a
+ * scheduled wake-up, a message from another session). Without this, a turn cut off by
+ * a limit refusal swallowed the idle hours until the next delivered input.
+ */
+export function userTurnRole(obj: any, dequeued = false): 'prompt' | 'work' | null {
+  if (obj?.type !== 'user' || obj.message?.role !== 'user') return null;
+  const content = obj.message.content;
+  let text = '';
+  if (typeof content === 'string') {
+    text = content;
+  } else if (Array.isArray(content)) {
+    for (const b of content) {
+      if (b?.type === 'tool_result') return 'work';
+      if (!text && b?.type === 'text' && typeof b.text === 'string') text = b.text;
+    }
+  } else {
+    return null;
+  }
+  if (obj.isCompactSummary === true || obj.isVisibleInTranscriptOnly === true) return null;
+  if (obj.isMeta === true && !dequeued) return null;
+  const t = text.trimStart();
+  if (t.startsWith('[Request interrupted')) return 'work';
+  return /^<local-command-(?:stdout|stderr|caveat)>/.test(t) ? null : 'prompt';
+}
+
+// ---------------------------------------------------------------------------
 // Per-file parse
 // ---------------------------------------------------------------------------
 
@@ -434,9 +617,18 @@ export async function parseFileRows(file: ScannedFile): Promise<FileRows> {
   const { path, source, mtimeMs, size } = file;
   const insightsSkipped = size > INSIGHTS_MAX_FILE_BYTES;
 
+  // History rows. Limit hits come from every file (merge.ts reads them even for files
+  // over INSIGHTS_MAX_FILE_BYTES); the rest only from insight-eligible files.
+  const limitHits: LimitHitRow[] = [];
+  const lineChanges: LineChangeRow[] = [];
+  const prLinks: PrLinkRow[] = [];
+  const turns: TurnRow[] = [];
+  const titles: TitleRow[] = [];
+
   const rows: FileRows = {
     path, source, mtimeMs, size, insightsSkipped,
     usage: [], toolCalls: [], toolResults: [], taskSpawns: [], sessions: [], corpus: [],
+    limitHits, lineChanges, prLinks, turns, titles,
   };
 
   const projectPath = source === 'cowork' ? '' : projectPathFromFile(path);
@@ -459,6 +651,42 @@ export async function parseFileRows(file: ScannedFile): Promise<FileRows> {
   const corpus = new Map<string, { snippets: string[]; len: number }>();
   const assistantKeys = new Map<string, Set<string>>(); // sessionId -> distinct keys
   let keylessAssistant = 0;
+  // History-row identities already emitted from this file (merge.ts dedups across files).
+  const seenLimitKeys = new Set<string>();
+  const seenLineChangeIds = new Set<string>();
+  const seenPrUrls = new Set<string>();
+  const seenPromptKeys = new Set<string>();
+  const lastModel = new Map<string, string>(); // sessionId -> last real model, for limit hits
+
+  // Turn timing: main-session files only (a subagent's prompts are its parent's tool
+  // calls). A turn runs from a prompt to the last assistant line or tool result before
+  // the next prompt; lines older than the prompt (history a resumed transcript repeats
+  // out of order) or from another session never extend it.
+  const trackTurns = !fileIsSidechain && !insightsSkipped;
+  let turn: { key: string; ts: number; sessionId: string; endTs: number; firstReplyTs: number | null } | null = null;
+  let dequeued = false; // the next user line is queued input being delivered
+  const finishTurn = () => {
+    // A prompt nothing answered (a local slash command, a request refused for a
+    // limit) is not a turn.
+    if (turn && turn.firstReplyTs !== null) {
+      turns.push({
+        key: turn.key, ts: turn.ts, sessionId: turn.sessionId, source,
+        durationMs: Math.min(turn.endTs - turn.ts, TURN_CAP_MS),
+        ttftMs: Math.min(turn.firstReplyTs - turn.ts, TURN_CAP_MS),
+      });
+    }
+    turn = null;
+  };
+
+  const addPr = (url: unknown, prNumber: unknown, repo: unknown, ts: number, sessionId: string) => {
+    if (typeof url !== 'string' || !url || seenPrUrls.has(url)) return;
+    seenPrUrls.add(url);
+    prLinks.push({
+      url, ts, sessionId, source,
+      number: typeof prNumber === 'number' && Number.isFinite(prNumber) ? prNumber : null,
+      repo: typeof repo === 'string' && repo ? repo : repoFromPrUrl(url),
+    });
+  };
 
   const sessionRow = (sessionId: string, ts: number, gitBranch: string): SessionPartialRow => {
     let sm = sessions.get(sessionId);
@@ -468,6 +696,7 @@ export async function parseFileRows(file: ScannedFile): Promise<FileRows> {
         turns: 0, compactions: 0, errorCount: 0, rejectionCount: 0,
         firstPrompt: '', gitBranch, projectPath, file: path, agentId, source,
         assistantKeys: [], gitCommitIds: [], gitPushIds: [], nonErrorResultIds: [],
+        cwd: '', client: '', clientVersion: '',
       };
       sessions.set(sessionId, sm);
     }
@@ -485,7 +714,9 @@ export async function parseFileRows(file: ScannedFile): Promise<FileRows> {
     if (c.len < CORPUS_CAP_BYTES) { c.snippets.push(snippet); c.len += snippet.length + 1; }
   };
 
-  for (const line of text.split('\n')) {
+  const lines = text.split('\n');
+  for (let seq = 0; seq < lines.length; seq++) {
+    const line = lines[seq];
     if (line.length < 2) continue;
 
     // Fast path: when only usage rows are wanted, skip lines that cannot be an
@@ -497,6 +728,17 @@ export async function parseFileRows(file: ScannedFile): Promise<FileRows> {
     try {
       obj = JSON.parse(line);
     } catch {
+      continue;
+    }
+
+    // Session titles carry no timestamp, so they are read before the timestamp gate.
+    // `seq` (line order) is what lets merge.ts pick the latest one.
+    if (obj.type === 'custom-title' || obj.type === 'ai-title') {
+      const custom = obj.type === 'custom-title';
+      const title = custom ? obj.customTitle : obj.aiTitle;
+      if (!insightsSkipped && typeof title === 'string' && title.trim() && typeof obj.sessionId === 'string' && obj.sessionId) {
+        titles.push({ sessionId: obj.sessionId, title: title.trim().slice(0, 200), kind: custom ? 'custom' : 'ai', seq });
+      }
       continue;
     }
 
@@ -536,6 +778,11 @@ export async function parseFileRows(file: ScannedFile): Promise<FileRows> {
         projectPathRaw: source === 'cowork' ? '' : projectPathFromFile(path),
         gitBranch,
         source,
+        effort: attrStr(obj.effort),
+        // Reported only by recent Claude Code (Aug 2026 on): absent is unknown, not zero.
+        reasoningTokens: Number.isFinite(usage.output_tokens_details?.thinking_tokens)
+          ? usage.output_tokens_details.thinking_tokens
+          : null,
       };
 
       // Keep-max on effective tokens: early streaming duplicates carry placeholder
@@ -556,19 +803,74 @@ export async function parseFileRows(file: ScannedFile): Promise<FileRows> {
       }
     }
 
+    // ---- limit hits (all files) ----
+    if (obj.type === 'assistant') {
+      const model = obj.message?.model;
+      if (typeof model === 'string' && model !== '<synthetic>') lastModel.set(sessionId, model);
+      const hit = limitHitOf(obj, ts);
+      if (hit) {
+        const key = typeof obj.uuid === 'string' && obj.uuid ? obj.uuid : `${sessionId}|${ts}`;
+        if (!seenLimitKeys.has(key)) {
+          seenLimitKeys.add(key);
+          // The refusal itself is a `<synthetic>` line; the model it refused is the one
+          // the session was last answered by.
+          limitHits.push({
+            key, ts, sessionId, source, kind: hit.kind,
+            model: lastModel.get(sessionId) ?? '', resetsAt: hit.resetsAt,
+          });
+        }
+      }
+    }
+
     if (insightsSkipped) continue;
 
     // ---- insight rows (files <= INSIGHTS_MAX_FILE_BYTES only) ----
     const sm = sessionRow(sessionId, ts, gitBranch);
+    // First value wins. The cwd is a real host path only for Claude Code; a Cowork
+    // cwd is inside its sandbox, like its projectPath.
+    if (!sm.cwd && source === 'code' && typeof obj.cwd === 'string') sm.cwd = obj.cwd;
+    if (!sm.client && typeof obj.entrypoint === 'string') sm.client = obj.entrypoint;
+    if (!sm.clientVersion && typeof obj.version === 'string') sm.clientVersion = obj.version;
+
+    if (trackTurns && obj.isSidechain !== true) {
+      if (obj.type === 'queue-operation') {
+        if (obj.operation === 'dequeue') dequeued = true;
+      } else if (obj.type === 'assistant') {
+        dequeued = false;
+        if (turn && turn.sessionId === sessionId && ts >= turn.ts) {
+          if (ts > turn.endTs) turn.endTs = ts;
+          const real = obj.message?.model !== '<synthetic>';
+          if (real && (turn.firstReplyTs === null || ts < turn.firstReplyTs)) turn.firstReplyTs = ts;
+        }
+      } else if (obj.type === 'user') {
+        const role = userTurnRole(obj, dequeued);
+        dequeued = false;
+        const key = typeof obj.uuid === 'string' ? obj.uuid : '';
+        // A prompt repeated in the same file (resumed history) is not a new turn.
+        if (role === 'prompt' && key && !seenPromptKeys.has(key)) {
+          seenPromptKeys.add(key);
+          finishTurn();
+          turn = { key, ts, sessionId, endTs: ts, firstReplyTs: null };
+        } else if (role === 'work' && turn && turn.sessionId === sessionId && ts > turn.endTs) {
+          turn.endTs = ts;
+        }
+      }
+    }
 
     if (obj.type === 'summary') {
       sm.compactions++;
       continue;
     }
 
+    if (obj.type === 'pr-link') {
+      addPr(obj.prUrl, obj.prNumber, obj.prRepository, ts, sessionId);
+      continue;
+    }
+
     if (obj.type === 'user' && obj.message?.role === 'user') {
       sm.turns++;
       const content = obj.message.content;
+      let resultId = ''; // the line's tool_result, which toolUseResult describes
 
       const handleText = (t: string) => {
         if (/continued from a previous conversation/i.test(t)) sm.compactions++;
@@ -589,6 +891,7 @@ export async function parseFileRows(file: ScannedFile): Promise<FileRows> {
 
           if (block.type === 'tool_result') {
             const toolId: string = block.tool_use_id ?? '';
+            if (!resultId && typeof toolId === 'string') resultId = toolId;
             const isError: boolean = block.is_error === true;
             const rejected = isRejectedToolResult(block);
 
@@ -615,6 +918,23 @@ export async function parseFileRows(file: ScannedFile): Promise<FileRows> {
             });
           }
         }
+      }
+
+      // Structured side of a tool result: file edits and git operations. Keyed by the
+      // tool_use id, since a resumed transcript repeats the same result in a new file.
+      const tur = obj.toolUseResult;
+      if (tur && typeof tur === 'object' && !Array.isArray(tur)) {
+        const change = resultId ? countPatchLines(tur) : null;
+        if (change && !seenLineChangeIds.has(resultId)) {
+          seenLineChangeIds.add(resultId);
+          lineChanges.push({
+            key: resultId, ts, sessionId, source,
+            filePath: typeof tur.filePath === 'string' ? tur.filePath : null,
+            added: change.added, removed: change.removed,
+          });
+        }
+        const pr = tur.gitOperation?.pr;
+        if (pr && typeof pr === 'object') addPr(pr.url, pr.number, null, ts, sessionId);
       }
       continue;
     }
@@ -674,6 +994,7 @@ export async function parseFileRows(file: ScannedFile): Promise<FileRows> {
       }
     }
   }
+  finishTurn();
 
   for (const [sessionId, set] of assistantKeys) {
     const sm = sessions.get(sessionId);
