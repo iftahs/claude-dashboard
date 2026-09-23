@@ -16,15 +16,15 @@
  * cleanup deletes transcripts after ~30 days) are archived instead of dropped and
  * keep feeding the merge, after every live file. See event-store.ts.
  */
-import { existsSync } from 'node:fs';
-import { normalize, sep } from 'node:path';
+import { existsSync, readdirSync } from 'node:fs';
+import { basename, dirname, join } from 'node:path';
 import { listScannedFiles, parseFiles, type FileRows, type ScannedFile } from './scan-pass.ts';
-import { mergeRows } from './merge.ts';
+import { mergeRows, reduceArchive, type ReducedArchive } from './merge.ts';
 import { readSessionMetas, scanRoots, type ScanRoot, type UsageEvent, type UsageSource } from './scan.ts';
 import type { InsightsData } from './insights-scan.ts';
 import {
-  archiveRows, archiveStats, forgetArchive, loadArchive, loadRows, persistRows, pruneRows,
-  retentionEnabled, slimRows, storeReady, unarchiveRows, type ArchivedFile,
+  archiveRows, archiveStats, forgetArchive, isUnder, loadArchive, loadRows, persistRows, pruneRows,
+  retentionEnabled, slimRows, storeReady, unarchiveRows, underOwnRoot, type ArchivedFile,
 } from './event-store.ts';
 
 const TTL_MS = 5000;
@@ -52,6 +52,8 @@ const archive = new Map<string, ArchivedFile>();
 let archiveLoaded = false;
 /** Bumped on every change to `archive`; folded into the fingerprint. */
 let archiveGen = 0;
+/** The archived files that merge (count) and their reduction, for one archive state. */
+let archiveMerge: { key: string; count: number; reduced: ReducedArchive | null } | null = null;
 /**
  * Vanished paths that could not be archived yet because their root looked
  * unmounted or empty (see classifyGone). Their rows stay in rowCache and in the
@@ -158,26 +160,60 @@ export function canReuseMerge(
 // rules below are testable without a real ~/.claude.
 // ---------------------------------------------------------------------------
 
-function isUnder(path: string, dir: string): boolean {
-  const d = normalize(dir);
-  return normalize(path).startsWith(d.endsWith(sep) ? d : d + sep);
+type Exists = (p: string) => boolean;
+type ListDir = (p: string) => string[];
+
+function listDir(p: string): string[] {
+  try {
+    return readdirSync(p);
+  } catch {
+    return [];
+  }
+}
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** A real Codex or Cowork install, by files neither the ~/.claude opt-out mount nor an empty mount point has. */
+export function platformHome(root: ScanRoot, exists: Exists = existsSync, list: ListDir = listDir): boolean {
+  if (root.source === 'codex') {
+    const home = dirname(root.dir);
+    return ['config.toml', 'auth.json', 'session_index.jsonl'].some((f) => exists(join(home, f)));
+  }
+  if (root.source === 'cowork') {
+    return list(root.dir).some((acct) => UUID.test(acct) &&
+      list(join(root.dir, acct)).some((profile) => UUID.test(profile) &&
+        list(join(root.dir, acct, profile)).some((n) => /^local_.*\.json$/.test(n))));
+  }
+  return false;
 }
 
 /**
  * A root counts as present when its directory exists AND the current listing has
- * at least one file from it. The existence check alone is not enough: with
- * CODEX_DIR_HOST= (the Docker opt-out) compose mounts ~/.claude at the codex path,
- * and ~/.claude/sessions exists, so the codex root "exists" while holding no
- * rollouts. The same test is what /api/sources shows (a source with events).
+ * at least one file from it, or when it is a real platform home (so a user who
+ * deleted every rollout keeps the history). The existence check alone is not
+ * enough: with CODEX_DIR_HOST= (the Docker opt-out) compose mounts ~/.claude at the
+ * codex path, and ~/.claude/sessions exists, so the codex root "exists" while
+ * holding no rollouts.
  */
-function rootPresent(root: ScanRoot, listedBySource: Map<UsageSource, number>, exists: (p: string) => boolean): boolean {
-  return (listedBySource.get(root.source) ?? 0) > 0 && exists(root.dir);
+function rootPresent(
+  root: ScanRoot,
+  listedBySource: Map<UsageSource, number>,
+  exists: Exists,
+  list: ListDir,
+): boolean {
+  if ((listedBySource.get(root.source) ?? 0) > 0 && exists(root.dir)) return true;
+  return platformHome(root, exists, list);
 }
 
 function countBySource(files: ScannedFile[]): Map<UsageSource, number> {
   const out = new Map<UsageSource, number>();
   for (const f of files) out.set(f.source, (out.get(f.source) ?? 0) + 1);
   return out;
+}
+
+/** Session, agent and rollout file names carry unique ids, so a name live elsewhere is a moved file. */
+function nameKey(source: UsageSource, path: string): string {
+  return `${source}|${basename(path)}`;
 }
 
 /**
@@ -189,11 +225,12 @@ function countBySource(files: ScannedFile[]): Map<UsageSource, number> {
 export function archiveSources(
   roots: ScanRoot[],
   files: ScannedFile[],
-  exists: (p: string) => boolean = existsSync,
+  exists: Exists = existsSync,
+  list: ListDir = listDir,
 ): Set<UsageSource> {
   const listed = countBySource(files);
   const out = new Set<UsageSource>(['code']);
-  for (const r of roots) if (r.source !== 'code' && rootPresent(r, listed, exists)) out.add(r.source);
+  for (const r of roots) if (r.source !== 'code' && rootPresent(r, listed, exists, list)) out.add(r.source);
   return out;
 }
 
@@ -208,54 +245,58 @@ export type GoneAction = 'archive' | 'wait' | 'drop';
  *    every file vanish at once; archiving would freeze a snapshot of data that is
  *    about to come back, so the rows are held (pendingGone) and decided later.
  *  - 'drop'    — no configured root contains it any more (CLAUDE_DIR pointed
- *    elsewhere): a different data set, not a deletion. Dropped as without retention.
+ *    elsewhere), or the same file is live at another path (a renamed project
+ *    folder): not a deletion. Dropped as without retention.
  */
 export function classifyGone(
   gone: { path: string; source: UsageSource }[],
   roots: ScanRoot[],
   files: ScannedFile[],
-  exists: (p: string) => boolean = existsSync,
+  exists: Exists = existsSync,
+  list: ListDir = listDir,
 ): Map<string, GoneAction> {
   const listed = countBySource(files);
+  const liveNames = new Set(files.map((f) => nameKey(f.source, f.path)));
   const out = new Map<string, GoneAction>();
   for (const g of gone) {
     const root = roots.find((r) => r.source === g.source && isUnder(g.path, r.dir));
-    out.set(g.path, !root ? 'drop' : rootPresent(root, listed, exists) ? 'archive' : 'wait');
+    const moved = liveNames.has(nameKey(g.source, g.path));
+    out.set(g.path, !root || moved ? 'drop' : rootPresent(root, listed, exists, list) ? 'archive' : 'wait');
   }
   return out;
 }
 
 /**
- * Merge input order: every live file in listing order, then the archived files of
- * allowed sources by archive time. Several session fields are first-file-wins
- * (projectPath, firstPrompt, file, …), so a live file must always beat an archived
- * copy of the same session. A path that is live again never merges from the
- * archive — that would double every per-file counter (turns, errors, …).
+ * The archived files that merge, after every live file, by archive time. Several
+ * session fields are first-file-wins (projectPath, firstPrompt, file, …), so a live
+ * file must always beat an archived copy of the same session. A file live again,
+ * here or moved, never merges from the archive — that would double every per-file
+ * counter (turns, errors, …) — nor does one outside its source's configured root.
  */
-export function orderForMerge(
+export function archivedForMerge(
   files: ScannedFile[],
-  cached: ReadonlyMap<string, { rows: FileRows }>,
   archived: Iterable<ArchivedFile>,
   allowed: Set<UsageSource>,
-): FileRows[] {
-  const ordered: FileRows[] = [];
+  roots: ScanRoot[],
+): ArchivedFile[] {
   const live = new Set<string>();
+  const liveNames = new Set<string>();
   for (const f of files) {
     live.add(f.path);
-    const hit = cached.get(f.path);
-    if (hit) ordered.push(hit.rows);
+    liveNames.add(nameKey(f.source, f.path));
   }
-  const extra = [...archived]
-    .filter((a) => allowed.has(a.source) && !live.has(a.path))
+  return [...archived]
+    .filter((a) =>
+      allowed.has(a.source) && !live.has(a.path) && !liveNames.has(nameKey(a.source, a.path)) &&
+      underOwnRoot(a.path, a.source, roots))
     .sort((a, b) => a.archivedAt - b.archivedAt || (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
-  for (const a of extra) ordered.push(a.rows);
-  return ordered;
 }
 
 /** Validity token for the archived part of the merge input. 0 = nothing archived is merged. */
-export function archiveSig(gen: number, includedCount: number, allowed: Set<UsageSource>): number {
+export function archiveSig(gen: number, includedCount: number, allowed: Set<UsageSource>, roots: ScanRoot[]): number {
   if (includedCount === 0) return 0;
-  return hash53(`${gen}|${includedCount}|${[...allowed].sort().join(',')}`);
+  const rootSig = roots.map((r) => `${r.source}:${r.dir}`).join(',');
+  return hash53(`${gen}|${includedCount}|${[...allowed].sort().join(',')}|${rootSig}`);
 }
 
 /**
@@ -293,13 +334,17 @@ async function rescan(): Promise<void> {
 
   const files = await listScannedFiles();
   const roots = scanRoots();
+  const live = new Set(files.map((f) => f.path));
 
   // A file that is back on disk leaves the archive: its live rows supersede the
-  // archived copy (e.g. an archive made while a volume was not mounted).
+  // archived copy (e.g. an archive made while a volume was not mounted). So does
+  // one live again at another path (a renamed project folder).
   if (archive.size) {
+    const liveNames = new Set(files.map((f) => nameKey(f.source, f.path)));
     const back: string[] = [];
-    for (const f of files) if (archive.delete(f.path)) back.push(f.path);
+    for (const [path, a] of archive) if (live.has(path) || liveNames.has(nameKey(a.source, path))) back.push(path);
     if (back.length) {
+      for (const path of back) archive.delete(path);
       archiveGen++;
       void unarchiveRows(back);
     }
@@ -322,7 +367,6 @@ async function rescan(): Promise<void> {
   // Files that disappeared. Without retention their rows are dropped, so deletions
   // take effect. With it they are archived (slim) — unless their root looks
   // unmounted or empty, in which case they wait in pendingGone (see there).
-  const live = new Set(files.map((f) => f.path));
   for (const path of pendingGone) if (live.has(path)) pendingGone.delete(path);
   const gone: string[] = [];
   for (const path of rowCache.keys()) if (!live.has(path)) gone.push(path);
@@ -378,10 +422,20 @@ async function rescan(): Promise<void> {
     if (drop.length) void pruneRows(drop);
   }
 
-  const allowed = archiveSources(roots, files);
-  let included = 0;
-  for (const a of archive.values()) if (allowed.has(a.source)) included++;
-  const aSig = archiveSig(archiveGen, included, allowed);
+  // Live paths left the archive above, so its merged part changes only with this key.
+  let aSig = 0;
+  if (archive.size) {
+    const allowed = archiveSources(roots, files);
+    const key = `${archiveGen}|${[...allowed].sort().join(',')}|${roots.map((r) => `${r.source}:${r.dir}`).join(',')}`;
+    if (archiveMerge?.key !== key) {
+      const list = archivedForMerge(files, archive.values(), allowed, roots);
+      archiveMerge = { key, count: list.length, reduced: list.length ? reduceArchive(list.map((a) => a.rows)) : null };
+    }
+    aSig = archiveSig(archiveGen, archiveMerge.count, allowed, roots);
+  } else {
+    archiveMerge = null;
+  }
+  const included = archiveMerge?.count ?? 0;
   // The archive is part of the data: fold it into the fingerprint (and with it the
   // memo token) so archiving, un-archiving and forgetting invalidate memoised
   // builder output. With nothing archived the token is exactly what it was.
@@ -395,9 +449,13 @@ async function rescan(): Promise<void> {
     // Merge in the same deterministic order the files were listed in — several
     // session fields are "first file wins" and would otherwise flap between runs —
     // then the archive, which must never win over a live file.
-    const ordered = orderForMerge(files, rowCache, archive.values(), allowed);
+    const liveRows: FileRows[] = [];
+    for (const f of files) {
+      const hit = rowCache.get(f.path);
+      if (hit) liveRows.push(hit.rows);
+    }
 
-    const merged = mergeRows(ordered, sessionMetas);
+    const merged = mergeRows(liveRows, sessionMetas, archiveMerge?.reduced ?? undefined);
     events = merged.events;
     insights = merged.insights;
     mergedFrom = basis;
@@ -515,6 +573,7 @@ export async function archiveSummary(): Promise<ArchiveSummary> {
 export async function forgetArchivedHistory(): Promise<boolean> {
   if (inflight) await inflight;
   archive.clear();
+  archiveMerge = null;
   archiveGen++;
   const ok = await forgetArchive();
   invalidateData();

@@ -25,9 +25,9 @@
 import { existsSync } from 'node:fs';
 import { mkdir } from 'node:fs/promises';
 import { homedir } from 'node:os';
-import { join } from 'node:path';
+import { join, normalize, sep } from 'node:path';
 import type { FileRows } from './scan-pass.ts';
-import type { UsageSource } from './scan.ts';
+import { scanRoots, type ScanRoot, type UsageSource } from './scan.ts';
 
 /**
  * Bump when the shape of FileRows — or what a parser puts in it — changes;
@@ -39,8 +39,9 @@ import type { UsageSource } from './scan.ts';
  *      a non-guardian Codex subagent thread is one spawn of its own kind.
  *   6: history rows (limit hits, Codex rate-limit snapshots, line changes, PR links,
  *      turns, titles), effort / reasoning tokens, session cwd / client / repo URL.
+ *   7: churn from edit inputs, synthetic lines end no turn, capped model family, no bare-429 hits.
  */
-const SCHEMA_VERSION = 6;
+const SCHEMA_VERSION = 7;
 
 export function cacheDir(): string {
   return process.env.DASHBOARD_CACHE_DIR || join(homedir(), '.claude-dashboard-cache');
@@ -77,6 +78,18 @@ export interface ArchiveStats {
 let db: any = null;
 let ready: Promise<void> | null = null;
 let disabled = false;
+/** archiveStats() result, cleared on every archive write. */
+let statsMemo: ArchiveStats | null = null;
+
+export function isUnder(path: string, dir: string): boolean {
+  const d = normalize(dir);
+  return normalize(path).startsWith(d.endsWith(sep) ? d : d + sep);
+}
+
+/** Whether an archived path belongs to the data set the scan roots point at now. */
+export function underOwnRoot(path: string, source: UsageSource, roots: ScanRoot[]): boolean {
+  return roots.some((r) => r.source === source && isUnder(path, r.dir));
+}
 
 /**
  * Close the database and forget the open handle, so the next call reopens it
@@ -92,21 +105,22 @@ export function closeStore(): void {
   db = null;
   ready = null;
   disabled = false;
+  statsMemo = null;
 }
 
 /**
  * The archived copy of one file's rows: everything the aggregates need, and no
  * transcript text or error text.
  *
- * Kept: usage, session partials (first prompts stay — the store is local), limit
- * hits, rate-limit snapshots, line counts, PR links, turn latencies, titles, and
- * task spawns with their description blanked.
+ * Kept: usage, tool calls, session partials (first prompts stay — the store is
+ * local), limit hits, rate-limit snapshots, line counts, PR links, turn latencies,
+ * titles, and task spawns with their description blanked.
  *
- * Dropped: tool calls, the search corpus, and every tool result except the
- * non-error ones that resolve something a kept row points at — a session's git
- * commit/push tool ids (committed / gitCommits / gitPushes) and subagent
- * completion (agentIdFromResult). Those carry no text: a non-error result has an
- * empty errorText by construction, and it is forced to '' here anyway.
+ * Dropped: the search corpus, and the tool results nothing reads — a non-error
+ * result that resolves nothing, since a call without a result counts as a success.
+ * Error results stay (failure and rejection rates) and so do the non-error ones
+ * that resolve a session's git commit/push ids or a subagent's completion, all
+ * with errorText forced to ''.
  *
  * Also a normaliser: rows written by an older parser may lack arrays merge.ts
  * iterates, so every array is defaulted. Idempotent.
@@ -125,12 +139,12 @@ export function slimRows(rows: FileRows): FileRows {
     for (const id of s.gitPushIds) gitIds.add(id);
   }
   const toolResults = (rows.toolResults ?? [])
-    .filter((r) => !r.isError && (gitIds.has(r.toolId) || r.agentIdFromResult))
+    .filter((r) => r.isError || gitIds.has(r.toolId) || r.agentIdFromResult)
     .map((r) => ({
       toolId: r.toolId,
       sessionId: r.sessionId,
-      isError: false,
-      rejected: false,
+      isError: r.isError === true,
+      rejected: r.rejected === true,
       errorText: '',
       agentIdFromResult: r.agentIdFromResult ?? null,
     }));
@@ -142,7 +156,7 @@ export function slimRows(rows: FileRows): FileRows {
     size: rows.size,
     insightsSkipped: rows.insightsSkipped === true,
     usage: rows.usage ?? [],
-    toolCalls: [],
+    toolCalls: rows.toolCalls ?? [],
     toolResults,
     taskSpawns: (rows.taskSpawns ?? []).map((t) => ({ ...t, description: '' })),
     sessions,
@@ -156,6 +170,17 @@ export function slimRows(rows: FileRows): FileRows {
   };
 }
 
+const ARCHIVE_INSERT =
+  'INSERT OR REPLACE INTO archived_files (path, source, archived_at, rows, bytes, oldest_ts) VALUES (?, ?, ?, ?, ?, ?)';
+
+/** The stats columns stored next to an archived blob, so archiveStats never walks the JSON. */
+function archiveColumns(rows: FileRows, json: string): [number, number | null] {
+  let oldest: number | null = null;
+  for (const u of rows.usage) if (oldest === null || u.ts < oldest) oldest = u.ts;
+  for (const s of rows.sessions) if (oldest === null || s.firstTs < oldest) oldest = s.firstTs;
+  return [Buffer.byteLength(json), oldest];
+}
+
 /**
  * Called on a schema bump, inside the transaction that wipes `files`: files whose
  * transcript is already gone can never be re-parsed, so their rows are archived
@@ -164,7 +189,8 @@ export function slimRows(rows: FileRows): FileRows {
  * parses is skipped — there is nothing to keep.
  *
  * Over-archiving is harmless: a path that is only temporarily missing (a volume
- * not mounted yet) leaves the archive again when data.ts sees it live.
+ * not mounted yet) leaves the archive again when data.ts sees it live. A path
+ * outside its source's configured root is another data set and goes with the wipe.
  */
 function archiveVanishedBeforeWipe(): number {
   const vanished: string[] = [];
@@ -172,10 +198,9 @@ function archiveVanishedBeforeWipe(): number {
     if (!existsSync(r.path)) vanished.push(r.path);
   }
   if (!vanished.length) return 0;
+  const roots = scanRoots();
   const read = db.prepare('SELECT rows FROM files WHERE path = ?');
-  const put = db.prepare(
-    'INSERT OR REPLACE INTO archived_files (path, source, archived_at, rows) VALUES (?, ?, ?, ?)'
-  );
+  const put = db.prepare(ARCHIVE_INSERT);
   const now = Date.now();
   let n = 0;
   for (const path of vanished) {
@@ -185,10 +210,34 @@ function archiveVanishedBeforeWipe(): number {
     } catch {
       continue;
     }
-    put.run(path, rows.source, now, JSON.stringify(rows));
+    if (!underOwnRoot(path, rows.source, roots)) continue;
+    const json = JSON.stringify(rows);
+    put.run(path, rows.source, now, json, ...archiveColumns(rows, json));
     n++;
   }
   return n;
+}
+
+/** Fill the stats columns of rows archived before they existed. Runs once per such row. */
+function backfillArchiveColumns(): void {
+  const pending = db.prepare('SELECT path FROM archived_files WHERE bytes IS NULL').all();
+  const fill = db.prepare(
+    `UPDATE archived_files SET bytes = LENGTH(CAST(rows AS BLOB)), oldest_ts = (
+       SELECT MIN(t) FROM (
+         SELECT MIN(json_extract(u.value, '$.ts')) AS t FROM json_each(archived_files.rows, '$.usage') u
+         UNION ALL
+         SELECT MIN(json_extract(s.value, '$.firstTs')) FROM json_each(archived_files.rows, '$.sessions') s
+       )
+     ) WHERE path = ?`
+  );
+  const sizeOnly = db.prepare('UPDATE archived_files SET bytes = LENGTH(CAST(rows AS BLOB)) WHERE path = ?');
+  for (const { path } of pending) {
+    try {
+      fill.run(path);
+    } catch {
+      sizeOnly.run(path); // a blob SQLite cannot read as JSON: no oldest timestamp
+    }
+  }
 }
 
 /** Open (and migrate) the database once. Never throws — sets `disabled` instead. */
@@ -218,9 +267,16 @@ export function storeReady(): Promise<void> {
           path        TEXT PRIMARY KEY,
           source      TEXT NOT NULL,
           archived_at REAL NOT NULL,
-          rows        TEXT NOT NULL
+          rows        TEXT NOT NULL,
+          bytes       INTEGER,
+          oldest_ts   REAL
         );
       `);
+      const cols = new Set(db.prepare('PRAGMA table_info(archived_files)').all().map((c: any) => c.name));
+      if (!cols.has('bytes')) db.exec('ALTER TABLE archived_files ADD COLUMN bytes INTEGER');
+      if (!cols.has('oldest_ts')) db.exec('ALTER TABLE archived_files ADD COLUMN oldest_ts REAL');
+      // Covers archiveStats, so it never reads past the row blobs.
+      db.exec('CREATE INDEX IF NOT EXISTS archived_files_stats ON archived_files (bytes, oldest_ts)');
 
       const got = db.prepare('SELECT v FROM meta WHERE k = ?').get('schema_version');
       if (!got || Number(got.v) !== SCHEMA_VERSION) {
@@ -328,15 +384,15 @@ export async function archiveRows(rows: FileRows[], archivedAt = Date.now()): Pr
   await storeReady();
   if (disabled || !db) return false;
   if (!rows.length) return true;
+  statsMemo = null;
   try {
-    const stmt = db.prepare(
-      'INSERT OR REPLACE INTO archived_files (path, source, archived_at, rows) VALUES (?, ?, ?, ?)'
-    );
+    const stmt = db.prepare(ARCHIVE_INSERT);
     db.exec('BEGIN');
     try {
       for (const r of rows) {
         const slim = slimRows(r);
-        stmt.run(slim.path, slim.source, archivedAt, JSON.stringify(slim));
+        const json = JSON.stringify(slim);
+        stmt.run(slim.path, slim.source, archivedAt, json, ...archiveColumns(slim, json));
       }
       db.exec('COMMIT');
     } catch (e) {
@@ -382,6 +438,7 @@ export async function loadArchive(): Promise<ArchivedFile[]> {
 export async function unarchiveRows(paths: string[]): Promise<void> {
   await storeReady();
   if (disabled || !db || !paths.length) return;
+  statsMemo = null;
   try {
     const stmt = db.prepare('DELETE FROM archived_files WHERE path = ?');
     db.exec('BEGIN');
@@ -401,6 +458,7 @@ export async function unarchiveRows(paths: string[]): Promise<void> {
 export async function forgetArchive(): Promise<boolean> {
   await storeReady();
   if (disabled || !db) return false;
+  statsMemo = null;
   try {
     db.exec('DELETE FROM archived_files');
     return true;
@@ -410,38 +468,27 @@ export async function forgetArchive(): Promise<boolean> {
   }
 }
 
-/** Size and reach of the archive; null when the store is unavailable. */
+/** Size and reach of the archive; null when the store is unavailable. Memoised: node:sqlite blocks the loop. */
 export async function archiveStats(): Promise<ArchiveStats | null> {
   await storeReady();
   if (disabled || !db) return null;
+  if (statsMemo) return statsMemo;
   try {
-    const agg = db
-      .prepare('SELECT COUNT(*) AS n, COALESCE(SUM(LENGTH(CAST(rows AS BLOB))), 0) AS bytes FROM archived_files')
-      .get();
-    const files = Number(agg?.n ?? 0);
-    let oldestTs: number | null = null;
-    if (files > 0) {
-      try {
-        // Walked with SQLite's JSON functions so a stats call never has to parse
-        // the whole archive into JS objects.
-        const got = db
-          .prepare(
-            `SELECT MIN(t) AS oldest FROM (
-               SELECT MIN(json_extract(u.value, '$.ts')) AS t
-                 FROM archived_files a, json_each(a.rows, '$.usage') u
-               UNION ALL
-               SELECT MIN(json_extract(s.value, '$.firstTs'))
-                 FROM archived_files a, json_each(a.rows, '$.sessions') s
-             )`
-          )
-          .get();
-        const v = Number(got?.oldest);
-        oldestTs = got?.oldest == null || !Number.isFinite(v) ? null : v;
-      } catch {
-        oldestTs = null;
-      }
+    const query = db.prepare(
+      'SELECT COUNT(*) AS n, COUNT(bytes) AS sized, COALESCE(SUM(bytes), 0) AS bytes, MIN(oldest_ts) AS oldest FROM archived_files'
+    );
+    let agg = query.get();
+    if (Number(agg?.sized ?? 0) < Number(agg?.n ?? 0)) {
+      backfillArchiveColumns();
+      agg = query.get();
     }
-    return { files, bytes: Number(agg?.bytes ?? 0), oldestTs };
+    const v = Number(agg?.oldest);
+    statsMemo = {
+      files: Number(agg?.n ?? 0),
+      bytes: Number(agg?.bytes ?? 0),
+      oldestTs: agg?.oldest == null || !Number.isFinite(v) ? null : v,
+    };
+    return statsMemo;
   } catch (e) {
     console.error('[store] archive stats failed:', (e as Error)?.message ?? e);
     return null;

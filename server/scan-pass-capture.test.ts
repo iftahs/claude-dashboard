@@ -9,8 +9,8 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import {
-  countPatchLines, INSIGHTS_MAX_FILE_BYTES, limitHitOf, nextWallClock, parseFileRows, TURN_CAP_MS, userTurnRole,
-  type FileRows,
+  countInputEditLines, countPatchLines, INSIGHTS_MAX_FILE_BYTES, limitHitOf, nextWallClock, parseFileRows, TURN_CAP_MS,
+  userTurnRole, type FileRows,
 } from './scan-pass.ts';
 import { mergeRows } from './merge.ts';
 import type { UsageSource } from './scan.ts';
@@ -139,9 +139,9 @@ test('limit refusals become limit hits with their kind, reset time and model', a
       [10_000, 'session', resetSec * 1000, 'claude-opus-demo', 'code'],
       // Europe/London is on BST (UTC+1) on 2026-09-01: 9am local tomorrow is 08:00Z.
       [20_000, 'weekly', Date.parse('2026-09-02T08:00:00Z'), 'claude-opus-demo', 'code'],
-      [30_000, 'model', null, 'claude-opus-demo', 'code'],
+      [30_000, 'model', null, 'fable', 'code'], // the capped family, not the last model that answered
       [40_000, 'unknown', Date.parse('2026-09-01T22:30:00Z'), 'claude-opus-demo', 'code'],
-      [50_000, 'model', resetSec * 1000, 'claude-opus-demo', 'code'],
+      [50_000, 'model', resetSec * 1000, 'claude-opus-demo', 'code'], // seven_day_opus: the Opus model itself
       [80_000, 'unknown', resetSec * 1000, 'claude-opus-demo', 'code'],
     ],
   );
@@ -172,6 +172,29 @@ test('limitHitOf ignores non-assistant lines and assistant lines that are not re
   assert.equal(limitHitOf(reply(0, 'x'), T0), null);
   const quoted = reply(0, 'y', { content: [{ type: 'text', text: "You've hit your session limit" }] });
   assert.equal(limitHitOf(quoted, T0), null, 'a real model quoting the wording is not a refusal');
+  // Rate-limit errors that are not a usage limit: no quota data, no limit wording.
+  for (const text of [
+    'API Error: Server is temporarily limiting requests (not your usage limit) · Rate limited',
+    'API Error: Request rejected (429) · retry later',
+    'Fable is experiencing high load right now. Please try again shortly.',
+  ]) {
+    assert.equal(limitHitOf(refusal(0, text), T0), null, text);
+  }
+});
+
+test('a per-model limit names the capped family from quota data or its wording', async () => {
+  const rows = await parse([
+    reply(0, 'real', { model: 'claude-fable-5-1' }),
+    refusal(10, "You've reached your Fable limit. Switch to another model."),
+    refusal(20, 'Limit reached', { quotaLimits: { rateLimitType: 'seven_day_sonnet', resetsAt: 1_788_000_000 } }),
+    refusal(30, "You've hit your session limit", { quotaLimits: { rateLimitType: 'five_hour' } }),
+  ]);
+  assert.deepEqual(rows.limitHits?.map((h) => [h.kind, h.model]), [
+    ['model', 'claude-fable-5-1'], // the last model is of the capped family: keep its full name
+    ['model', 'sonnet'],
+    ['session', 'claude-fable-5-1'],
+  ]);
+  assert.equal(limitHitOf(refusal(0, "You've hit your Opus 5 limit"), T0)?.family, 'opus');
 });
 
 test('nextWallClock resolves a wall-clock reset in its time zone, across DST changes', () => {
@@ -235,6 +258,53 @@ test('edit results become line-change rows keyed by tool_use id', async () => {
     [
       ['toolu_edit', 2000, '/w/a.ts', 2, 1, 'sess-1', 'code'],
       ['toolu_write', 4000, '/w/new.md', 2, 0, 'sess-1', 'code'],
+    ],
+  );
+});
+
+test('countInputEditLines estimates an edit from its input', () => {
+  assert.deepEqual(countInputEditLines('Write', { file_path: '/w/a', content: 'a\nb\nc\n' }), { added: 3, removed: 0 });
+  assert.deepEqual(
+    countInputEditLines('Edit', { file_path: '/w/a', old_string: 'keep\nold\nkeep too', new_string: 'keep\nnew\nnewer\nkeep too' }),
+    { added: 2, removed: 1 },
+    'lines shared at both ends are not changes',
+  );
+  assert.deepEqual(countInputEditLines('Edit', { old_string: 'x', new_string: 'y' }), { added: 1, removed: 1 });
+  assert.deepEqual(countInputEditLines('Edit', { old_string: 'a\nb', new_string: 'a\nb\nc' }), { added: 1, removed: 0 });
+  assert.deepEqual(countInputEditLines('Edit', { old_string: 'gone\n', new_string: '' }), { added: 0, removed: 1 });
+  assert.deepEqual(
+    countInputEditLines('MultiEdit', { edits: [{ old_string: 'a', new_string: 'b' }, { old_string: 'c', new_string: 'c\nd' }, {}] }),
+    { added: 2, removed: 1 },
+  );
+  assert.equal(countInputEditLines('Edit', {}), null, 'a streaming placeholder with no input yet');
+  assert.equal(countInputEditLines('Read', { file_path: '/w/a' }), null);
+});
+
+test('edits without a structured result (subagent transcripts) count from their input', async () => {
+  const edit = (sec: number, id: string, toolId: string, name: string, input: object) =>
+    reply(sec, id, { content: [{ type: 'tool_use', id: toolId, name, input }] });
+  const failed = line(9, {
+    type: 'user',
+    message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'toolu_bad', is_error: true, content: 'String not found' }] },
+  });
+  const rows = await parse([
+    prompt(0),
+    reply(1, 'p', { content: [{ type: 'tool_use', id: 'toolu_w', name: 'Write', input: {} }] }), // placeholder
+    edit(2, 'p', 'toolu_w', 'Write', { file_path: '/w/new.ts', content: 'one\ntwo\n' }),
+    toolResult(3, 'toolu_w'),
+    edit(4, 'e', 'toolu_e', 'Edit', { file_path: '/w/a.ts', old_string: 'a\nb', new_string: 'a\nB\nC' }),
+    toolResult(5, 'toolu_e', 'The file /w/a.ts has been updated.'), // a string result, as subagents log
+    edit(6, 's', 'toolu_s', 'Edit', { file_path: '/w/s.ts', old_string: 'x', new_string: 'y' }),
+    toolResult(7, 'toolu_s', { filePath: '/w/s.ts', structuredPatch: [{ lines: ['-x', '+y', '+z'] }] }), // exact wins
+    edit(8, 'b', 'toolu_bad', 'Edit', { file_path: '/w/b.ts', old_string: 'q', new_string: 'r' }),
+    failed,
+  ], { rel: 'sess-1/subagents/agent-abc123.jsonl' });
+  assert.deepEqual(
+    rows.lineChanges?.map((c) => [c.key, c.ts - T0, c.filePath, c.added, c.removed]),
+    [
+      ['toolu_w', 3000, '/w/new.ts', 2, 0],
+      ['toolu_e', 5000, '/w/a.ts', 2, 1],
+      ['toolu_s', 7000, '/w/s.ts', 2, 1],
     ],
   );
 });
@@ -347,6 +417,34 @@ test('repeated prompts, older lines and other sessions never stretch a turn', as
   ]);
 });
 
+test('a synthetic line written long after a turn ended does not stretch it', async () => {
+  const p1 = prompt(0);
+  const p2 = prompt(4 * 86_400, 'wake up', { isMeta: true });
+  const p3 = prompt(5 * 86_400);
+  const noResponse = (sec: number) => line(sec, {
+    type: 'assistant',
+    message: { id: `m-noop-${sec}`, role: 'assistant', model: '<synthetic>', content: [{ type: 'text', text: 'No response requested.' }] },
+  });
+  const rows = await parse([
+    p1,
+    reply(10, 'a'),
+    reply(20, 'b'),
+    { type: 'queue-operation', operation: 'dequeue', sessionId: 'sess-1', timestamp: at(4 * 86_400 - 5) },
+    noResponse(4 * 86_400 - 4), // days later, between the dequeue and the delivered input
+    p2,
+    reply(4 * 86_400 + 3, 'c'),
+    refusal(4 * 86_400 + 9, "You've hit your session limit · resets 4am (Europe/London)"), // ends that turn
+    noResponse(5 * 86_400 - 1),
+    p3,
+    reply(5 * 86_400 + 2, 'd'),
+  ]);
+  assert.deepEqual(rows.turns?.map((t) => [t.key, t.durationMs, t.ttftMs]), [
+    [p1.uuid, 20_000, 10_000],
+    [p2.uuid, 9000, 3000],
+    [p3.uuid, 2000, 2000],
+  ]);
+});
+
 test('subagent transcripts produce no turns', async () => {
   const rows = await parse([prompt(0), reply(3, 'a')], { rel: 'sess-1/subagents/agent-abc123.jsonl' });
   assert.equal(rows.usage.length, 1);
@@ -391,6 +489,25 @@ test('sessions record the first cwd, client and version; Cowork keeps no cwd', a
     cowork.sessions.map((s) => [s.cwd, s.client, s.clientVersion]),
     [['', 'claude-desktop', '2.1.5']],
   );
+});
+
+test("a prompt Dispatch relays keeps its turn in the worker's own session", async () => {
+  const relayed = { uuid: 'relayed-prompt' };
+  const orchestrator = await parse([
+    prompt(0, 'fix it', { sessionId: 'orch', ...relayed }),
+    reply(5, 'o', { extra: { sessionId: 'orch' } }),
+    reply(3600, 'o2', { extra: { sessionId: 'orch' } }),
+  ], { source: 'cowork', rel: 'acct/prof/agent/local_ditto_1/.claude/projects/x/orch.jsonl' });
+  const worker = await parse([
+    prompt(1, 'fix it', { sessionId: 'worker', ...relayed }),
+    reply(61, 'w', { extra: { sessionId: 'worker' } }),
+  ], { source: 'cowork', rel: 'acct/prof/local_1/.claude/projects/x/worker.jsonl' });
+
+  // The orchestrator lists first (agent/ sorts before local_), yet the worker's copy wins.
+  const { insights } = mergeRows([orchestrator, worker], []);
+  assert.deepEqual(insights.turns.map((t) => [t.sessionId, t.durationMs]), [['worker', 60_000]]);
+  assert.equal(insights.sessionsMeta.get('worker')?.activeMs, 60_000);
+  assert.equal(insights.sessionsMeta.get('orch')?.activeMs, 0);
 });
 
 test('a resumed transcript repeating the same history does not double-count after merge', async () => {
