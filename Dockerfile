@@ -36,9 +36,12 @@ ENV NODE_NO_WARNINGS=1
 # tzdata so the TZ env var (day bucketing) works on alpine.
 RUN apk add --no-cache tzdata
 
-# Install prod deps + tsx (server runs TypeScript directly).
+# Install prod deps + tsx (server runs TypeScript directly). tsx is a devDependency,
+# so with NODE_ENV=production a local `npm install tsx` only rewrites package.json
+# and installs nothing — then `npx tsx` fetched it from the registry on every start.
+# Install it globally at build time instead, pinned to the lockfile's major.
 COPY package*.json ./
-RUN npm ci --omit=dev && npm install tsx@^4 && npm cache clean --force
+RUN npm ci --omit=dev && npm install -g tsx@^4 && npm cache clean --force
 
 # App code + built frontend.
 COPY server ./server
@@ -67,4 +70,4 @@ EXPOSE 8787
 CMD if command -v claude >/dev/null 2>&1 && [ -n "$CLAUDE_CONFIG_DIR" ]; then \
       node scripts/seed-cli-credentials.mjs; \
     fi; \
-    exec npx tsx server/index.ts
+    exec tsx server/index.ts
