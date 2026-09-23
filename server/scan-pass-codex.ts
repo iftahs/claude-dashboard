@@ -24,10 +24,13 @@
  *  - MODEL: records carry none. It is joined from `turn_context` by turn_id; a
  *    record can precede its turn_context, so the join is deferred to the end of the
  *    file. Fallbacks: the latest `thread_settings_applied`, then `world_state`.
- *  - IDENTITY: `session_meta` (always line 0). A guardian review thread
- *    (thread_source 'guardian_review' / object-valued `source`) is a subagent of
- *    `parent_thread_id`: its rows are sidechain, sessionId = parent, agentId = own
- *    id. One guardian thread is a long-lived reviewer that answers many approval
+ *  - IDENTITY: `session_meta` (always line 0). A subagent thread (object-valued
+ *    `source`, e.g. {"subagent":"review"}, or thread_source 'guardian_review') is
+ *    a child of `parent_thread_id`: its rows are sidechain, sessionId = parent,
+ *    agentId = own id. A non-guardian subagent is one spawn of its kind
+ *    (`review`, `thread_spawn`, …), attributed under that kind. The guardian
+ *    (thread_source 'guardian_review' / {"subagent":{"other":"guardian"}}) is
+ *    different: one guardian thread is a long-lived reviewer that answers many approval
  *    requests (up to ~20), one per turn: each `task_complete` carries a JSON
  *    verdict in `last_agent_message`, and each verdict becomes one TaskSpawnRow
  *    (id `<thread>:<turn>`) — so the Subagents insight counts reviews, not threads.
@@ -128,6 +131,23 @@ function effective(r: UsageRow): number {
 }
 
 /**
+ * The kind of a subagent thread, from session_meta.source: 'review' for
+ * {"subagent":"review"}, 'thread_spawn' for {"subagent":{"thread_spawn":{…}}},
+ * the name for {"subagent":{"other":"<name>"}} (the guardian is 'guardian').
+ * 'subagent' when the shape is unrecognised.
+ */
+function subagentKind(source: unknown): string {
+  const sa = (source as any)?.subagent;
+  if (typeof sa === 'string' && sa) return sa;
+  if (sa && typeof sa === 'object') {
+    if (typeof sa.other === 'string' && sa.other) return sa.other;
+    const first = Object.keys(sa)[0];
+    if (first) return first;
+  }
+  return 'subagent';
+}
+
+/**
  * The `outcome` of a guardian verdict ('allow' | 'deny'), or '' when the turn
  * ended without one (interrupted, errored). Nothing else leaves this function —
  * `rationale` is free text that quotes the reviewed command.
@@ -176,10 +196,12 @@ export async function parseCodexFileRows(file: ScannedFile): Promise<FileRows> {
   // ---- identity: session_meta is line 0, the filename uuid is the fallback ----
   let ownId = threadIdFromFileName(path);
   let parentId = ownId;
-  let guardian = false;
+  let subagent = false; // any child thread: sidechain rows under the parent
+  let guardian = false; // the approval reviewer: one spawn per verdict, not per thread
+  let kind = '';
   let metaCwd = '';
   let ctxCwd = '';
-  const sessionId = () => (guardian ? parentId : ownId);
+  const sessionId = () => (subagent ? parentId : ownId);
 
   // ---- model join state ----
   const turnModel = new Map<string, string>();
@@ -229,9 +251,9 @@ export async function parseCodexFileRows(file: ScannedFile): Promise<FileRows> {
       cacheCreateTokens: num(u.cache_write_input_tokens),
       cacheReadTokens: cached,
       tools: [],
-      isSidechain: guardian,
+      isSidechain: subagent,
       rootSessionId: sessionId(),
-      attributionAgent: guardian ? 'guardian_review' : '',
+      attributionAgent: guardian ? 'guardian_review' : subagent ? kind : '',
       attributionSkill: '', attributionMcpServer: '', attributionPlugin: '',
       projectPathRaw: '', // patched below
       gitBranch: '',
@@ -248,7 +270,7 @@ export async function parseCodexFileRows(file: ScannedFile): Promise<FileRows> {
     filePath: string | null, isError: boolean, errorText: string, declined = false,
   ) => {
     rows.toolCalls.push({
-      toolId, ts, sessionId: sessionId(), name, isSidechain: guardian,
+      toolId, ts, sessionId: sessionId(), name, isSidechain: subagent,
       mcpServer: extractMcpServer(name), filePath, gitBranch: '', projectPath: '', source,
     });
     const result: ToolResultRow = { toolId, sessionId: sessionId(), isError, rejected: declined, errorText, agentIdFromResult: null };
@@ -275,8 +297,9 @@ export async function parseCodexFileRows(file: ScannedFile): Promise<FileRows> {
 
     switch (it.type) {
       case 'UserMessage': {
-        // Guardian "user" messages are injected review prompts, not something typed.
-        if (guardian) return;
+        // A subagent's "user" messages are injected prompts (the guardian's review
+        // requests, the parent's delegated task), not something the user typed.
+        if (subagent) return;
         const content = Array.isArray(it.content) ? it.content : [];
         for (const c of content) {
           if (c?.type !== 'text' || typeof c.text !== 'string') continue;
@@ -406,8 +429,12 @@ export async function parseCodexFileRows(file: ScannedFile): Promise<FileRows> {
       case 'session_meta': {
         const id = str(p.id) || str(p.session_id);
         if (id) ownId = id;
-        guardian = p.thread_source === 'guardian_review' || (p.source !== null && typeof p.source === 'object');
-        parentId = guardian ? str(p.parent_thread_id) || str(p.session_id) || ownId : ownId;
+        subagent = p.thread_source === 'guardian_review' || (p.source !== null && typeof p.source === 'object');
+        kind = subagent ? subagentKind(p.source) : '';
+        guardian = p.thread_source === 'guardian_review' || kind === 'guardian';
+        parentId = subagent
+          ? str(p.parent_thread_id) || str(p.source?.subagent?.thread_spawn?.parent_thread_id) || str(p.session_id) || ownId
+          : ownId;
         metaCwd = str(p.cwd);
         break;
       }
@@ -544,19 +571,34 @@ export async function parseCodexFileRows(file: ScannedFile): Promise<FileRows> {
   const sid = sessionId();
   rows.sessions.push({
     sessionId: sid,
-    fileIsSidechain: guardian,
+    fileIsSidechain: subagent,
     firstTs, lastTs,
-    turns: guardian ? 0 : turns,
+    turns: subagent ? 0 : turns,
     compactions, errorCount, rejectionCount,
-    firstPrompt: guardian ? '' : firstPrompt,
+    firstPrompt: subagent ? '' : firstPrompt,
     gitBranch: '', projectPath, file: path,
-    agentId: guardian ? ownId : null,
+    agentId: subagent ? ownId : null,
     source,
     // The usage keys stand in for assistant-message ids so /api/sessions does not
     // drop the thread as an empty shell (assistantMsgs === 0).
     assistantKeys: rows.usage.map((r) => r.dedupKey),
     gitCommitIds, gitPushIds, nonErrorResultIds,
   });
+
+  // Any other subagent (/review, spawn_agent, …) ends its turns with findings or
+  // prose, never a verdict, so the thread itself is the one spawn. merge.ts marks
+  // a spawn completed — and links it to the agent's session — only through a
+  // result row carrying agentIdFromResult; the rollout's existence is that completion.
+  if (subagent && !guardian) {
+    rows.taskSpawns.push({
+      toolId: ownId, ts: firstTs, sessionId: sid,
+      subagentType: kind, model: rows.usage[0]?.model || lastCtxModel || lastSettingsModel || worldModel || 'unknown',
+      description: 'Codex subagent', gitBranch: '', projectPath, source,
+    });
+    rows.toolResults.push({
+      toolId: ownId, sessionId: sid, isError: false, rejected: false, errorText: '', agentIdFromResult: ownId,
+    });
+  }
 
   if (snippets.length) rows.corpus.push({ sessionId: sid, snippets });
   return rows;

@@ -258,6 +258,49 @@ test('merge counts reviews, not reviewer threads', async () => {
   );
 });
 
+test('a non-guardian subagent thread is one spawn of its kind, never a guardian review', async () => {
+  const REVIEWER = '00000000-0000-4000-8000-00000000cccc';
+  const SPAWNED = '00000000-0000-4000-8000-00000000dddd';
+  const turnId = '55555555-5555-4555-8555-555555555555';
+  const child = (meta: object) => {
+    let n = 0;
+    return [
+      line(n++, 'session_meta', { cwd: 'C:/work/demo', ...meta }),
+      line(n++, 'event_msg', { type: 'task_started', turn_id: turnId }),
+      line(n++, 'turn_context', { turn_id: turnId, model: 'gpt-test' }),
+      line(n++, 'token_usage_record', { response_id: `resp_${JSON.stringify(meta).length}`, turn_id: turnId, usage: { input_tokens: 20, output_tokens: 2 } }),
+      // Review findings can be JSON too; only the guardian's `outcome` is a verdict.
+      line(n++, 'event_msg', { type: 'task_complete', turn_id: turnId, last_agent_message: verdict({ outcome: 'deny', findings: [] }) }),
+    ];
+  };
+  const review = await parse(REVIEWER, child({ id: REVIEWER, session_id: PARENT, parent_thread_id: PARENT, source: { subagent: 'review' } }));
+  const spawned = await parse(SPAWNED, child({ id: SPAWNED, source: { subagent: { thread_spawn: { parent_thread_id: PARENT, depth: 1 } } } }));
+
+  for (const [rows, id, kind] of [[review, REVIEWER, 'review'], [spawned, SPAWNED, 'thread_spawn']] as const) {
+    assert.deepEqual(
+      rows.taskSpawns.map((s) => [s.toolId, s.sessionId, s.subagentType, s.model]),
+      [[id, PARENT, kind, 'gpt-test']],
+    );
+    assert.ok(!rows.toolCalls.some((t) => t.name === GUARDIAN_DENY_TOOL), 'no verdict is read from a non-guardian');
+    assert.equal(rows.sessions[0].rejectionCount, 0);
+    assert.equal(rows.sessions[0].fileIsSidechain, true);
+    assert.deepEqual(
+      rows.usage.map((u) => [u.sessionId, u.isSidechain, u.attributionAgent]),
+      [[PARENT, true, kind]],
+    );
+  }
+
+  const parent = await parse(PARENT, parentLines());
+  const guardian = await parse(GUARDIAN, guardianLines());
+  const { insights } = mergeRows([parent, guardian, review, spawned], []);
+  const stats = buildSubagentStats(insights, 30, NOW);
+  assert.equal(stats.byType.review, 1);
+  assert.equal(stats.byType.thread_spawn, 1);
+  assert.equal(stats.byType.guardian_review, 3);
+  assert.equal(insights.sessionsMeta.get(PARENT)?.subagentSpawns, 5);
+  assert.ok(insights.taskSpawns.filter((t) => t.subagentType !== 'guardian_review').every((t) => t.completed));
+});
+
 test('review ids are unique per verdict, so merge dedups a rollout seen twice', async () => {
   const guardian = await parse(GUARDIAN, guardianLines());
   const { insights } = mergeRows([guardian, guardian], []);
