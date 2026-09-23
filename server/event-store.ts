@@ -25,7 +25,8 @@ import type { FileRows } from './scan-pass.ts';
  * invalidates every cached blob.
  *   2: Codex rollouts (scan-pass-codex.ts) join the store; `source: 'codex'` rows.
  *   4: `rejected` requires an is_error result; insight rows from files up to 64 MB.
- *   5: a declined Codex item is never a success or a git commit/push candidate.
+ *   5: a declined Codex item is never a success or a git commit/push candidate,
+ *      and is a rejection only when the turn's approvals reviewer is the user.
  */
 const SCHEMA_VERSION = 5;
 

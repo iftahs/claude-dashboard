@@ -33,13 +33,19 @@
  *    (id `<thread>:<turn>`) — so the Subagents insight counts reviews, not threads.
  *    Only the `outcome` enum is read; the free-text rationale quotes commands and
  *    paths and is never stored. A 'deny' also becomes a rejected `GuardianReview`
- *    call on the parent thread — the denied action never runs, so nothing else
- *    records it.
+ *    call on the parent thread: that verdict is the one record of the decision
+ *    (a denied command leaves no item in the parent; a denied patch leaves a
+ *    'declined' FileChange, which the reviewer rule under TOOLS keeps from
+ *    counting a second time).
  *  - TOOLS: `event_msg/item_completed` only. The `response_item`
  *    custom_tool_call / function_call lines are JS-sandbox wrappers of the same
  *    items and would double-count. Item types are PascalCase. An item whose
- *    status is 'declined' (the user said no to the approval) is a rejection, not a
- *    success and not an error — the same split the Claude parser makes.
+ *    status is 'declined' never ran: it is never a success and never an error.
+ *    It is a rejection only when a person made that call — the turn's
+ *    `approvals_reviewer` (turn_context, else the latest thread_settings) is
+ *    'user' or unrecorded, the same split the Claude parser makes. Under
+ *    'auto_review' the guardian decided: its deny is already the GuardianReview
+ *    row, and a review that failed (e.g. at a usage limit) decided nothing.
  *
  * Performance: a ~140-char header regex is the only work most lines get; JSON.parse
  * is paid for the handful of record types above, and `compacted` lines (1.3–3.8 MB
@@ -54,6 +60,7 @@ import {
   num,
   type FileRows,
   type ScannedFile,
+  type ToolResultRow,
   type UsageRow,
 } from './scan-pass.ts';
 
@@ -142,6 +149,16 @@ interface PendingUsage {
   fallbackModel: string;
 }
 
+/**
+ * A declined item's result row. Whether it is a rejection depends on the turn's
+ * approvals reviewer, which — like the model — is resolved once the file is read.
+ */
+interface PendingDecline {
+  result: ToolResultRow;
+  turnId: string;
+  fallbackReviewer: string;
+}
+
 export async function parseCodexFileRows(file: ScannedFile): Promise<FileRows> {
   const { path, source, mtimeMs, size } = file;
   const rows: FileRows = {
@@ -170,6 +187,10 @@ export async function parseCodexFileRows(file: ScannedFile): Promise<FileRows> {
   let lastSettingsModel = '';
   let worldModel = '';
   let currentTurnId = '';
+  // ---- approvals reviewer ('user' | 'auto_review'), joined the same way ----
+  const turnReviewer = new Map<string, string>();
+  let lastReviewer = '';
+  const declines: PendingDecline[] = [];
 
   // ---- accumulators ----
   const records: PendingUsage[] = []; // token_usage_record (CLI >= 0.153)
@@ -219,19 +240,22 @@ export async function parseCodexFileRows(file: ScannedFile): Promise<FileRows> {
   };
 
   // Every tool row gets a result row: merge.ts resolves errors, git commits and
-  // pushes through toolResults only, never through the call row itself.
+  // pushes through toolResults only, never through the call row itself. A
+  // declined item is provisionally `rejected`; the reviewer pass at the end of
+  // the file clears that (and settles rejectionCount) for auto-reviewed turns.
   const emitTool = (
     toolId: string, ts: number, turnId: string, name: string,
-    filePath: string | null, isError: boolean, errorText: string, rejected = false,
+    filePath: string | null, isError: boolean, errorText: string, declined = false,
   ) => {
     rows.toolCalls.push({
       toolId, ts, sessionId: sessionId(), name, isSidechain: guardian,
       mcpServer: extractMcpServer(name), filePath, gitBranch: '', projectPath: '', source,
     });
-    rows.toolResults.push({ toolId, sessionId: sessionId(), isError, rejected, errorText, agentIdFromResult: null });
-    if (rejected) rejectionCount++;
+    const result: ToolResultRow = { toolId, sessionId: sessionId(), isError, rejected: declined, errorText, agentIdFromResult: null };
+    rows.toolResults.push(result);
+    if (declined) declines.push({ result, turnId, fallbackReviewer: lastReviewer });
     if (isError) errorCount++;
-    else if (!rejected) nonErrorResultIds.push(toolId);
+    else if (!declined) nonErrorResultIds.push(toolId);
     if (turnId) {
       let names = toolsByTurn.get(turnId);
       if (!names) { names = []; toolsByTurn.set(turnId, names); }
@@ -245,7 +269,8 @@ export async function parseCodexFileRows(file: ScannedFile): Promise<FileRows> {
     const turnId = str(p.turn_id) || currentTurnId;
     const ts = num(p.completed_at_ms) || num(p.started_at_ms) || lineTs;
     const id = str(it.id);
-    // The user declined the approval: the action never ran, so it is neither a success nor an error.
+    // The approval was declined — by the user or the auto-reviewer, settled at the
+    // end of the file. Either way the action never ran: neither a success nor an error.
     const declined = it.status === 'declined';
 
     switch (it.type) {
@@ -294,7 +319,7 @@ export async function parseCodexFileRows(file: ScannedFile): Promise<FileRows> {
       case 'FileChange': {
         // One row per changed file. merge.ts dedups tool rows by id, so each file
         // after the first gets a suffixed id instead of collapsing into one edit.
-        // A declined patch changed nothing and was one decision: a single rejected row.
+        // A declined patch changed nothing and was one decision: a single declined row.
         const changes = it.changes && typeof it.changes === 'object' ? it.changes : {};
         const failed = it.status === 'failed';
         let n = 0;
@@ -390,11 +415,14 @@ export async function parseCodexFileRows(file: ScannedFile): Promise<FileRows> {
         // reasoning_effort is also here, but FileRows has no slot for it — dropped.
         const turnId = str(p.turn_id);
         const model = str(p.model) || str(p.collaboration_mode?.settings?.model);
+        const reviewer = str(p.approvals_reviewer);
         if (turnId) {
           currentTurnId = turnId;
           if (model) turnModel.set(turnId, model); // last wins
+          if (reviewer) turnReviewer.set(turnId, reviewer);
         }
         if (model) lastCtxModel = model;
+        if (reviewer) lastReviewer = reviewer;
         if (!ctxCwd) ctxCwd = str(p.cwd);
         break;
       }
@@ -434,6 +462,8 @@ export async function parseCodexFileRows(file: ScannedFile): Promise<FileRows> {
           case 'thread_settings_applied': {
             const model = str(p.thread_settings?.model);
             if (model) lastSettingsModel = model;
+            const reviewer = str(p.thread_settings?.approvals_reviewer);
+            if (reviewer) lastReviewer = reviewer;
             break;
           }
           case 'token_count': {
@@ -496,6 +526,13 @@ export async function parseCodexFileRows(file: ScannedFile): Promise<FileRows> {
     if (e) e.row.tools = names;
   }
   rows.usage = chosen.map((e) => e.row);
+
+  // ---- declined items: a rejection only when a person, not the guardian, decided ----
+  for (const d of declines) {
+    const reviewer = (d.turnId && turnReviewer.get(d.turnId)) || d.fallbackReviewer;
+    if (reviewer === 'auto_review') d.result.rejected = false;
+    else rejectionCount++;
+  }
 
   const projectPath = projectPathOf(metaCwd || ctxCwd);
   for (const r of rows.usage) r.projectPathRaw = projectPath;

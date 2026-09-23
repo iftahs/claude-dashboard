@@ -158,6 +158,45 @@ test('a declined git commit / push is not a commit or a push; a completed one is
   assert.equal(sm(ok)?.gitCommits, 1);
 });
 
+test('under auto_review a declined item is no rejection: the guardian verdict already counts it once', async () => {
+  let n = 0;
+  const reviewed = '33333333-3333-4333-8333-333333333333';
+  const settingsOnly = '44444444-4444-4444-8444-444444444444';
+  const rows = await parse(PARENT, [
+    line(n++, 'session_meta', { id: PARENT, cwd: 'C:/work/demo', thread_source: 'user', source: 'vscode' }),
+    line(n++, 'event_msg', { type: 'task_started', turn_id: reviewed }),
+    line(n++, 'turn_context', { turn_id: reviewed, model: 'gpt-test', approvals_reviewer: 'auto_review' }),
+    // The guardian denied this patch (its verdict is in the guardian rollout).
+    line(n++, 'event_msg', {
+      type: 'item_completed', turn_id: reviewed,
+      item: { type: 'FileChange', id: 'fc_guardian_denied', status: 'declined', changes: { 'C:/work/demo/a.ts': { type: 'update' } } },
+    }),
+    // No reviewer on this turn_context: the latest thread settings decide.
+    line(n++, 'event_msg', { type: 'thread_settings_applied', thread_settings: { model: 'gpt-test', approvals_reviewer: 'auto_review' } }),
+    line(n++, 'event_msg', { type: 'task_started', turn_id: settingsOnly }),
+    line(n++, 'turn_context', { turn_id: settingsOnly, model: 'gpt-test' }),
+    line(n++, 'event_msg', {
+      type: 'item_completed', turn_id: settingsOnly,
+      item: { type: 'CommandExecution', id: 'cmd_review_failed', status: 'declined', parsed_cmd: [{ type: 'unknown', cmd: 'git push' }] },
+    }),
+  ]);
+  const result = (id: string) => rows.toolResults.find((r) => r.toolId === id);
+  for (const id of ['fc_guardian_denied', 'cmd_review_failed']) {
+    assert.deepEqual({ isError: result(id)?.isError, rejected: result(id)?.rejected }, { isError: false, rejected: false }, id);
+  }
+  assert.equal(rows.sessions[0].rejectionCount, 0);
+  assert.equal(rows.sessions[0].errorCount, 0);
+  assert.deepEqual(rows.sessions[0].nonErrorResultIds, [], 'declined is never a success either');
+
+  const guardian = await parse(GUARDIAN, guardianLines()); // one deny verdict
+  const { insights } = mergeRows([rows, guardian], []);
+  assert.equal(insights.sessionsMeta.get(PARENT)?.rejectionCount, 1, 'one guardian deny = one rejection');
+  assert.equal(insights.sessionsMeta.get(PARENT)?.gitPushes, 0);
+  const rejections = buildRejections(insights, 30, NOW);
+  assert.equal(rejections.total, 1);
+  assert.deepEqual(rejections.perTool.filter((t) => t.rejections > 0).map((t) => t.name), [GUARDIAN_DENY_TOOL]);
+});
+
 test('each guardian verdict is one review; a deny is a rejected call on the parent thread', async () => {
   const rows = await parse(GUARDIAN, guardianLines());
 
