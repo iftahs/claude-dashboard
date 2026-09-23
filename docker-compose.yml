@@ -21,6 +21,10 @@ services:
       # transcripts. For LAN access set DASHBOARD_BIND=0.0.0.0 in .env AND list
       # the name/IP you'll browse to in ALLOWED_HOSTS (e.g. 192.168.1.20) — the
       # server rejects any Host header that isn't localhost or on that list.
+      # That Host check only defends browsers against DNS rebinding; it is not
+      # access control: once the port is reachable, any client can send
+      # `Host: localhost`. To use another host port, change only the first
+      # number and keep the address prefix ("${DASHBOARD_BIND:-127.0.0.1}:9000:8787").
       - "${DASHBOARD_BIND:-127.0.0.1}:8787:8787"
     volumes:
       # Mount your real ~/.claude into the container, read-only.
