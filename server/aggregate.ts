@@ -315,6 +315,9 @@ export function buildWeekly(events: UsageEvent[], now: number, days = 7) {
     byModel: modelShares(windowEvents),
     bySource: sourceSplit(windowEvents),
     cacheEfficiency,
+    // Earliest event in the (source-filtered) history, so the UI can tell "history
+    // starts inside this window" from "quiet previous period". Events arrive sorted.
+    firstEventTs: events.length ? events[0].ts : null,
   };
 }
 

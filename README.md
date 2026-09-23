@@ -45,7 +45,7 @@ Live and recent **dynamic-workflow runs** (Claude Code's multi-agent orchestrati
 ![Workflows · live & recent runs with all-time stats](.github/screenshots/workflows.png)
 
 ### 4. 📈 Trends
-* **Tokens vs. Cost toggle**: Switch the daily stacked bar chart between **Tokens** and **Cost (USD)**, over a 1–4 week window.
+* **Tokens vs. Cost toggle**: Switch the daily stacked bar chart between **Tokens** and **Cost (USD)**, over a 1-week to 1-year window (presets 1w · 2w · 1m · 2m · 3m · 6m · 1y).
 * **Projection**: A dotted projection past today, plus projected month-end cost.
 * **Cache Efficiency**: Daily cache hit-rate line (cache reads / total tokens).
 * **Peak Hours Heatmap** (7×24) and an 18-week **Activity Grid**.

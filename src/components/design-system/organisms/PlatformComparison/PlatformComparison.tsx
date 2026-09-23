@@ -58,6 +58,7 @@ export function PlatformComparison({
   bySource,
   byModel,
   weekDays,
+  perDayDivisor,
   loading,
 }: PlatformComparisonProps) {
   const totals = platformTotals(bySource);
@@ -71,7 +72,7 @@ export function PlatformComparison({
           <PlatformHeading color={PLATFORM_COLOR.claude} name="Claude" sub="Claude Code + Cowork" />
           {claudePlan}
           <MetricsCard
-            rows={comparisonRows(totals.claude, weekDays, topModel(byModel, false))}
+            rows={comparisonRows(totals.claude, perDayDivisor ?? weekDays, topModel(byModel, false))}
             weekDays={weekDays}
             loading={loading && !bySource}
           />
@@ -80,7 +81,7 @@ export function PlatformComparison({
           <PlatformHeading color={PLATFORM_COLOR.codex} name="Codex" sub="ChatGPT desktop app" />
           <CodexPlanPanel live={codexLive} profile={codexProfile} weekStart={weekStart} compact />
           <MetricsCard
-            rows={comparisonRows(totals.codex, weekDays, topModel(byModel, true))}
+            rows={comparisonRows(totals.codex, perDayDivisor ?? weekDays, topModel(byModel, true))}
             weekDays={weekDays}
             loading={loading && !bySource}
           />

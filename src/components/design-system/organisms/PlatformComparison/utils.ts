@@ -47,7 +47,7 @@ export function topModel(byModel: ModelShare[], codex: boolean): ModelShare | nu
 }
 
 /** The comparison rows for one platform — same order and units on both sides. */
-export function comparisonRows(t: TokenTotals, weekDays: number, top: ModelShare | null): ComparisonRow[] {
+export function comparisonRows(t: TokenTotals, days: number, top: ModelShare | null): ComparisonRow[] {
   return [
     {
       key: 'effective',
@@ -62,7 +62,7 @@ export function comparisonRows(t: TokenTotals, weekDays: number, top: ModelShare
       value: usd(t.cost),
       help: 'Equivalent list API price for the same tokens. A subscription has no per-token bill — this is a comparison figure, not a charge.',
     },
-    { key: 'per-day', label: 'Cost / day', value: usd(weekDays > 0 ? t.cost / weekDays : 0) },
+    { key: 'per-day', label: 'Cost / day', value: usd(days > 0 ? t.cost / days : 0) },
     {
       key: 'model',
       label: 'Top model',

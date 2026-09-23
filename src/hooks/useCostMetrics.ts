@@ -1,9 +1,12 @@
 import { useMemo } from 'react';
 import { useLiveData } from './useLiveData';
+import { coverageDays as coverageOf } from '@/lib/coverage';
 
 export interface CostMetrics {
-  /** Estimated equivalent API cost ÷ days in the selected window. */
+  /** Estimated equivalent API cost ÷ days of history in the selected window. */
   costPerDay: number;
+  /** Days the per-day figures average over (≤ the window; see lib/coverage). */
+  coverageDays: number;
   daysLeftInMonth: number;
   /** Month-end projection if the current daily average continues. */
   projectedMonthCost: number;
@@ -18,11 +21,12 @@ export function useCostMetrics(): CostMetrics {
   return useMemo(() => {
     const weeklyEffective = weekly.data?.totals.effectiveTokens ?? 0;
     const prevWeeklyEffective = weekly.data?.prevTotals.effectiveTokens ?? 0;
-    const costPerDay = (weekly.data?.totals.cost ?? 0) / weekDays;
+    const coverageDays = coverageOf(weekly.data, weekDays);
+    const costPerDay = (weekly.data?.totals.cost ?? 0) / coverageDays;
     const now = new Date();
     const daysLeftInMonth =
       new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate() - now.getDate();
     const projectedMonthCost = costPerDay * (now.getDate() + daysLeftInMonth);
-    return { costPerDay, daysLeftInMonth, projectedMonthCost, weeklyEffective, prevWeeklyEffective };
+    return { costPerDay, coverageDays, daysLeftInMonth, projectedMonthCost, weeklyEffective, prevWeeklyEffective };
   }, [weekly.data, weekDays]);
 }

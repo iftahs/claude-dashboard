@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import { Bar, BarChart, CartesianGrid, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { ChartTooltip } from '@/components/design-system/molecules/ChartTooltip/ChartTooltip';
 import { LegendDot } from '@/components/design-system/atoms/LegendDot/LegendDot';
@@ -35,7 +36,7 @@ function CustomTooltip({ active, payload, label, metric = 'tokens' }: CustomTool
                 <span className="text-zinc-300">{shortModel(item.name)}</span>
               </span>
               <span className="font-semibold text-zinc-100">
-                {metric === 'cost' || item.name === '__projected__' ? usd(item.value) : compact(item.value)}
+                {metric === 'cost' ? usd(item.value) : compact(item.value)}
               </span>
             </div>
           ))}
@@ -52,10 +53,11 @@ function CustomTooltip({ active, payload, label, metric = 'tokens' }: CustomTool
   return null;
 }
 
-export function UsageBarChart({
+function UsageBarChartImpl({
   buckets,
   labelFor,
   projectionCostPerDay,
+  projectionTokensPerDay,
   metric = 'tokens',
 }: UsageBarChartProps) {
   const models = new Set<string>();
@@ -89,7 +91,8 @@ export function UsageBarChart({
       let t = lastBucket.start + DAY;
 
       // Compute tokens projection based on average daily effective tokens
-      const avgTokensPerDay = buckets.reduce((acc, curr) => acc + curr.effectiveTokens, 0) / buckets.length;
+      const avgTokensPerDay =
+        projectionTokensPerDay ?? buckets.reduce((acc, curr) => acc + curr.totalTokens, 0) / buckets.length;
 
       while (t <= lastBucket.start + 3 * DAY && t < endOfMonthMs) {
         const projRow: Record<string, number | string | boolean> = {
@@ -145,6 +148,8 @@ export function UsageBarChart({
                 stackId="t"
                 fill={m === '__projected__' ? 'rgba(113,113,122,0.25)' : modelColor(m)}
                 radius={i === allModelList.length - 1 ? [4, 4, 0, 0] : [0, 0, 0, 0]}
+                // Long windows re-animate hundreds of bars on every poll.
+                isAnimationActive={data.length <= 60}
               />
             ))}
           </BarChart>
@@ -163,3 +168,10 @@ export function UsageBarChart({
     </div>
   );
 }
+
+/**
+ * Memoised: its parent re-renders on every live poll (the shared LiveData context
+ * changes about once a second), and on long windows this chart has hundreds of
+ * categories × every model series. Its props only change when its own data does.
+ */
+export const UsageBarChart = memo(UsageBarChartImpl);

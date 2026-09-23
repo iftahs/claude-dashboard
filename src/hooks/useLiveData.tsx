@@ -20,6 +20,11 @@ import type {
 
 const POLL = 5000;
 
+/** Poll interval for a `days`-long weekly aggregate (Trends window). */
+export function weeklyPollMs(days: number): number {
+  return days > 28 ? 60_000 : POLL;
+}
+
 interface LiveDataCtx {
   // Window state shared across Live + Trends (Live's cost/day uses the Trends window).
   recentHours: number;
@@ -29,6 +34,8 @@ interface LiveDataCtx {
   // Cross-tab polls (feed multiple tabs and/or the header/sidebar).
   recent: PollState<RecentData>;
   weekly: PollState<WeeklyData>;
+  /** Always the last 7 days at the fast rate — Live, budget rows, alerts. */
+  liveWeekly: PollState<WeeklyData>;
   models: PollState<ModelsData>;
   litellm: PollState<LiteLlmSpendData>;
   liveUsage: PollState<LiveUsageData>;
@@ -62,11 +69,18 @@ export function LiveDataProvider({ children }: { children: ReactNode }) {
   const [weekDays, setWeekDays] = useState(7);
 
   const recent = usePolling<RecentData>(withSrc(`/api/usage/recent?hours=${recentHours}`), POLL);
-  const weekly = usePolling<WeeklyData>(withSrc(`/api/usage/weekly?days=${weekDays}`), POLL);
+  // Long windows move slowly and their payload is large (up to 365 buckets), so
+  // they poll once a minute instead of every 5 s.
+  const weekly = usePolling<WeeklyData>(withSrc(`/api/usage/weekly?days=${weekDays}`), weeklyPollMs(weekDays));
+  // Live, budget rows and alerts always need the last 7 days at the fast rate,
+  // whatever the Trends window is. With weekDays = 7 the URLs match and the
+  // in-flight map collapses the two polls into one request.
+  const liveWeekly = usePolling<WeeklyData>(withSrc('/api/usage/weekly?days=7'), POLL);
   const models = usePolling<ModelsData>(withSrc('/api/usage/models?days=7'), POLL);
   const litellm = usePolling<LiteLlmSpendData>(
     litellmAvailable ? `/api/usage/litellm?days=${weekDays}` : '',
-    POLL,
+    // The server caches gateway spend for 5 minutes; polling faster only re-slices it.
+    60_000,
   );
   // Live limits stay app-wide on both platforms (the sidebar badge, tab title and
   // notifications read them). The fast agent polls run only while their platform
@@ -94,6 +108,7 @@ export function LiveDataProvider({ children }: { children: ReactNode }) {
       setWeekDays,
       recent,
       weekly,
+      liveWeekly,
       models,
       litellm,
       liveUsage,
@@ -106,7 +121,7 @@ export function LiveDataProvider({ children }: { children: ReactNode }) {
       codexProfile,
     }),
     [
-      recentHours, weekDays, recent, weekly, models, litellm, liveUsage, liveSubagents,
+      recentHours, weekDays, recent, weekly, liveWeekly, models, litellm, liveUsage, liveSubagents,
       workflows, workflowStats, version, codexLive, codexAgents, codexProfile,
     ],
   );

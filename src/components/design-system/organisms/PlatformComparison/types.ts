@@ -22,5 +22,7 @@ export interface PlatformComparisonProps {
   /** Per-model shares for the same window — split into families for the "top model" row. */
   byModel: ModelShare[];
   weekDays: number;
+  /** Divisor for the per-day figures — days of history in the window (useCostMetrics). */
+  perDayDivisor?: number;
   loading?: boolean;
 }

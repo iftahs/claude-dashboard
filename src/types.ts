@@ -109,6 +109,8 @@ export interface WeeklyData {
   byModel: ModelShare[];
   bySource?: SourceSplit;
   cacheEfficiency?: { date: string; hitRate: number; cacheReadTokens: number; totalTokens: number }[];
+  /** Earliest event in the scoped history (null when there is none). */
+  firstEventTs?: number | null;
 }
 
 export interface ModelsData {
@@ -160,6 +162,8 @@ export interface LiteLlmSpend {
   prevMonthToDate: number;
   lifetime: { user: number; key: number };
   daily: { date: string; cost: number; requests: number; successful: number; byModel: Record<string, number> }[];
+  /** Gateway had more spend rows than the page cap fetched — figures may undercount. */
+  truncated?: boolean;
 }
 export type LiteLlmSpendData = LiteLlmSpend | { error: string };
 

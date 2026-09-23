@@ -7,7 +7,7 @@ import { promisify } from 'node:util';
 import express from 'express';
 import { getEvents, eventsFingerprint } from './cache.ts';
 import { buildRecent, buildWeekly, buildModels, buildActivity, buildTools, buildHourlyHeatmap, buildProjectStats, filterSource, sourceMatches, statsCacheApplies, type SourceFilter } from './aggregate.ts';
-import { claudeDir, readConfig, readCredentials, readStatsSummary, readSessionMetas, fetchLiveUsage, fetchLiveProfile, fetchLiveUsageFor, fetchLiveProfileFor, readAccountCredentials, expiredTokenMessage, detectLitellm, fetchLiteLlmSpend } from './scan.ts';
+import { claudeDir, readConfig, readCredentials, readStatsSummary, readSessionMetas, fetchLiveUsage, fetchLiveProfile, fetchLiveUsageFor, fetchLiveProfileFor, readAccountCredentials, expiredTokenMessage, detectLitellm, fetchLiteLlmSpend, MAX_WINDOW_DAYS } from './scan.ts';
 import { getInsights, insightsFingerprint } from './insights-scan.ts';
 import { archiveSummary, forgetArchivedHistory, primeData } from './data.ts';
 import { memoBuilder } from './builder-cache.ts';
@@ -538,7 +538,7 @@ app.get('/api/codex/agents/live', async (_req, res) => {
 // return wrap({ error }) at HTTP 200 so the frontend just hides the cards.
 app.get('/api/usage/litellm', async (req, res) => {
   try {
-    const days = intParam(req.query.days, 7, 7, 28);
+    const days = intParam(req.query.days, 7, 7, MAX_WINDOW_DAYS);
     res.json(wrap(await fetchLiteLlmSpend(days), Date.now()));
   } catch (e: any) {
     res.json(wrap({ error: e.message || String(e) }, Date.now()));
@@ -562,7 +562,7 @@ app.get('/api/usage/recent', async (req, res) => {
 
 app.get('/api/usage/weekly', async (req, res) => {
   try {
-    const days = intParam(req.query.days, 7, 7, 28);
+    const days = intParam(req.query.days, 7, 7, MAX_WINDOW_DAYS);
     const { events, computedAt } = await getEvents();
     const source = parseSource(req.query.source);
     const data = memoBuilder('weekly', [days, source], eventsFingerprint(), () =>

@@ -1,5 +1,5 @@
 import type { Platform } from '@/hooks/useSource';
-import type { SourceSplit } from '@/types';
+import type { Bucket, SourceSplit, WeeklyData } from '@/types';
 
 export { PLATFORM_NOUN } from '@/lib/platform';
 
@@ -39,4 +39,84 @@ export function platformSplitLabel(
   const codex = bySource.codex[field] * scale;
   if (claude === 0 && codex === 0) return null;
   return `Claude ${fmt(claude)} · Codex ${fmt(codex)}`;
+}
+
+/** Trends window presets — the server clamps `days` to MAX_WINDOW_DAYS (365). */
+export const TIME_WINDOWS: { days: number; label: string }[] = [
+  { days: 7, label: '1w' },
+  { days: 14, label: '2w' },
+  { days: 30, label: '1m' },
+  { days: 60, label: '2m' },
+  { days: 90, label: '3m' },
+  { days: 180, label: '6m' },
+  { days: 365, label: '1y' },
+];
+
+/**
+ * Sub-label for the comparison period. buildWeekly compares against the preceding
+ * N rolling days, so anything past two weeks says so in days — "prev month" would
+ * imply a calendar month.
+ */
+export function prevPeriodLabel(days: number): string {
+  if (days === 7) return 'prev week';
+  if (days === 14) return 'prev 2 weeks';
+  return `prev ${days}d`;
+}
+
+/** Max buckets sent to the AI ✨ explainer; the server caps a section at 64 KB. */
+const AI_MAX_BUCKETS = 60;
+
+/**
+ * The Trends payload for the AI explainer, small enough for long windows: past
+ * AI_MAX_BUCKETS days, consecutive daily buckets merge into runs of
+ * `daysPerBucket` days (a 1-year window becomes ~61 six-day buckets) and the
+ * per-model cost map is dropped — 366 buckets with both maps overflow the 64 KB
+ * section limit. Runs are cut from the newest end, so only the OLDEST bucket can
+ * be short; the newest one still holds only part of today.
+ */
+export function aiTrendsPayload(data: WeeklyData | null): (WeeklyData & { daysPerBucket?: number }) | null {
+  if (!data || data.buckets.length <= AI_MAX_BUCKETS) return data;
+  const per = Math.ceil(data.buckets.length / AI_MAX_BUCKETS);
+  const buckets: Bucket[] = [];
+  for (let end = data.buckets.length; end > 0; end -= per) {
+    const run = data.buckets.slice(Math.max(0, end - per), end);
+    const merged: Bucket = {
+      start: run[0].start,
+      byModel: {},
+      byModelCost: {},
+      inputTokens: 0,
+      outputTokens: 0,
+      cacheCreateTokens: 0,
+      cacheReadTokens: 0,
+      totalTokens: 0,
+      effectiveTokens: 0,
+      cost: 0,
+    };
+    for (const b of run) {
+      merged.inputTokens += b.inputTokens;
+      merged.outputTokens += b.outputTokens;
+      merged.cacheCreateTokens += b.cacheCreateTokens;
+      merged.cacheReadTokens += b.cacheReadTokens;
+      merged.totalTokens += b.totalTokens;
+      merged.effectiveTokens += b.effectiveTokens;
+      merged.cost += b.cost;
+      for (const [m, v] of Object.entries(b.byModel)) merged.byModel[m] = (merged.byModel[m] ?? 0) + v;
+    }
+    buckets.unshift(merged);
+  }
+  const ce = data.cacheEfficiency ?? [];
+  const cePer = Math.max(1, Math.ceil(ce.length / AI_MAX_BUCKETS));
+  const cacheEfficiency: NonNullable<WeeklyData['cacheEfficiency']> = [];
+  for (let end = ce.length; end > 0; end -= cePer) {
+    const run = ce.slice(Math.max(0, end - cePer), end);
+    const cacheReadTokens = run.reduce((a, r) => a + r.cacheReadTokens, 0);
+    const totalTokens = run.reduce((a, r) => a + r.totalTokens, 0);
+    cacheEfficiency.unshift({
+      date: run[0].date,
+      hitRate: totalTokens > 0 ? (cacheReadTokens / totalTokens) * 100 : 0,
+      cacheReadTokens,
+      totalTokens,
+    });
+  }
+  return { ...data, buckets, cacheEfficiency, daysPerBucket: per };
 }
