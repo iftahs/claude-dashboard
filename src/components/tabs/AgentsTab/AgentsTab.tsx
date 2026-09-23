@@ -18,15 +18,7 @@ import type { SubagentStats } from '@/types';
 
 const HISTORY_POLL_MS = 60_000;
 
-/**
- * One layout for every platform: a "last 30 days" strip (so the tab says something
- * when nothing runs), then the live activity section. Under Both, each platform gets
- * the same two components — strips side by side, live sections stacked.
- *
- * Both feeds are platform-scoped, never surface-scoped: the Claude live feed reads
- * Claude Code transcripts whatever the Code/Cowork toggle says, so the history strip
- * asks for `source=claude` explicitly to match.
- */
+// Platform-scoped, not surface-scoped — history asks for source=claude explicitly to match the live feed regardless of the Code/Cowork toggle.
 export function AgentsTab() {
   const { platform, showClaude, showCodex } = useSource();
   const { liveSubagents, codexAgents } = useLiveData();
@@ -45,8 +37,7 @@ export function AgentsTab() {
     HISTORY_POLL_MS,
   );
 
-  // Titles name the platform the way every other tab does (titleScope: nothing under
-  // Claude, " · Codex" under Codex); under Both each section names its own platform.
+  // titleScope: nothing under Claude, " · Codex" under Codex; under Both each section names its own platform.
   const scope = (p: 'claude' | 'codex') => (platform === 'both' ? ` · ${PLATFORM_NOUN[p]}` : titleScope(platform));
   const historyTitle = (p: 'claude' | 'codex') => `Subagents · last ${AGENT_HISTORY_DAYS} days${scope(p)}`;
   const sideBySide = platform === 'both';

@@ -10,10 +10,7 @@ export interface PlanUsageLabels {
   weekly?: string;
 }
 
-/**
- * A per-model row that is a gate, not a meter — the provider says only whether the
- * model can run right now (Codex's premium models), so it shows a status, not a bar.
- */
+// A gate, not a meter — the provider only says whether the model can run right now (Codex premium models).
 export interface PlanGateRow {
   label: string;
   status: string;

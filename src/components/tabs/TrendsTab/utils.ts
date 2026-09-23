@@ -21,11 +21,7 @@ export function costBasisHelp(platform: Platform, litellmAvailable: boolean): st
   return "What this usage would cost at Anthropic's pay-as-you-go API rates. Your subscription has no per-token bill — this is a reference figure only.";
 }
 
-/**
- * Help for the "Effective tokens" card. Only Anthropic documents which tokens
- * count toward its limits; OpenAI publishes no token basis for the Codex limits,
- * so the Codex copy only says what the number is and why it is comparable.
- */
+// OpenAI publishes no token basis for the Codex limits, so the Codex copy only says what the number is and why it's comparable.
 export function effectiveTokensHelp(platform: Platform): string {
   if (platform === 'codex') {
     return 'Uncached input + output tokens. Cached input is excluded — the counterpart of cache reads on Claude — so the figure is comparable across platforms. OpenAI does not publish how tokens weigh against the Codex limits. Compared against the previous period.';
@@ -47,11 +43,7 @@ export function cacheEfficiencyHelp(platform: Platform): string {
   return 'Share of total tokens served from the prompt cache each day (cache reads ÷ all tokens). Higher means more context was reused cheaply instead of re-sent.';
 }
 
-/**
- * The window's top model by estimated cost — the "top:" sub-line of the cost
- * card. Read from the same window's `byModel` (the card's own poll), never from
- * the fixed 7-day models poll, and ranked by cost because the card is a cost.
- */
+// Reads the same window's byModel (the card's own poll), never the fixed 7-day models poll.
 export function topModelByCost(byModel: ModelShare[] | undefined): { model: string; pct: number } | null {
   if (!byModel?.length) return null;
   const total = byModel.reduce((a, m) => a + m.cost, 0);
@@ -91,11 +83,7 @@ export const TIME_WINDOWS: { days: number; label: string }[] = [
   { days: 365, label: '1y' },
 ];
 
-/**
- * Sub-label for the comparison period. buildWeekly compares against the preceding
- * N rolling days, so anything past two weeks says so in days — "prev month" would
- * imply a calendar month.
- */
+// Compares against the preceding N rolling days, so past two weeks it says "Nd" — "prev month" would imply a calendar month.
 export function prevPeriodLabel(days: number): string {
   if (days === 7) return 'prev week';
   if (days === 14) return 'prev 2 weeks';
@@ -110,16 +98,7 @@ export type AiTrendsBucket = Omit<Bucket, 'byModel' | 'byModelCost'>;
 
 export type AiTrendsPayload = Omit<WeeklyData, 'buckets'> & { buckets: AiTrendsBucket[]; daysPerBucket?: number };
 
-/**
- * The Trends payload for the AI explainer. Every bucket carries exactly one
- * per-model map — effective tokens, the unit the daily chart stacks — so the
- * explainer reads the same numbers the chart shows and three maps never multiply
- * the payload. Past AI_MAX_BUCKETS days, consecutive daily buckets also merge
- * into runs of `daysPerBucket` days (a 1-year window becomes ~61 six-day
- * buckets) to stay under the 64 KB section limit. Runs are cut from the newest
- * end, so only the OLDEST bucket can be short; the newest one still holds only
- * part of today.
- */
+// Merges run from the newest end backward, so only the oldest bucket can be short — the newest always holds a full period.
 export function aiTrendsPayload(data: WeeklyData | null): AiTrendsPayload | null {
   if (!data) return null;
   const slim = (b: Bucket): AiTrendsBucket => {

@@ -3,10 +3,7 @@ import { InfoTip } from '@/components/design-system/atoms/InfoTip/InfoTip';
 import { extraUsageBarColor } from './utils';
 import type { ExtraUsageCardProps } from './types';
 
-/**
- * Paying beyond the plan: Anthropic's extra usage or ChatGPT's Codex credits — one
- * card, fed a provider-neutral view (see ./utils), so both platforms look the same.
- */
+// Fed a provider-neutral view (see ./utils) so Claude and Codex render identically.
 export function ExtraUsageCard({ view }: ExtraUsageCardProps) {
   const { title, help, enabled, usage, disabledCopy, rows, disclaimer } = view;
   const pct = usage?.pct ?? null;

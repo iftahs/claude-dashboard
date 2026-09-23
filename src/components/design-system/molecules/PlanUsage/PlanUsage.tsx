@@ -51,14 +51,11 @@ export function PlanUsage({
   const now = Date.now();
 
   const hasLive = liveUsage && !liveUsage.error;
-  // A live payload can leave out a window the plan does not have (Codex's 'go' plan
-  // has no 5-hour window): that row is hidden rather than drawn as a fake 0%.
+  // Codex's 'go' plan has no 5-hour window — hide the row instead of faking 0%.
   const showBlock = !hasLive || liveUsage.five_hour != null;
   const showWeekly = !hasLive || liveUsage.seven_day != null;
 
-  // 5-Hour Limit calculations. Offline, an expired local block reads as "no active
-  // block" (0%, resets on next msg) rather than the last session's tokens; the
-  // client-clock check covers a server block memoised before it expired.
+  // Offline, an expired local block (resetsAt <= now) reads as no active block, not stale tokens.
   const blockEnded = !hasLive && !!block && (!block.isActive || block.resetsAt <= now);
   const blockLimit = DEFAULT_BLOCK_LIMIT;
   const blockPct = hasLive
@@ -216,7 +213,6 @@ export function PlanUsage({
           );
         })}
 
-        {/* Per-model gates (a model the plan can or cannot run right now) */}
         {gates?.map((g) => (
           <div key={g.label} className="flex items-center justify-between text-xs">
             <span className="font-semibold text-zinc-200">{g.label}</span>

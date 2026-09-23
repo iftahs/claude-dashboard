@@ -13,16 +13,7 @@ import { titleScope } from '@/lib/platform';
 import type { CodexConfigData, InventoryData, WorkspaceTasksData } from '@/types';
 import { EMPTY_TASKS, INVENTORY_HELP, TASKS_HELP, workspaceSource } from './utils';
 
-/**
- * The Workspace tab, one layout on every platform:
- *
- *   [ Config profile | Plugins & MCP ]
- *   [ Tasks & plans                  ]
- *
- * Claude reads ~/.claude, Codex reads ~/.codex (config.toml, skills, plans,
- * automations). Under Both the profile column stacks the two profiles and the
- * inventory and plans are merged, each item tagged with its platform.
- */
+// Under Both, the profile column stacks both platforms; inventory and plans are merged, each item tagged with its platform.
 export function WorkspaceTab() {
   const { aiProps } = useAiInsightCtx();
   const { platform, showClaude, showCodex } = useSource();

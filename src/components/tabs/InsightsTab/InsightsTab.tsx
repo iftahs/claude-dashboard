@@ -43,12 +43,7 @@ import type {
 const TWO_COL = 'grid grid-cols-1 gap-6 lg:grid-cols-2';
 const POLL = 60_000;
 
-/**
- * One grid for every platform. Claude, Codex and Both render the same panels in the
- * same rows; where a platform has no signal the panel says so (n/a / empty state)
- * instead of disappearing, and the copy names the platform's own concepts (guardian
- * reviews, patches) rather than Claude's.
- */
+// Every platform renders the same panels in the same rows; no signal shows n/a/empty state instead of disappearing.
 export function InsightsTab() {
   const { platform, withSrc } = useSource();
   const { aiProps } = useAiInsightCtx();
@@ -99,7 +94,6 @@ export function InsightsTab() {
         <ErrorBreakdown data={insightErrors.data} />
       </Section>
 
-      {/* Tools: usage by tool | MCP vs built-in */}
       <div className={TWO_COL}>
         <Section title={copy.tools.title} help={copy.tools.help} {...aiProps('tools', tools.data)}>
           {tools.data ? (
@@ -118,7 +112,6 @@ export function InsightsTab() {
         </Section>
       </div>
 
-      {/* Friction: rejections | edit retries */}
       <div className={TWO_COL}>
         <Section title={copy.rejections.title} help={copy.rejections.help} {...aiProps('rejections', insightRejections.data)}>
           <RejectionsPanel data={insightRejections.data} platform={platform} />
@@ -132,7 +125,6 @@ export function InsightsTab() {
         </Section>
       </div>
 
-      {/* Where the work went: languages | branches */}
       <div className={TWO_COL}>
         <Section title={copy.languages.title} help={copy.languages.help} {...aiProps('languages', insightLanguages.data)}>
           <LanguageBreakdown data={insightLanguages.data} />
@@ -142,17 +134,14 @@ export function InsightsTab() {
         </Section>
       </div>
 
-      {/* Complexity scatter — full width */}
       <Section title={copy.complexity.title} help={copy.complexity.help} {...aiProps('complexity', insightComplexity.data)}>
         <ComplexityScatter data={insightComplexity.data} platform={platform} />
       </Section>
 
-      {/* Turn latency — full width */}
       <Section title={copy.turns.title} help={copy.turns.help} {...aiProps('turns', insightTurns.data)}>
         <TurnLatency data={insightTurns.data} platform={platform} />
       </Section>
 
-      {/* Yield | Subagents */}
       <div className={TWO_COL}>
         <Section title={copy.yield.title} help={copy.yield.help} {...aiProps('yield', insightYield.data)}>
           <YieldPanel data={insightYield.data} />
@@ -162,7 +151,6 @@ export function InsightsTab() {
         </Section>
       </div>
 
-      {/* Commands | File churn */}
       <div className={TWO_COL}>
         <Section title={copy.commands.title} help={copy.commands.help} {...aiProps('commands', insightCommands.data)}>
           <CommandUsage data={insightCommands.data} emptyText={copy.commands.emptyText} />

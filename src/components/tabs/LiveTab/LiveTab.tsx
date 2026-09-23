@@ -90,11 +90,7 @@ function ClaudeGauge({ costPerDay, dailyLimit, todayActualCost }: ClaudeGaugePro
   );
 }
 
-/**
- * Codex's block: the ChatGPT plan window (5-hour, else weekly) in the ring and the
- * local Codex usage inside it in the rows. No block-limit guess — Codex publishes
- * no token ceiling, so offline the ring shows tokens, not an invented %.
- */
+// No block-limit guess — Codex publishes no token ceiling, so offline the ring shows tokens, not an invented %.
 function CodexGauge({ block, costPerDay, dailyLimit }: CodexGaugeProps) {
   const { codexLive } = useLiveData();
   if (!block.data && block.loading) return <GaugeSkeleton />;
@@ -123,16 +119,7 @@ function SideBySide({ items }: SideBySideProps) {
   return <div className="grid grid-cols-1 items-stretch gap-6 lg:grid-cols-2">{shown}</div>;
 }
 
-/**
- * The Live tab, one skeleton on every platform:
- *
- *   gauge row (BlockGauge | hourly chart) → plan usage → extra usage / credits →
- *   what's contributing to your limits → limit hits → spend vs caps
- *
- * Claude and Codex fill the same slots with their own data; under Both the
- * per-platform slots sit side by side (the two gauges share the first row and the
- * hourly chart, which already mixes both model families, gets its own).
- */
+// Under Both, the two gauges sit side by side but share one hourly chart (it already mixes both model families).
 export function LiveTab({ limits }: LiveTabProps) {
   const { platform, showClaude, showCodex } = useSource();
   const { recent, weekly, liveWeekly, liveUsage, codexLive } = useLiveData();
@@ -142,29 +129,24 @@ export function LiveTab({ limits }: LiveTabProps) {
   const [platformCaps] = usePlatformLimits();
 
   // Live plan/limits per logged-in account (only polled while the Live tab is
-  // mounted, and not under Codex, where the Claude plan card never renders).
-  // >1 account swaps the single card for the side-by-side panel; with one
-  // account this stays empty and the dashboard is byte-identical to before.
+  // mounted, not under Codex). >1 account swaps the single card for the side-by-side panel; one account stays byte-identical to before.
   const accountsLive = usePolling<AccountsLiveData>(showClaude ? '/api/accounts/live' : '', 15000);
   const accounts = accountsLive.data?.accounts ?? [];
   const multiAccount = accounts.length > 1;
 
-  // The Codex block is computed per request from the live window (not memoised),
-  // so only this tab polls it.
+  // Computed per request from the live window (not memoised) — only this tab polls it.
   const codexBlock = usePolling<CodexBlock>(showCodex ? '/api/codex/block' : '', 5000);
   const codexApiKey = !!codexBlock.data?.apiKey;
 
   const hasSpendingLimits =
     limits.dailyLimit != null || limits.weeklyLimit != null || limits.monthlyLimit != null;
 
-  // Per-platform $/day for the API-mode cap rings: under Both the Trends window
-  // mixes both platforms, so split it by source.
+  // Under Both the Trends window mixes both platforms, so split $/day by source for the API-mode cap rings.
   const split = platform === 'both' ? weekly.data?.bySource : undefined;
   const claudeCostPerDay = split ? (split.code.cost + split.cowork.cost) / coverageDays : costPerDay;
   const codexCostPerDay = split ? split.codex.cost / coverageDays : costPerDay;
 
-  // The gateway's real bill is Anthropic spend: it replaces the estimate only when
-  // the rows cover Claude alone.
+  // The gateway's real bill is Anthropic spend — it replaces the estimate only when the rows cover Claude alone.
   const budgetActual = platform === 'claude' ? litellmActual ?? null : null;
   const budgetRows = buildBudgetRows({
     limits,
@@ -175,7 +157,6 @@ export function LiveTab({ limits }: LiveTabProps) {
     now: Date.now(),
   });
 
-  // ── Per-platform slots ────────────────────────────────────────────────────
   // Each gauge compares its own platform's spend, so it takes that platform's cap, not Both's sum.
   const claudeGauge = showClaude && (
     <ClaudeGauge
@@ -198,8 +179,7 @@ export function LiveTab({ limits }: LiveTabProps) {
         }
       : liveWeekly.data;
 
-  // Subscription rate-limit bars — only meaningful with a plan. With more than one
-  // logged-in account, show each account's limits side-by-side.
+  // Meaningful only with a plan; >1 account shows each account's limits side-by-side.
   const claudePlan =
     showClaude && configData && !isApi ? (
       multiAccount ? (
@@ -237,8 +217,7 @@ export function LiveTab({ limits }: LiveTabProps) {
       <LimitsContributors />
     ) : null;
 
-  // Spend vs caps — always shown in API mode (the cost IS the bill); in
-  // subscription mode only when the user has configured caps.
+  // Spend vs caps: always shown in API mode (cost IS the bill); in subscription mode only with configured caps.
   const apiMode = (showClaude && isApi) || (showCodex && codexApiKey);
   const spendNote =
     budgetActual?.note ?? (platform === 'codex' ? 'estimated from local logs · OpenAI list prices' : 'estimated from local logs');

@@ -4,7 +4,6 @@ import type { TagMove } from '@/hooks/useTags';
 import type { ProjectStat, SessionSummary, SessionSummaryPart } from '@/types';
 import { formatDurationMs, formatTurnMs, sinceLabel } from '@/components/design-system/organisms/SessionHistoryTable/utils';
 
-/** One StatCard of the Sessions summary row. */
 export interface SummaryCard {
   key: string;
   label: string;
@@ -28,12 +27,7 @@ function split(summary: SessionSummary, platform: Platform, fmt: (p: SessionSumm
   return `Claude ${fmt(summary.claude)} · Codex ${fmt(summary.codex)}`;
 }
 
-/**
- * The Sessions StatCard row — the same four cards on every platform, each computed
- * over exactly the sessions the table below lists. Codex's own lifetime "Threads"
- * and "Longest turn" profile stats used to sit on the Live tab; these are their
- * event-derived counterparts, mirrored for Claude.
- */
+// Each card is computed over exactly the sessions the table below lists (not a separate window).
 export function summaryCards(summary: SessionSummary, platform: Platform): SummaryCard[] {
   const t = summary.total;
   const noun = sessionNoun(platform);

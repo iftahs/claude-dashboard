@@ -17,9 +17,7 @@ export const DEFAULT_MODEL_COLOR = '#22d3ee';
 /** Legacy `seven_day_<model>` keys → bar colour. */
 export const LEGACY_MODEL_COLORS = { sonnet: MODEL_COLORS.Sonnet, opus: MODEL_COLORS.Opus, cowork: DEFAULT_MODEL_COLOR };
 
-// Anthropic's display_name is a plain family word today ("Opus"), but a generation
-// may get appended ("Opus 5") — match the family out of it rather than keying on the
-// whole string, which would silently drop every bar to DEFAULT_MODEL_COLOR.
+// Match the family out of display_name (e.g. "Opus 5") — keying on the whole string drops every bar to DEFAULT_MODEL_COLOR.
 export function modelBarColor(displayName: string): string {
   const family = displayName.match(/fable|mythos|opus|sonnet|haiku/i)?.[0].toLowerCase();
   const key = family && family[0].toUpperCase() + family.slice(1);
@@ -47,10 +45,7 @@ export interface SurfaceSegment {
   color: string;
 }
 
-/**
- * The weekly breakdown's rows as bar segments, empty rows dropped. The rows are each
- * surface's share of this week's usage so far (they sum to 100), not of the quota.
- */
+// Segments are each surface's share of usage so far (sum to 100), not of the quota.
 export function surfaceSegments(b: LiveWeeklyBreakdown | null | undefined): SurfaceSegment[] {
   if (!b || !Array.isArray(b.rows)) return [];
   const rows = b.rows.filter((r) => typeof r.percent === 'number' && r.percent > 0);
@@ -64,7 +59,6 @@ export function surfaceSegments(b: LiveWeeklyBreakdown | null | undefined): Surf
   }));
 }
 
-/** Text colour of a gate row's status. */
 export const GATE_TONE_CLASS = {
   ok: 'text-emerald-400',
   muted: 'text-zinc-500',

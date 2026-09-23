@@ -29,10 +29,7 @@ export interface KpiCard {
   help: string;
 }
 
-/**
- * The Insights KPI row. Each figure is shown here and nowhere else on the tab — the
- * panels below break it down (by category, by tool, by stage) without repeating it.
- */
+// Each figure here appears nowhere else on the tab — panels below break it down without repeating it.
 export function kpiCards(s: InsightsSummary | null, platform: Platform): KpiCard[] {
   const loading = 'loading…';
   const both = platform === 'both';
@@ -46,8 +43,6 @@ export function kpiCards(s: InsightsSummary | null, platform: Platform): KpiCard
       'Share of tool calls that ran and came back with an error. Rejections — calls declined before they ran — are not failures; they have their own rate. Lower is better.',
   };
 
-  // Counts the panels below do not show; their own breakdowns (by kind, stage,
-  // type) stay theirs.
   const rejectionSub = (): string => {
     if (!s) return loading;
     if (both) return splitLine(s, (k) => k.rejectionRate);

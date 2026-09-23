@@ -34,11 +34,7 @@ export function extraUsageBarColor(pct: number): string {
 
 const PAUSES = 'usage pauses at your plan limit until the next reset.';
 
-/**
- * Anthropic's "extra usage": pay standard API rates once the plan limit is hit.
- * Disabled copy, most specific first: the user switched it off, else an org-level
- * reason, else the org never enabled it.
- */
+// disabledCopy precedence: user opt-out, then an org-level reason, then org never enabled.
 export function claudeExtraUsageView(extraUsage: LiveExtraUsage, spend: LiveSpend | null | undefined, orgEnabled: boolean): ExtraUsageView {
   const used = toMajorUnits(extraUsage.used_credits, extraUsage.decimal_places);
   const limit = toMajorUnits(extraUsage.monthly_limit, extraUsage.decimal_places);
@@ -61,11 +57,7 @@ export function claudeExtraUsageView(extraUsage: LiveExtraUsage, spend: LiveSpen
   };
 }
 
-/**
- * ChatGPT credits for Codex: purchased credits keep Codex running once a plan
- * window is exhausted; reset credits clear a window early. Null when the payload
- * reports neither.
- */
+// Null when the payload has neither purchased credits nor reset credits.
 export function codexCreditsView(live: CodexLiveData): ExtraUsageView | null {
   const c = live.credits;
   const rc = live.resetCredits;

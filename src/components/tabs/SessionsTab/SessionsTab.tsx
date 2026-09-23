@@ -22,16 +22,13 @@ export function SessionsTab() {
   const { migrate } = tags;
   const noun = sessionNoun(platform);
 
-  // Project paths now come from the transcript's real cwd, not Claude Code's lossy
-  // folder names; move tags saved under an old path onto its project's new one.
+  // Project paths now come from the transcript's real cwd, not lossy folder names — move tags saved under an old path onto the new one.
   useEffect(() => {
     const moves = tagMovesFrom(projectCosts.data?.projects);
     if (moves.length) migrate(moves);
   }, [projectCosts.data, migrate]);
 
-  // Per-project and tag breakdowns need a host project: Cowork sessions run in a
-  // sandbox with none, so that filter skips straight to the session log. Claude
-  // Code and Codex both record the real working directory.
+  // Cowork sessions run in a sandbox with no host project, so that filter skips straight to the session log.
   const showProjects = source !== 'cowork';
 
   return (

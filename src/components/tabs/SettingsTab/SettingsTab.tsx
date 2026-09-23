@@ -20,8 +20,7 @@ export function SettingsTab() {
   const archive = useArchive();
   const [analyticsOptOut, setAnalyticsOptOut] = useState(isOptedOut());
 
-  // Codex status — polled only on a machine with Codex data (the same gate as the
-  // platform switcher). /api/sources is already polled app-wide; this shares it.
+  // Codex status polls only with Codex data (same gate as the platform switcher); shares the app-wide /api/sources poll.
   const codexConfig = usePolling<CodexConfigData>(codexAvailable ? '/api/codex/config' : '', 60000);
   const sources = usePolling<SourcesInfo>('/api/sources', 60000);
   const codex = codexAvailable

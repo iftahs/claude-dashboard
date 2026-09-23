@@ -11,12 +11,7 @@ import { useAiInsightCtx } from '@/hooks/useAiInsightContext';
 import { titleScope } from '@/lib/platform';
 import type { EffortData } from '@/types';
 
-/**
- * Model statistics only: the effective-token share per model and the reasoning
- * effort each model ran at, then the rate card. The same two cards on every
- * platform (both already scoped by `withSrc`); tool-call counts are not a model
- * statistic and live on Insights.
- */
+// Model stats only — tool-call counts are not a model statistic and live on Insights.
 export function ModelsTab() {
   const { platform, withSrc } = useSource();
   const { models } = useLiveData();

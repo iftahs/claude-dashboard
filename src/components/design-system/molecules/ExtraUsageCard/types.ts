@@ -1,8 +1,4 @@
-/**
- * What the card shows, provider-neutral. Built by `claudeExtraUsageView` (Anthropic's
- * extra usage) or `codexCreditsView` (ChatGPT credits) in ./utils, so both
- * platforms fill the same slot with the same card.
- */
+// Provider-neutral shape built by claudeExtraUsageView / codexCreditsView (./utils) for one shared card.
 export interface ExtraUsageView {
   title: string;
   help: string;

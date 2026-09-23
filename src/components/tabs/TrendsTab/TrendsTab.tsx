@@ -54,16 +54,7 @@ function SplitSub({ sub, split }: { sub: string; split: string | null }) {
   );
 }
 
-/**
- * Trends — the same sections in the same order on every platform (Claude /
- * Codex / Both); only the data and the platform-specific copy change:
- *
- *   spending cards → server-side figure (Claude: LiteLLM "Actual billed";
- *   Codex: OpenAI "Server vs local") → sources split (Claude: Code / Cowork;
- *   Codex: threads / guardian reviews; Both: all three) → [Both: Claude vs
- *   Codex] → daily chart → cache efficiency (Both: one line per platform) →
- *   peak hours → activity summary → activity heatmap.
- */
+// Same sections, same order, on every platform — only the data and platform-specific copy change.
 export function TrendsTab() {
   const { platform, showClaude, showCodex, showSurfaceToggle, source, withSrc, effectiveSource, codexAvailable } =
     useSource();
@@ -83,8 +74,7 @@ export function TrendsTab() {
   const topModel = topModelByCost(weekly.data?.byModel);
 
   // Under *Both* the shared weekly poll is deliberately unscoped, so the
-  // comparisons need their own two explicitly-scoped polls. An empty URL issues
-  // no request, so nothing extra is fetched on any other platform.
+  // comparisons need their own two explicitly-scoped polls; an empty URL issues no request.
   const bothActive = platform === 'both';
   const claudeWeekly = usePolling<WeeklyData>(
     bothActive ? `/api/usage/weekly?days=${weekDays}&source=claude` : '',
@@ -95,9 +85,7 @@ export function TrendsTab() {
     weeklyPollMs(weekDays),
   );
 
-  // Codex "Server vs local": the local rollouts per UTC day (OpenAI keys its
-  // daily count by UTC date) over the Trends window. Explicitly source=codex —
-  // under Both it is still the Codex-side panel.
+  // OpenAI keys its daily count by UTC date; explicitly source=codex so it stays the Codex-side panel under Both.
   const codexProfileOk = !!codexProfile.data && !codexProfile.data.error;
   const showCodexCompare = showCodex && codexAvailable && !codexProfile.data?.error;
   const codexUtcActivity = usePolling<ActivityData>(
@@ -110,10 +98,7 @@ export function TrendsTab() {
   const bs = bothActive ? weekly.data?.bySource : undefined;
   const daysThisMonth = new Date().getDate() + daysLeftInMonth;
 
-  // The sources slot: the same card on every platform, split by what that
-  // platform has — Code / Cowork (Claude's All filter), threads / guardian
-  // reviews (Codex), or all three surfaces (Both). Code-only users without
-  // Cowork never reach a branch, exactly as before.
+  // Split by what the platform has: Code/Cowork, Codex threads/guardian, or all three under Both; Code-only users never reach a branch, unchanged.
   const splitSegments = useMemo(() => {
     const w = weekly.data;
     if (!w) return null;
@@ -122,8 +107,7 @@ export function TrendsTab() {
     return null;
   }, [weekly.data, platform, bothActive, showSurfaceToggle, source]);
 
-  // Cache efficiency: one line per platform under Both (the vendors cache
-  // differently, so a pooled rate describes neither); otherwise the scoped line.
+  // One line per platform under Both — a pooled rate would describe neither vendor's cache.
   const cacheSeries = useMemo<CacheSeries[] | null>(() => {
     if (!bothActive) return null;
     return [
@@ -231,9 +215,7 @@ export function TrendsTab() {
         )}
       </div>
 
-      {/* Server-side figure beside the estimate — one slot, each platform's own:
-          Claude's LiteLLM gateway bill (when a gateway is configured) and
-          OpenAI's per-day Codex count vs the local rollouts. Under Both, both. */}
+      {/* Server-side figure beside the estimate: LiteLLM bill (Claude) and OpenAI's per-day count vs local rollouts (Codex) — both can show under Both. */}
       {showClaude && litellmAvailable && litellmSpend && (
         <LiteLlmActualBilled spend={litellmSpend} host={litellmHost} weekDays={weekDays} />
       )}
@@ -262,8 +244,7 @@ export function TrendsTab() {
         />
       )}
 
-      {/* Daily chart with projection — effective tokens throughout (bars,
-          projection, delta, export); totals only in the tooltip. */}
+      {/* Effective tokens throughout (bars, projection, delta, export); totals only in the tooltip. */}
       <DailyTrendChart
         data={weekly.data}
         loading={weekly.loading}
