@@ -1,27 +1,36 @@
 /**
  * subagents-live.ts
- * getLiveSubagents() with 3s TTL cache.
+ * getLiveSubagents() with 3s TTL cache — the Claude Code feed of the Agents tab.
+ * codex-agents-live.ts returns the same LiveSubagentsData shape for Codex and
+ * shares the main-session state machine below (mainAgentState), so a session
+ * reads the same on both platforms.
+ *
  * Detects running subagents by:
- *   (a) Finding Agent tool_use blocks in files modified within last 30 min with no matching result
- *   (b) Finding sidechain files modified within last 90s → active workers
- *   (c) Matching by agentId from tool_result or prompt prefix
+ *   (a) Finding Agent/Task tool_use blocks in files modified within last 30 min with no matching result
+ *   (b) Finding sidechain files modified recently → active workers
+ *   (c) Linking a sidechain to its spawn by the `toolUseId` in its .meta.json sidecar,
+ *       else by agentId from the tool_result, else by prompt prefix
+ *   (d) Workflow agents (<session>/subagents/workflows/wf_*\/agent-*.jsonl) have no
+ *       spawn record at all: they attach to their session by path, labelled from their
+ *       .meta.json, with the run's journal.jsonl deciding running vs finished.
  */
 
 import { createReadStream } from 'node:fs';
-import { readdir, stat } from 'node:fs/promises';
-import { join } from 'node:path';
-import { createInterface } from 'node:readline';
+import { readdir, readFile, stat } from 'node:fs/promises';
+import { basename, dirname, join } from 'node:path';
 import { claudeDir } from './scan.ts';
-import { isRejectedToolResult } from './scan-pass.ts';
+import { isRejectedToolResult, limitHitOf, userTurnRole } from './scan-pass.ts';
 
 /**
  * Traffic-light status for an agent:
- *  - 'finished' — task completed (the recentlyCompleted list);
- *  - 'running'  — actively working;
- *  - 'waiting'  — paused needing user attention. INFERRED, not explicit: the
- *    JSONL has no "awaiting permission" marker, so we infer it from a tool_use
- *    left unresolved while the transcript went quiet, or a last tool_result that
- *    errored/was rejected. Biased toward 'running' when uncertain.
+ *  - 'finished' — task completed (the recentlyCompleted list), or a main session
+ *    that is idle (including one whose turn ended — see MainAgent.yourTurn);
+ *  - 'running'  — actively working (a main: on its own, or delegating);
+ *  - 'waiting'  — paused on something only the user can resolve. INFERRED, not
+ *    explicit: the JSONL has no "awaiting permission" marker, so we infer it from a
+ *    tool_use left unresolved while the transcript went quiet, a last tool_result the
+ *    user rejected, or a turn that ended in an API error / usage limit. Biased toward
+ *    'running' when uncertain.
  */
 export type AgentTrafficStatus = 'finished' | 'running' | 'waiting';
 
@@ -35,6 +44,7 @@ export interface LiveSubagent {
   startedAt: number;
   lastActivity: number;
   effectiveTokens: number;
+  /** Working directory (full path; the UI shortens it). */
   project: string;
   status: 'running';
   traffic: AgentTrafficStatus;
@@ -57,6 +67,7 @@ export interface RecentlyCompletedSubagent {
 export interface MainAgent {
   key: string;
   title: string;
+  /** Working directory (full path, from the transcript's `cwd`; the UI shortens it). */
   project: string;
   gitBranch: string;
   model: string;
@@ -67,8 +78,24 @@ export interface MainAgent {
   active: boolean;
   /** True when the transcript is idle but the session still has running subagents. */
   delegating: boolean;
+  /**
+   * The last turn finished normally and the session is idle on the user — a soft
+   * "your turn", never red and never an alert. Mutually exclusive with waiting,
+   * active and delegating.
+   */
+  yourTurn: boolean;
   status: 'running';
   traffic: AgentTrafficStatus;
+}
+
+export interface LiveCounts {
+  /** Running subagents + main sessions working on their own or delegating (the header lamp and sidebar badge). */
+  running: number;
+  waiting: number;
+  /** Recently finished subagents. */
+  finished: number;
+  /** Main sessions idle on the user after a finished turn. */
+  yourTurn: number;
 }
 
 export interface LiveSubagentsData {
@@ -76,7 +103,80 @@ export interface LiveSubagentsData {
   recentlyCompleted: RecentlyCompletedSubagent[];
   mainAgents: MainAgent[];
   /** Traffic-light tallies for badges/alerts (finished = recentlyCompleted). */
-  counts: { running: number; waiting: number; finished: number };
+  counts: LiveCounts;
+}
+
+// ---------------------------------------------------------------------------
+// Main-session state machine — shared with codex-agents-live.ts
+// ---------------------------------------------------------------------------
+
+/** A session pulses "active" while written to this recently … */
+export const MAIN_ACTIVE = 30_000;
+/** … and stays listed, dimmed, for this long after its last write. */
+export const MAIN_LINGER = 60_000;
+/** Waiting / your-turn / running-subagent signals only count while the session wrote this recently. */
+export const ACTIVE_WINDOW = 5 * 60_000;
+
+export interface MainSignals {
+  /** ms since the session last wrote anything. */
+  sinceWrite: number;
+  /** Working on its own right now: a fresh write, or (Codex) an open turn. */
+  selfActive: boolean;
+  /** Running subagents this session owns. */
+  runningChildren: number;
+  /** Something only the user can resolve: a pending approval, a rejected/declined action, a failed turn. */
+  needsUser: boolean;
+  /** The last turn finished normally (or the user interrupted it), so the next move is the user's. */
+  turnEnded: boolean;
+}
+
+export interface MainState {
+  /** Whether the session is shown at all. */
+  listed: boolean;
+  active: boolean;
+  delegating: boolean;
+  yourTurn: boolean;
+  traffic: AgentTrafficStatus;
+}
+
+/**
+ * One rule for both platforms:
+ *  - waiting (RED): needsUser, the session has been quiet MAIN_ACTIVE..ACTIVE_WINDOW,
+ *    and it is not delegating (a subagent still running is not the user's problem);
+ *  - active / delegating: working on its own, or idle with running subagents;
+ *  - yourTurn (soft): the turn ended normally and the session sat quiet for
+ *    MAIN_ACTIVE..ACTIVE_WINDOW — listed, never red, never an alert;
+ *  - otherwise idle: listed for MAIN_LINGER after the last write, then dropped.
+ */
+export function mainAgentState(s: MainSignals): MainState {
+  const quiet = s.sinceWrite >= MAIN_ACTIVE;
+  const recent = s.sinceWrite < ACTIVE_WINDOW;
+  const waiting = s.needsUser && quiet && recent && s.runningChildren === 0;
+  const active = s.selfActive && !waiting;
+  const delegating = !active && !waiting && s.runningChildren > 0;
+  const yourTurn = !waiting && !active && !delegating && s.turnEnded && quiet && recent;
+  const listed = active || delegating || waiting || yourTurn || s.sinceWrite < MAIN_LINGER;
+  const traffic: AgentTrafficStatus = waiting ? 'waiting' : active || delegating ? 'running' : 'finished';
+  return { listed, active, delegating, yourTurn, traffic };
+}
+
+/**
+ * Traffic tallies, identical on both endpoints. `running` counts what is actually
+ * working — running subagents plus mains that are active or delegating — so the
+ * header lamp and the sidebar badge (useLiveMetrics) agree; an idle main that is
+ * merely still listed is not running.
+ */
+export function tallyCounts(
+  running: readonly unknown[],
+  completed: readonly unknown[],
+  mains: readonly Pick<MainAgent, 'active' | 'delegating' | 'traffic' | 'yourTurn'>[],
+): LiveCounts {
+  return {
+    running: running.length + mains.filter((m) => m.active || m.delegating).length,
+    waiting: mains.filter((m) => m.traffic === 'waiting').length,
+    finished: completed.length,
+    yourTurn: mains.filter((m) => m.yourTurn).length,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -89,6 +189,21 @@ function projectsDir(): string {
 
 function num(v: unknown): number {
   return typeof v === 'number' && Number.isFinite(v) ? v : 0;
+}
+
+/**
+ * Lines of a JSONL file, split on '\n' only. Node's readline also breaks on
+ * U+2028/U+2029, which are legal inside JSON strings and shred those records
+ * (see CLAUDE.md, "Split lines on \n"). A trailing '\r' is JSON whitespace.
+ */
+async function* jsonlLines(file: string): AsyncGenerator<string> {
+  let carry = '';
+  for await (const chunk of createReadStream(file, { encoding: 'utf8' })) {
+    const parts = (carry + (chunk as string)).split('\n');
+    carry = parts.pop() ?? '';
+    for (const p of parts) yield p;
+  }
+  if (carry) yield carry;
 }
 
 async function listJsonl(dir: string): Promise<{ path: string; mtime: number; size: number }[]> {
@@ -113,6 +228,7 @@ async function listJsonl(dir: string): Promise<{ path: string; mtime: number; si
   return entries;
 }
 
+/** Fallback working directory decoded from the encoded project folder name (lossy: '-' vs separators). */
 function projectPathFromFile(file: string): string {
   try {
     const parts = file.replace(/\\/g, '/').split('/');
@@ -135,11 +251,37 @@ function projectNameFromPath(projectPath: string): string {
 }
 
 function agentIdFromFileName(file: string): string | undefined {
-  const parts = file.replace(/\\/g, '/').split('/');
-  const name = parts[parts.length - 1];
-  const m = name.match(/^agent-([a-z0-9]+)\.jsonl$/);
+  const m = basename(file).match(/^agent-([a-z0-9]+)\.jsonl$/);
   return m ? m[1] : undefined;
 }
+
+const SUBAGENTS_SEG = /[\\/]subagents[\\/]/;
+
+/** Whether a path is a sidechain transcript (under a session's subagents/ folder). */
+export function isSidechainPath(p: string): boolean {
+  return SUBAGENTS_SEG.test(p);
+}
+
+/**
+ * The main transcript a sidechain belongs to:
+ * `<proj>/<session>/subagents/[workflows/wf_*\/]agent-<id>.jsonl` → `<proj>/<session>.jsonl`.
+ */
+export function sessionFileOfSidechain(p: string): string {
+  const m = SUBAGENTS_SEG.exec(p);
+  return m ? p.slice(0, m.index) + '.jsonl' : '';
+}
+
+/** The workflow run id when a sidechain belongs to a Workflow run (`…/subagents/workflows/wf_<id>/agent-*.jsonl`). */
+export function workflowRunOf(p: string): string {
+  const m = /[\\/]subagents[\\/]workflows[\\/](wf_[^\\/]+)[\\/]agent-[^\\/]+\.jsonl$/.exec(p);
+  return m ? m[1] : '';
+}
+
+/** Tools whose dangling tool_use is delegation (its result arrives when the work finishes), not a permission prompt. */
+const DELEGATION_TOOLS = new Set(['Agent', 'Task', 'Workflow']);
+
+/** Assistant stop reasons that end a turn (anything but a tool call the harness will run next). */
+const TURN_ENDING_STOPS = new Set(['end_turn', 'stop_sequence', 'max_tokens', 'refusal']);
 
 interface SpawnRec {
   id: string;
@@ -158,9 +300,13 @@ interface ResultRec {
   isAsyncLaunch: boolean;
 }
 
-interface MainInfo {
+export interface MainInfo {
   title: string;
+  /** A user rename (`custom-title`) — beats the generated `ai-title`. */
+  customTitle: string;
   gitBranch: string;
+  /** Last `cwd` the transcript recorded — the real working directory. */
+  cwd: string;
   model: string;
   effectiveTokens: number;
   firstTs: number;
@@ -168,28 +314,56 @@ interface MainInfo {
   hasAssistant: boolean;
   /** ts of the most recent assistant tool_use (any tool) — for waiting inference. */
   lastToolUseTs: number;
-  /** ts of the most recent NON-delegation tool_use (excludes Agent/Task spawns).
+  /** ts of the most recent NON-delegation tool_use (excludes Agent/Task/Workflow).
    *  Drives pendingTool so a dangling delegation is never read as a permission prompt. */
   lastNonDelegationToolUseTs: number;
   /** ts of the most recent tool_result resolving a tool_use. */
   lastToolResultTs: number;
-  /** Whether that most recent tool_result errored or was rejected by the user. */
+  /** Whether that most recent tool_result was rejected by the user. */
   lastResultIsError: boolean;
+  /** ts of the most recent assistant line, and how it ended. */
+  lastAssistantTs: number;
+  lastAssistantEnded: boolean;
+  /** The most recent assistant line is an API error / usage-limit refusal. */
+  lastAssistantIsError: boolean;
+  /** ts of the most recent user prompt (typed or injected input that starts a turn). */
+  lastPromptTs: number;
+  /** ts of the most recent "[Request interrupted by user…]" marker. */
+  lastInterruptTs: number;
 }
 
-async function parseFileForAgentSpawns(file: string): Promise<{
+export interface ParsedMain {
   spawns: SpawnRec[];
   results: Map<string, ResultRec>;
   /** Background-agent completions arrive later as <task-notification> user entries. */
   notifications: Array<{ agentId: string; ts: number }>;
   main: MainInfo;
-}> {
+}
+
+function textOf(content: unknown): string {
+  if (typeof content === 'string') return content;
+  if (!Array.isArray(content)) return '';
+  for (const b of content) if (b?.type === 'text' && typeof b.text === 'string') return b.text;
+  return '';
+}
+
+/** Parse a main transcript's lines (exported for the unit tests). */
+export function parseMainLines(lines: Iterable<string>): ParsedMain {
+  const p = createMainParser();
+  for (const l of lines) p.push(l);
+  return p.finish();
+}
+
+/** Line-at-a-time main-transcript parser, so a 50 MB transcript is never held in memory whole. */
+function createMainParser(): { push: (line: string) => void; finish: () => ParsedMain } {
   const spawns: SpawnRec[] = [];
   const results = new Map<string, ResultRec>();
   const notifications: Array<{ agentId: string; ts: number }> = [];
   const main: MainInfo = {
     title: '',
+    customTitle: '',
     gitBranch: '',
+    cwd: '',
     model: 'unknown',
     effectiveTokens: 0,
     firstTs: Infinity,
@@ -199,38 +373,58 @@ async function parseFileForAgentSpawns(file: string): Promise<{
     lastNonDelegationToolUseTs: 0,
     lastToolResultTs: 0,
     lastResultIsError: false,
+    lastAssistantTs: 0,
+    lastAssistantEnded: false,
+    lastAssistantIsError: false,
+    lastPromptTs: 0,
+    lastInterruptTs: 0,
   };
   // Same keep-max dedup rule as scan.ts — streaming writes duplicate usage rows.
   const usageByKey = new Map<string, number>();
+  let dequeued = false;
 
-  const rl = createInterface({
-    input: createReadStream(file, { encoding: 'utf8' }),
-    crlfDelay: Infinity,
-  });
-
-  for await (const line of rl) {
-    if (!line || line.length < 2) continue;
+  const push = (line: string): void => {
+    if (!line || line.length < 2) return;
     let obj: any;
-    try { obj = JSON.parse(line); } catch { continue; }
+    try { obj = JSON.parse(line); } catch { return; }
 
+    // Title records carry no timestamp — read before the timestamp skip; last wins.
     if (obj.type === 'ai-title' && typeof obj.aiTitle === 'string' && obj.aiTitle) {
       main.title = obj.aiTitle;
-      continue;
+      return;
+    }
+    if (obj.type === 'custom-title' && typeof obj.customTitle === 'string' && obj.customTitle) {
+      main.customTitle = obj.customTitle;
+      return;
     }
 
     const ts = Date.parse(obj.timestamp ?? '');
-    if (Number.isNaN(ts)) continue;
+    if (Number.isNaN(ts)) return;
     if (ts < main.firstTs) main.firstTs = ts;
     if (ts > main.lastTs) main.lastTs = ts;
     if (typeof obj.gitBranch === 'string' && obj.gitBranch) main.gitBranch = obj.gitBranch;
+    if (typeof obj.cwd === 'string' && obj.cwd) main.cwd = obj.cwd;
     if (!main.title && typeof obj.slug === 'string' && obj.slug) main.title = obj.slug;
 
     // Background completions are enqueued instantly as queue-operation entries,
     // before the same text lands as a user message on the next turn.
-    if (obj.type === 'queue-operation' && typeof obj.content === 'string') {
-      const m = obj.content.match(/<task-id>([a-z0-9]+)<\/task-id>[\s\S]*?<status>completed<\/status>/);
-      if (m) notifications.push({ agentId: m[1], ts });
-      continue;
+    if (obj.type === 'queue-operation') {
+      if (obj.operation === 'dequeue') dequeued = true;
+      if (typeof obj.content === 'string') {
+        const m = obj.content.match(/<task-id>([a-z0-9]+)<\/task-id>[\s\S]*?<status>completed<\/status>/);
+        if (m) notifications.push({ agentId: m[1], ts });
+      }
+      return;
+    }
+
+    if (obj.type === 'assistant') {
+      dequeued = false;
+      if (ts >= main.lastAssistantTs) {
+        main.lastAssistantTs = ts;
+        const stop = obj.message?.stop_reason;
+        main.lastAssistantEnded = typeof stop === 'string' && TURN_ENDING_STOPS.has(stop);
+        main.lastAssistantIsError = obj.isApiErrorMessage === true || limitHitOf(obj, ts) !== null;
+      }
     }
 
     if (obj.type === 'assistant' && obj.message?.usage) {
@@ -260,9 +454,9 @@ async function parseFileForAgentSpawns(file: string): Promise<{
               promptPrefix: String(block.input?.prompt ?? '').slice(0, 150),
               ts,
             });
-          } else {
-            // Non-delegation tools only: a dangling Agent/Task spawn is delegation
-            // (its result arrives when the child finishes), not a permission prompt.
+          } else if (!DELEGATION_TOOLS.has(block.name)) {
+            // Non-delegation tools only: a dangling Agent/Task/Workflow call is delegation
+            // (its result arrives when the work finishes), not a permission prompt.
             if (ts > main.lastNonDelegationToolUseTs) main.lastNonDelegationToolUseTs = ts;
           }
         }
@@ -270,6 +464,12 @@ async function parseFileForAgentSpawns(file: string): Promise<{
     }
 
     if (obj.type === 'user' && obj.message) {
+      const role = userTurnRole(obj, dequeued);
+      dequeued = false;
+      if (role === 'prompt' && ts >= main.lastPromptTs) main.lastPromptTs = ts;
+      if (textOf(obj.message.content).trimStart().startsWith('[Request interrupted')) {
+        if (ts >= main.lastInterruptTs) main.lastInterruptTs = ts;
+      }
       const content = obj.message.content;
       if (typeof content === 'string') {
         const m = content.match(/<task-id>([a-z0-9]+)<\/task-id>[\s\S]*?<status>completed<\/status>/);
@@ -311,15 +511,72 @@ async function parseFileForAgentSpawns(file: string): Promise<{
         }
       }
     }
-  }
+  };
 
-  for (const eff of usageByKey.values()) main.effectiveTokens += eff;
-  if (main.firstTs === Infinity) main.firstTs = 0;
-  return { spawns, results, notifications, main };
+  const finish = (): ParsedMain => {
+    for (const eff of usageByKey.values()) main.effectiveTokens += eff;
+    usageByKey.clear();
+    if (main.firstTs === Infinity) main.firstTs = 0;
+    return { spawns, results, notifications, main };
+  };
+
+  return { push, finish };
+}
+
+async function parseFileForAgentSpawns(file: string): Promise<ParsedMain> {
+  const p = createMainParser();
+  for await (const l of jsonlLines(file)) p.push(l);
+  return p.finish();
+}
+
+/**
+ * The Claude side of the shared state machine: what a main transcript says about
+ * whether the user is needed and whether the turn is over.
+ *  - needsUser: a non-delegation tool_use still unresolved (likely a permission
+ *    prompt); a user rejection that is the last word (no reply or prompt after it);
+ *    or a turn that ended in an API error / usage-limit refusal.
+ *  - turnEnded: the last assistant line ended the turn (end_turn …) with no prompt
+ *    after it, or the user interrupted the turn.
+ */
+export function claudeMainSignals(main: MainInfo): { needsUser: boolean; turnEnded: boolean } {
+  const pendingTool = main.lastNonDelegationToolUseTs > main.lastToolResultTs;
+  const rejectedLast =
+    main.lastResultIsError &&
+    main.lastToolResultTs >= main.lastAssistantTs &&
+    main.lastToolResultTs >= main.lastPromptTs;
+  const turnError = main.lastAssistantIsError && main.lastAssistantTs >= main.lastPromptTs;
+  const needsUser = pendingTool || rejectedLast || turnError;
+  const interrupted =
+    main.lastInterruptTs > 0 && main.lastInterruptTs >= main.lastPromptTs && main.lastInterruptTs >= main.lastAssistantTs;
+  const endedTurn = main.lastAssistantEnded && main.lastAssistantTs >= main.lastPromptTs;
+  return { needsUser, turnEnded: !needsUser && (endedTurn || interrupted) };
+}
+
+interface SidechainMeta {
+  agentType: string;
+  description: string;
+  toolUseId: string;
+  phase: string;
+}
+
+async function readSidechainMeta(file: string): Promise<SidechainMeta | null> {
+  try {
+    const raw = JSON.parse(await readFile(file.replace(/\.jsonl$/, '.meta.json'), 'utf8'));
+    const s = (v: unknown) => (typeof v === 'string' ? v : '');
+    return {
+      agentType: s(raw?.agentType),
+      description: s(raw?.description).slice(0, 200),
+      toolUseId: s(raw?.toolUseId),
+      phase: s(raw?.workflowPhase),
+    };
+  } catch {
+    return null;
+  }
 }
 
 interface SidechainInfo {
   agentId: string;
+  path: string;
   effectiveTokens: number;
   firstTs: number;
   lastTs: number;
@@ -327,6 +584,11 @@ interface SidechainInfo {
   firstUserText: string;
   projectPath: string;
   mtime: number;
+  meta: SidechainMeta | null;
+  /** Workflow run id ('' for an ordinary Agent/Task subagent). */
+  workflowRun: string;
+  /** The main transcript this sidechain lives under ('' when unknown). */
+  sessionFile: string;
 }
 
 async function parseSidechainFile(file: string, agentId: string, mtime: number): Promise<SidechainInfo> {
@@ -335,13 +597,9 @@ async function parseSidechainFile(file: string, agentId: string, mtime: number):
   let lastTs = 0;
   let model = 'unknown';
   let firstUserText = '';
+  let cwd = '';
 
-  const rl = createInterface({
-    input: createReadStream(file, { encoding: 'utf8' }),
-    crlfDelay: Infinity,
-  });
-
-  for await (const line of rl) {
+  for await (const line of jsonlLines(file)) {
     if (!line || line.length < 2) continue;
     let obj: any;
     try { obj = JSON.parse(line); } catch { continue; }
@@ -350,6 +608,7 @@ async function parseSidechainFile(file: string, agentId: string, mtime: number):
     if (Number.isNaN(ts)) continue;
     if (ts < firstTs) firstTs = ts;
     if (ts > lastTs) lastTs = ts;
+    if (typeof obj.cwd === 'string' && obj.cwd) cwd = obj.cwd;
 
     if (!firstUserText && obj.type === 'user' && obj.message) {
       const c = obj.message.content;
@@ -370,39 +629,62 @@ async function parseSidechainFile(file: string, agentId: string, mtime: number):
 
   return {
     agentId,
+    path: file,
     effectiveTokens,
     firstTs: firstTs === Infinity ? 0 : firstTs,
     lastTs,
     model,
     firstUserText,
-    projectPath: projectPathFromFile(file),
+    projectPath: cwd || projectPathFromFile(file),
     mtime,
+    meta: await readSidechainMeta(file),
+    workflowRun: workflowRunOf(file),
+    sessionFile: sessionFileOfSidechain(file),
   };
+}
+
+/** agentIds a workflow run's journal.jsonl already logged as finished (`result` or `failed`). */
+async function readWorkflowDone(runDir: string): Promise<Set<string>> {
+  const done = new Set<string>();
+  try {
+    const text = await readFile(join(runDir, 'journal.jsonl'), 'utf8');
+    for (const line of text.split('\n')) {
+      if (!line.trim()) continue;
+      try {
+        const o = JSON.parse(line);
+        if ((o?.type === 'result' || o?.type === 'failed') && typeof o.agentId === 'string') done.add(o.agentId);
+      } catch { /* junk line */ }
+    }
+  } catch { /* no journal yet */ }
+  return done;
+}
+
+/** Display name of a workflow agent: its label ("find:codex", "impl:agents") from the .meta.json sidecar. */
+function workflowAgentName(sc: SidechainInfo): string {
+  return sc.meta?.description || 'workflow agent';
+}
+
+function workflowAgentDescription(sc: SidechainInfo): string {
+  return sc.meta?.phase ? `Workflow · ${sc.meta.phase} phase` : 'Workflow agent';
 }
 
 // ---------------------------------------------------------------------------
 // Main function
 // ---------------------------------------------------------------------------
 
-async function computeLiveSubagents(): Promise<LiveSubagentsData> {
-  const now = Date.now();
+/** Exported with an injectable clock for the unit tests. */
+export async function computeLiveSubagents(now: number = Date.now()): Promise<LiveSubagentsData> {
   const THIRTY_MIN = 30 * 60_000;
-  const ACTIVE_WINDOW = 5 * 60_000; // sidechain writes can pause during long LLM turns
   const COMPLETED_WINDOW = 30 * 60_000; // recently-finished subagents linger ~30 min (mirrors the CLI Background-tasks "Finished" list)
   const BG_COMPLETED_WINDOW = 60 * 60_000; // outer cap for spawn age + sidechain enrichment
 
   const allFiles = await listJsonl(projectsDir());
-  const isSidechainPath = (p: string) => p.includes('/subagents/') || p.includes('\\subagents\\');
+  const fileByPath = new Map(allFiles.map((f) => [f.path, f]));
 
-  // Long-running sessions easily pass 5MB; readline keeps parsing cheap, so cap generously.
+  // Long-running sessions easily pass 5MB; parsing stays cheap, so cap generously.
   const MAX_FILE = 50 * 1024 * 1024;
 
-  // Parent conversations modified in the last 30 min — source of spawns/results/notifications.
-  const recentParentFiles = allFiles.filter(
-    (f) => now - f.mtime < THIRTY_MIN && f.size <= MAX_FILE && !isSidechainPath(f.path)
-  );
-
-  // Sidechain transcripts modified in the last 30 min — model/token enrichment + activity signal.
+  // Sidechain transcripts modified in the last hour — model/token enrichment + activity signal.
   const sidechains = new Map<string, SidechainInfo>();
   for (const f of allFiles) {
     // Widen to the background window so finished background tasks keep their
@@ -412,18 +694,50 @@ async function computeLiveSubagents(): Promise<LiveSubagentsData> {
     if (!agentId) continue;
     sidechains.set(agentId, await parseSidechainFile(f.path, agentId, f.mtime));
   }
+  const byToolUseId = new Map<string, SidechainInfo>();
+  for (const sc of sidechains.values()) if (sc.meta?.toolUseId) byToolUseId.set(sc.meta.toolUseId, sc);
+
+  // Workflow runs with a sidechain in the window: which of their agents already finished.
+  const workflowDone = new Map<string, Set<string>>();
+  for (const sc of sidechains.values()) {
+    if (!sc.workflowRun) continue;
+    const runDir = dirname(sc.path);
+    if (!workflowDone.has(runDir)) workflowDone.set(runDir, await readWorkflowDone(runDir));
+  }
+  const workflowFinished = (sc: SidechainInfo) => workflowDone.get(dirname(sc.path))?.has(sc.agentId) ?? false;
+
+  // Parents: conversations modified in the last 30 min (source of spawns/results/
+  // notifications), plus the session of any running sidechain — a Workflow run can
+  // outlast its session's last write, and its agents need a home.
+  const parentPaths = new Set<string>();
+  for (const f of allFiles) {
+    if (now - f.mtime < THIRTY_MIN && f.size <= MAX_FILE && !isSidechainPath(f.path)) parentPaths.add(f.path);
+  }
+  for (const sc of sidechains.values()) {
+    if (now - sc.mtime >= ACTIVE_WINDOW || (sc.workflowRun && workflowFinished(sc))) continue;
+    const pf = fileByPath.get(sc.sessionFile);
+    if (pf && pf.size <= MAX_FILE) parentPaths.add(pf.path);
+  }
 
   const running: LiveSubagent[] = [];
   const recentlyCompleted: RecentlyCompletedSubagent[] = [];
-  const mainAgents: MainAgent[] = [];
   const claimedAgentIds = new Set<string>();
+  const runningChildren = new Map<string, number>(); // parent path → running subagents
+  const bumpRunning = (parent: string) => runningChildren.set(parent, (runningChildren.get(parent) ?? 0) + 1);
+  const parsedParents: Array<{ path: string; mtime: number; parsed: ParsedMain; project: string }> = [];
 
-  for (const pf of recentParentFiles) {
-    const parsed = await parseFileForAgentSpawns(pf.path);
-    const project = projectNameFromPath(projectPathFromFile(pf.path));
+  for (const path of parentPaths) {
+    const pf = fileByPath.get(path);
+    if (!pf) continue;
+    let parsed: ParsedMain;
+    try {
+      parsed = await parseFileForAgentSpawns(pf.path);
+    } catch {
+      continue; // vanished / unreadable this tick
+    }
+    const project = parsed.main.cwd || projectPathFromFile(pf.path);
+    parsedParents.push({ path: pf.path, mtime: pf.mtime, parsed, project });
     const notifiedAt = new Map(parsed.notifications.map((n) => [n.agentId, n.ts]));
-    let childCount = 0; // running or recently-completed subagents owned by this parent
-    let runningChildren = 0; // currently-running only — drives the parent's "delegating" state
 
     for (const spawn of parsed.spawns) {
       const spawnAge = now - spawn.ts;
@@ -432,12 +746,14 @@ async function computeLiveSubagents(): Promise<LiveSubagentsData> {
       if (spawnAge >= BG_COMPLETED_WINDOW) continue;
       const result = parsed.results.get(spawn.id);
 
-      // Link spawn → sidechain: by agentId from an async-launch result, else by prompt prefix.
-      let sc: SidechainInfo | undefined;
-      if (result?.agentId) sc = sidechains.get(result.agentId);
+      // Link spawn → sidechain: by the sidecar's toolUseId, by agentId from an
+      // async-launch result, else by prompt prefix.
+      let sc: SidechainInfo | undefined = spawn.id ? byToolUseId.get(spawn.id) : undefined;
+      if (sc && claimedAgentIds.has(sc.agentId)) sc = undefined;
+      if (!sc && result?.agentId) sc = sidechains.get(result.agentId);
       if (!sc && spawn.promptPrefix) {
         for (const cand of sidechains.values()) {
-          if (claimedAgentIds.has(cand.agentId)) continue;
+          if (claimedAgentIds.has(cand.agentId) || cand.workflowRun) continue;
           if (cand.firstUserText && spawn.promptPrefix.startsWith(cand.firstUserText.slice(0, 80))) {
             sc = cand;
             break;
@@ -471,9 +787,8 @@ async function computeLiveSubagents(): Promise<LiveSubagentsData> {
             completedAt: doneAt,
             background: isBackground,
             effectiveTokens: sc?.effectiveTokens ?? 0,
-            project,
+            project: sc?.projectPath || project,
           });
-          childCount++;
         }
         continue;
       }
@@ -494,66 +809,98 @@ async function computeLiveSubagents(): Promise<LiveSubagentsData> {
         startedAt: spawn.ts,
         lastActivity: sc ? Math.max(sc.lastTs, sc.mtime) : spawn.ts,
         effectiveTokens: sc?.effectiveTokens ?? 0,
-        project,
+        project: sc?.projectPath || project,
         status: 'running',
         traffic: 'running',
       });
-      childCount++;
-      runningChildren++;
-    }
-
-    // A session pulses as "active" while written to in the last 30s, lingers dimmed for
-    // up to a minute of silence, then drops — unless it still hosts RUNNING subagents
-    // (so children have a home). Completed children don't keep an idle parent alive.
-    // A silent parent with running children is "delegating".
-    const MAIN_ACTIVE = 30_000;
-    const MAIN_LINGER = 60_000;
-    const sinceWrite = now - pf.mtime;
-    const selfActive = sinceWrite < MAIN_ACTIVE;
-    // Waiting inference (RED): the transcript went quiet with a tool_use left
-    // unresolved (likely a permission prompt), or its last tool_result errored —
-    // within the active window, and NOT while delegating (a pending Agent spawn
-    // whose subagent is still running is delegation, not waiting). Biased to
-    // 'running' otherwise; see AgentTrafficStatus.
-    const pendingTool = parsed.main.lastNonDelegationToolUseTs > parsed.main.lastToolResultTs;
-    const waitingLikely =
-      !selfActive &&
-      runningChildren === 0 &&
-      sinceWrite < ACTIVE_WINDOW &&
-      (pendingTool || parsed.main.lastResultIsError);
-    if (parsed.main.hasAssistant && (sinceWrite < MAIN_LINGER || runningChildren > 0 || waitingLikely)) {
-      mainAgents.push({
-        key: pf.path,
-        title: parsed.main.title || project,
-        project,
-        gitBranch: parsed.main.gitBranch,
-        model: parsed.main.model,
-        startedAt: parsed.main.firstTs || pf.mtime,
-        lastActivity: Math.max(parsed.main.lastTs, pf.mtime),
-        effectiveTokens: parsed.main.effectiveTokens,
-        active: selfActive,
-        delegating: !selfActive && runningChildren > 0,
-        status: 'running',
-        traffic: waitingLikely ? 'waiting' : 'running',
-      });
+      bumpRunning(pf.path);
     }
   }
 
-  // Fresh sidechains not claimed by any spawn (parent rotated/compacted): still show them.
+  // Sidechains no spawn claimed: Workflow agents (never spawned by Agent/Task) and
+  // children whose spawn rotated/compacted away. They attach to their session by
+  // path; only when that session file is gone do they fall back to "Other subagents".
   for (const sc of sidechains.values()) {
-    if (claimedAgentIds.has(sc.agentId) || now - sc.mtime >= ACTIVE_WINDOW) continue;
+    if (claimedAgentIds.has(sc.agentId)) continue;
+    const parentKey = fileByPath.has(sc.sessionFile) ? sc.sessionFile : '';
+    if (sc.workflowRun) {
+      if (workflowFinished(sc)) {
+        const completedAt = Math.max(sc.lastTs, sc.firstTs) || sc.mtime;
+        if (now - completedAt < COMPLETED_WINDOW) {
+          recentlyCompleted.push({
+            key: sc.agentId,
+            parentKey,
+            name: workflowAgentName(sc),
+            description: workflowAgentDescription(sc),
+            model: sc.model,
+            completedAt,
+            background: false,
+            effectiveTokens: sc.effectiveTokens,
+            project: sc.projectPath,
+          });
+        }
+        continue;
+      }
+      if (now - sc.mtime >= ACTIVE_WINDOW) continue; // no result and silent: killed or hung
+      running.push({
+        key: sc.agentId,
+        parentKey,
+        name: workflowAgentName(sc),
+        description: workflowAgentDescription(sc),
+        model: sc.model,
+        startedAt: sc.firstTs || sc.mtime,
+        lastActivity: Math.max(sc.lastTs, sc.mtime),
+        effectiveTokens: sc.effectiveTokens,
+        project: sc.projectPath,
+        status: 'running',
+        traffic: 'running',
+      });
+      if (parentKey) bumpRunning(parentKey);
+      continue;
+    }
+    if (now - sc.mtime >= ACTIVE_WINDOW) continue;
     running.push({
       key: sc.agentId,
-      parentKey: '',
-      name: 'subagent',
-      description: sc.firstUserText.slice(0, 80),
+      parentKey,
+      name: sc.meta?.agentType || 'subagent',
+      description: sc.meta?.description || sc.firstUserText.slice(0, 80),
       model: sc.model,
       startedAt: sc.firstTs || sc.mtime,
       lastActivity: Math.max(sc.lastTs, sc.mtime),
       effectiveTokens: sc.effectiveTokens,
-      project: projectNameFromPath(sc.projectPath),
+      project: sc.projectPath,
       status: 'running',
       traffic: 'running',
+    });
+    if (parentKey) bumpRunning(parentKey);
+  }
+
+  const mainAgents: MainAgent[] = [];
+  for (const { path, mtime, parsed, project } of parsedParents) {
+    if (!parsed.main.hasAssistant) continue;
+    const sinceWrite = now - mtime;
+    const signals = claudeMainSignals(parsed.main);
+    const state = mainAgentState({
+      sinceWrite,
+      selfActive: sinceWrite < MAIN_ACTIVE,
+      runningChildren: runningChildren.get(path) ?? 0,
+      ...signals,
+    });
+    if (!state.listed) continue;
+    mainAgents.push({
+      key: path,
+      title: parsed.main.customTitle || parsed.main.title || projectNameFromPath(project),
+      project,
+      gitBranch: parsed.main.gitBranch,
+      model: parsed.main.model,
+      startedAt: parsed.main.firstTs || mtime,
+      lastActivity: Math.max(parsed.main.lastTs, mtime),
+      effectiveTokens: parsed.main.effectiveTokens,
+      active: state.active,
+      delegating: state.delegating,
+      yourTurn: state.yourTurn,
+      status: 'running',
+      traffic: state.traffic,
     });
   }
 
@@ -561,32 +908,35 @@ async function computeLiveSubagents(): Promise<LiveSubagentsData> {
   recentlyCompleted.sort((a, b) => b.completedAt - a.completedAt);
   mainAgents.sort((a, b) => b.lastActivity - a.lastActivity);
   const completedList = recentlyCompleted.slice(0, 25);
-  const waiting = mainAgents.filter((m) => m.traffic === 'waiting').length;
-  const runningCount = running.length + mainAgents.filter((m) => m.traffic === 'running').length;
   return {
     running,
     recentlyCompleted: completedList,
     mainAgents,
-    counts: { running: runningCount, waiting, finished: completedList.length },
+    counts: tallyCounts(running, completedList, mainAgents),
   };
 }
 
 // ---------------------------------------------------------------------------
-// 3s TTL cache
+// 3s TTL cache + single-flight (the Agents tab polls fast and StrictMode doubles mounts)
 // ---------------------------------------------------------------------------
 
 const LIVE_TTL_MS = 3_000;
 
 let cachedLive: LiveSubagentsData | null = null;
 let cachedLiveAt = 0;
+let inflight: Promise<LiveSubagentsData> | null = null;
 
 export async function getLiveSubagents(): Promise<LiveSubagentsData> {
-  const now = Date.now();
-  if (cachedLive && now - cachedLiveAt < LIVE_TTL_MS) {
-    return cachedLive;
-  }
-  const data = await computeLiveSubagents();
-  cachedLive = data;
-  cachedLiveAt = now;
-  return data;
+  if (cachedLive && Date.now() - cachedLiveAt < LIVE_TTL_MS) return cachedLive;
+  if (inflight) return inflight;
+  inflight = computeLiveSubagents()
+    .then((data) => {
+      cachedLive = data;
+      cachedLiveAt = Date.now();
+      return data;
+    })
+    .finally(() => {
+      inflight = null;
+    });
+  return inflight;
 }

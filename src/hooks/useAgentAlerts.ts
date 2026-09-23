@@ -1,5 +1,12 @@
 import { useEffect, useRef } from 'react';
+import { useLiveData } from './useLiveData';
+import { usePolling } from './usePolling';
+import { useSource } from './useSource';
 import type { Settings } from './useSettings';
+import type { LiveSubagents } from '../types';
+
+/** The hidden platform's feed only feeds this alert, so it can poll slower than the 2.5 s live view. */
+const HIDDEN_POLL_MS = 10_000;
 
 /** Short WebAudio chime — no asset needed. Best-effort; silent on failure. */
 function playChime() {
@@ -25,13 +32,68 @@ function playChime() {
 }
 
 /**
+ * Notification copy for the agents waiting on each platform. "Waiting" means
+ * something different per platform, so each names its own causes and never
+ * borrows the other's wording: Claude — a permission prompt, a rejected tool call
+ * or an API error; Codex — an approval request, a declined action or a failed turn.
+ */
+export function agentAlertText(claude: number, codex: number): { title: string; body: string } {
+  const total = claude + codex;
+  const title = total === 1 ? 'Agent needs your attention' : 'Agents need your attention';
+  if (codex === 0) {
+    return {
+      title,
+      body:
+        claude === 1
+          ? 'A Claude Code session is waiting for you — a permission prompt, a rejected tool call or an error.'
+          : `${claude} Claude Code sessions are waiting for you — permission prompts, rejected tool calls or errors.`,
+    };
+  }
+  if (claude === 0) {
+    return {
+      title,
+      body:
+        codex === 1
+          ? 'A Codex thread needs you — an approval request, a declined action or a failed turn.'
+          : `${codex} Codex threads need you — approval requests, declined actions or failed turns.`,
+    };
+  }
+  return { title, body: `${total} agents need you — ${claude} in Claude, ${codex} in Codex.` };
+}
+
+/**
  * Fires an alert when the number of agents waiting for the user RISES (a new
  * agent needs attention). The red badge is always shown by the UI; this adds a
  * browser notification and/or chime per the user's Settings choice. 'visual'
  * mode is a no-op here. Mirrors useBlockAlerts' permission-request pattern.
+ *
+ * Counts come from BOTH platforms whatever the switcher shows — the badges stay
+ * scoped to the view, but a Claude session stuck on a permission prompt still
+ * alerts while the view is on Codex (and vice versa). The visible platforms' counts
+ * come from the shared live polls; a hidden one is polled here, slowly, only while
+ * alerts are on. `_viewWaiting` (the view-scoped total) is kept for the call site
+ * and no longer read.
+ *
+ * The soft "your turn" state never alerts: only `counts.waiting` is watched.
  */
-export function useAgentAlerts(waitingCount: number, mode: Settings['agentAlert']) {
-  const prev = useRef(0);
+export function useAgentAlerts(_viewWaiting: number, mode: Settings['agentAlert']) {
+  const { liveSubagents, codexAgents } = useLiveData();
+  const { showClaude, showCodex, codexAvailable } = useSource();
+  const alertsOn = mode !== 'visual';
+  const hiddenClaude = usePolling<LiveSubagents>(alertsOn && !showClaude ? '/api/subagents/live' : '', HIDDEN_POLL_MS);
+  const hiddenCodex = usePolling<LiveSubagents>(
+    alertsOn && codexAvailable && !showCodex ? '/api/codex/agents/live' : '',
+    HIDDEN_POLL_MS,
+  );
+  // null = that feed has no data yet (loading, or just handed over between the view
+  // poll and the hidden poll on a platform switch) — never read as a drop to zero,
+  // or its first response would look like a rise and re-alert an old wait.
+  const claudeFeed = showClaude ? liveSubagents.data : hiddenClaude.data;
+  const codexFeed = showCodex ? codexAgents.data : hiddenCodex.data;
+  const claude = claudeFeed ? claudeFeed.counts.waiting : null;
+  const codex = codexAvailable ? (codexFeed ? codexFeed.counts.waiting : null) : 0;
+
+  const prev = useRef({ claude: 0, codex: 0 });
 
   useEffect(() => {
     if (mode === 'visual') return;
@@ -42,20 +104,17 @@ export function useAgentAlerts(waitingCount: number, mode: Settings['agentAlert'
   }, [mode]);
 
   useEffect(() => {
-    const rose = waitingCount > prev.current;
-    prev.current = waitingCount;
-    if (mode === 'visual' || !rose || waitingCount === 0) return;
+    const p = prev.current;
+    const c = claude ?? p.claude;
+    const x = codex ?? p.codex;
+    const rose = c > p.claude || x > p.codex;
+    prev.current = { claude: c, codex: x };
+    if (mode === 'visual' || !rose) return;
 
     if ('Notification' in window && Notification.permission === 'granted') {
-      new Notification('Agent needs your attention', {
-        body:
-          waitingCount === 1
-            ? 'An agent is waiting for your confirmation.'
-            : `${waitingCount} agents are waiting for your confirmation.`,
-        icon: '/favicon.ico',
-        tag: 'agent-waiting',
-      });
+      const { title, body } = agentAlertText(c, x);
+      new Notification(title, { body, icon: '/favicon.ico', tag: 'agent-waiting' });
     }
     if (mode === 'sound') playChime();
-  }, [waitingCount, mode]);
+  }, [claude, codex, mode]);
 }

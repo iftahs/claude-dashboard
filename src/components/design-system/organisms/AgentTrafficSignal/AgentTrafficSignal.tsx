@@ -43,16 +43,20 @@ const LAMPS: { status: AgentTrafficStatus; color: string; glow: string }[] = [
  * Horizontal, real-traffic-light-styled signal for the header: red = an agent
  * needs you, yellow = agents running, green = idle/last finished. The lit lamp
  * glows and shows its count. Fades to nearly transparent (restoring on hover)
- * when no agents are active. Click jumps to the Agents tab.
+ * when no agents are active. Click jumps to the Agents tab. A session idle on the
+ * user after a finished turn ("your turn") is soft: named in the tooltip only,
+ * never red.
  */
 export function AgentTrafficSignal() {
   const navigate = useNavigate();
-  const { running, waiting, finished, active, signal } = useAgentTraffic();
+  const { running, waiting, finished, yourTurn, active, signal } = useAgentTraffic();
 
   const count = (s: AgentTrafficStatus) =>
     s === 'waiting' ? waiting : s === 'running' ? running : finished;
 
-  const title = `Agents — ${waiting} waiting, ${running} running, ${finished} recently finished. Click to open.`;
+  const title = `Agents — ${waiting} waiting, ${running} running, ${
+    yourTurn > 0 ? `${yourTurn} your turn, ` : ''
+  }${finished} recently finished. Click to open.`;
 
   return (
     <button
