@@ -74,8 +74,8 @@ export function BlockGauge(props: BlockGaugeProps) {
               isApi
                 ? todayActualCost != null
                   ? "The big number is the estimated cost of your current 5-hour block (published API rates, from local logs). The daily-cap ring uses your real billed spend so far today from your LiteLLM gateway — see API Spending below for the real today / week / month figures. Set a daily cap in ⚙ Settings."
-                  : "Estimated cost of your current 5-hour usage block, anchored to your most recent session's first message. Dollar figures use Anthropic's published API rates and are computed from local logs. The ring fills against your daily spending cap when one is set in ⚙ Settings."
-                : "Your current 5-hour usage block, anchored to your most recent session's first message (how Anthropic starts a 5h window). The ring shows % of the live account limit from Claude.ai; rows below show this block's effective tokens, cache reads, reset time and burn rate."
+                  : "Estimated cost of your current 5-hour usage block in your most recent session: a window opens at its first message, and the first message after it ends opens the next. Dollar figures use Anthropic's published API rates and are computed from local logs. The ring fills against your daily spending cap when one is set in ⚙ Settings."
+                : "Your current 5-hour usage block in your most recent session: a window opens at its first message, and the first message after it ends opens the next (how Anthropic starts a 5h window). The ring shows % of the live account limit from Claude.ai; rows below show this block's effective tokens, cache reads, reset time and burn rate."
             }
           />
         </div>

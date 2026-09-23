@@ -88,7 +88,7 @@ The API serves transcripts and can spend the user's Claude quota (AI Insights), 
 These are deliberate and easy to break:
 
 - **Effective tokens = input + output + cacheCreate.** Cheap cache *reads* are excluded because they don't count toward rate limits. `totalTokens` includes cache reads; `effectiveTokens` does not. Keep the two distinct.
-- **The "current 5-hour block"** is anchored on the **most recent `sessionId`**, not a wall-clock window — it mirrors how Anthropic starts a 5h window at a session's first message. `prevTotals` is the session immediately before it.
+- **The "current 5-hour block"** is anchored on the **most recent `sessionId`**, not a wall-clock window — it mirrors how Anthropic starts a 5h window at a session's first message — and it **rolls inside that session**: the first message at or after a window's end opens the next one, so a session that runs past 5h moves to a fresh block instead of reading as ended while still active. `prevTotals` is the window before the current one (earlier in the same session, else the previous session's last window). Codex events never anchor it.
 - **Weekly reset** is computed as the next Monday 01:00 UTC (`nextMondayReset`) when nothing better exists; the AI context prefers the live `seven_day.resets_at`.
 - `<synthetic>` model and zero-token models are filtered out of model shares.
 - The activity heatmap is derived **live from events**, falling back to `stats-cache.json` only for days with no live data (the cache is otherwise stale) — and **only for sources that can contain Claude Code** (`all`/`claude`/`code`, `statsCacheApplies()`); stats-cache is Code-only, so Codex/Cowork heatmaps never get it.

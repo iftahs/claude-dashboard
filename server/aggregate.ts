@@ -190,9 +190,33 @@ function nextMondayReset(now: number): number {
   return d.getTime();
 }
 
+/**
+ * Split one session's events (ascending) into consecutive 5h windows: a window
+ * opens at a message and the first message at or after its end opens the next.
+ */
+function rollingWindows(sessionEvents: UsageEvent[]): UsageEvent[][] {
+  const out: UsageEvent[][] = [];
+  let cur: UsageEvent[] = [];
+  let winStart = -Infinity;
+  for (const e of sessionEvents) {
+    if (e.ts >= winStart + BLOCK_MS) {
+      if (cur.length) out.push(cur);
+      cur = [];
+      winStart = e.ts;
+    }
+    cur.push(e);
+  }
+  if (cur.length) out.push(cur);
+  return out;
+}
+
 /** Use the most recent sessionId to anchor the block — mirrors how Anthropic
- *  counts: each conversation/session gets its own 5h window starting at the
- *  first message in that session.
+ *  counts: a 5h window starts at the session's first message, and the first
+ *  message after it expires starts the next one. The window ROLLS inside the
+ *  session, so one that runs past 5h moves on to a fresh block instead of
+ *  reading as ended while it is still sending messages. prevTotals is the
+ *  window before the current one: earlier in this session, or else the
+ *  previous session's last window.
  *
  *  NOTE: Claude.ai sessions are server-side only and NOT in local logs.
  *  This shows the current Claude Code session window. */
@@ -213,29 +237,31 @@ function computeActiveBlock(events: UsageEvent[], now: number): ActiveBlock {
     ? events.filter((e) => e.sessionId === currentSessionId)
     : [events[events.length - 1]];
 
-  const blockStart = sessionEvents[0].ts;
+  const windows = rollingWindows(sessionEvents);
+  const current = windows[windows.length - 1];
+  const blockStart = current[0].ts;
   const resetsAt = blockStart + BLOCK_MS;
   const isActive = now < resetsAt;
 
-  // Previous session = the session just before the current one
-  const prevSessionEvents = currentSessionId
-    ? (() => {
-        // Find last event not in current session
-        let prevId = '';
-        for (let i = events.length - 1; i >= 0; i--) {
-          if (events[i].sessionId !== currentSessionId) {
-            prevId = events[i].sessionId;
-            break;
-          }
-        }
-        return prevId ? events.filter((e) => e.sessionId === prevId) : [];
-      })()
-    : [];
+  // Previous block = the window before this one in the same session; for the
+  // session's first window, the last window of the session just before it.
+  let previous: UsageEvent[] = windows.length > 1 ? windows[windows.length - 2] : [];
+  if (windows.length === 1 && currentSessionId) {
+    // Find last event not in current session
+    let prevId = '';
+    for (let i = events.length - 1; i >= 0; i--) {
+      if (events[i].sessionId !== currentSessionId) {
+        prevId = events[i].sessionId;
+        break;
+      }
+    }
+    if (prevId) previous = rollingWindows(events.filter((e) => e.sessionId === prevId)).at(-1) ?? [];
+  }
 
-  const totals = sumTotals(sessionEvents);
-  const prevTotals = sumTotals(prevSessionEvents);
+  const totals = sumTotals(current);
+  const prevTotals = sumTotals(previous);
   const byModel: Record<string, number> = {};
-  for (const e of sessionEvents) byModel[e.model] = (byModel[e.model] ?? 0) + eventTokens(e);
+  for (const e of current) byModel[e.model] = (byModel[e.model] ?? 0) + eventTokens(e);
 
   return { start: blockStart, resetsAt, isActive, totals, prevTotals, byModel };
 }

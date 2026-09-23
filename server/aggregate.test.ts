@@ -196,3 +196,38 @@ test('activeBlock.isActive flips exactly at resetsAt, relative to the passed now
   assert.equal(idle.isActive, false);
   assert.equal(idle.resetsAt, t0 + 5 * HOUR);
 });
+
+test('the 5-hour block rolls inside a session that outlives it', () => {
+  const t0 = Date.UTC(2026, 8, 20, 9);
+  const events = [
+    // Previous session: two windows; only its last one is the "previous block".
+    ev(t0 - 20 * HOUR, { sessionId: 'prev' }),
+    ev(t0 - 12 * HOUR, { sessionId: 'prev', inputTokens: 1000 }),
+    // Current session: first window [t0, t0+5h), then a message 5.5h in opens the next.
+    ev(t0, { sessionId: 'cur' }),
+    ev(t0 + HOUR, { sessionId: 'cur' }),
+    ev(t0 + 5.5 * HOUR, { sessionId: 'cur', inputTokens: 500 }),
+    ev(t0 + 6 * HOUR, { sessionId: 'cur' }),
+  ];
+  const at = (now: number, evs: UsageEvent[] = events) => buildRecent(evs, now, 12).activeBlock;
+
+  // Still sending messages 6h in: a live block, not an "ended" one.
+  const rolled = at(t0 + 6 * HOUR + 10 * 60_000);
+  assert.equal(rolled.start, t0 + 5.5 * HOUR);
+  assert.equal(rolled.resetsAt, t0 + 10.5 * HOUR);
+  assert.equal(rolled.isActive, true);
+  assert.equal(rolled.totals.effectiveTokens, 510 + 110);
+  assert.equal(rolled.prevTotals.effectiveTokens, 220, 'the window before, in the same session');
+  assert.deepEqual(rolled.byModel, { 'claude-sonnet-4-5': 620 });
+
+  // Its first window's previous block is the previous session's LAST window.
+  const first = at(t0 + 2 * HOUR, events.filter((e) => e.ts <= t0 + HOUR));
+  assert.equal(first.start, t0);
+  assert.equal(first.prevTotals.effectiveTokens, 1010);
+
+  // A trailing Codex event still never anchors or rolls the Claude block.
+  const withCodex = [...events, ev(t0 + 11 * HOUR, { sessionId: 'codex-thread', source: 'codex' })];
+  const lapsed = at(t0 + 11 * HOUR, withCodex);
+  assert.equal(lapsed.start, t0 + 5.5 * HOUR);
+  assert.equal(lapsed.isActive, false);
+});
