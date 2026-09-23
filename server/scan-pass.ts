@@ -460,6 +460,51 @@ export function countPatchLines(tur: any): { added: number; removed: number } | 
   return { added, removed };
 }
 
+function textLines(s: string): string[] {
+  if (!s) return [];
+  const lines = s.split('\n');
+  if (s.endsWith('\n')) lines.pop(); // as countTextLines: a final newline starts no line
+  return lines;
+}
+
+function editLineCounts(oldStr: string, newStr: string): { added: number; removed: number } {
+  const a = textLines(oldStr);
+  const b = textLines(newStr);
+  let lead = 0;
+  while (lead < a.length && lead < b.length && a[lead] === b[lead]) lead++;
+  let trail = 0;
+  while (
+    trail < a.length - lead && trail < b.length - lead &&
+    a[a.length - 1 - trail] === b[b.length - 1 - trail]
+  ) trail++;
+  return { added: b.length - lead - trail, removed: a.length - lead - trail };
+}
+
+/** Approximate lines an Edit/MultiEdit/Write changes, from its input: for results logged without a patch (subagents). */
+export function countInputEditLines(name: string, input: any): { added: number; removed: number } | null {
+  if (!input || typeof input !== 'object') return null;
+  if (name === 'Write') {
+    return typeof input.content === 'string' ? { added: countTextLines(input.content), removed: 0 } : null;
+  }
+  if (name === 'Edit') {
+    return typeof input.old_string === 'string' && typeof input.new_string === 'string'
+      ? editLineCounts(input.old_string, input.new_string)
+      : null;
+  }
+  if (name === 'MultiEdit' && Array.isArray(input.edits)) {
+    let added = 0;
+    let removed = 0;
+    for (const e of input.edits) {
+      if (typeof e?.old_string !== 'string' || typeof e?.new_string !== 'string') continue;
+      const c = editLineCounts(e.old_string, e.new_string);
+      added += c.added;
+      removed += c.removed;
+    }
+    return { added, removed };
+  }
+  return null;
+}
+
 /** `owner/repo` from a GitHub-style pull-request URL. */
 function repoFromPrUrl(url: string): string | null {
   return url.match(/^https?:\/\/[^/]+\/([^/]+\/[^/]+)\/pull\//)?.[1] ?? null;
@@ -467,6 +512,8 @@ function repoFromPrUrl(url: string): string | null {
 
 /** Claude Code's own wording when a usage limit refuses a request (a `<synthetic>` assistant line). */
 const LIMIT_TEXT = /\b(?:hit|reached) your (?:[\w.-]+ ){0,2}limit\b|\busage limit reached\b/i;
+const NAMED_LIMIT_TEXT = /\b(?:hit|reached) your ([\w.-]+)(?: [\w.-]+)? limit\b/i;
+const MODEL_FAMILY = /opus|sonnet|haiku|fable|mythos/i;
 
 function limitKindFromType(t: unknown): LimitHitRow['kind'] | null {
   if (typeof t !== 'string') return null;
@@ -481,7 +528,7 @@ function limitKindFromText(text: string): LimitHitRow['kind'] {
   if (/\bweekly limit\b/i.test(text)) return 'weekly';
   if (/\busage limit\b/i.test(text)) return 'unknown';
   // "You've reached your Fable limit" — any other named limit is a per-model cap.
-  if (/\b(?:hit|reached) your [\w.-]+(?: [\w.-]+)? limit\b/i.test(text)) return 'model';
+  if (NAMED_LIMIT_TEXT.test(text)) return 'model';
   return 'unknown';
 }
 
@@ -534,16 +581,27 @@ function epochMs(v: unknown): number | null {
  * `quotaLimits{rateLimitType, resetsAt (epoch s)}`); older lines only carry the
  * `<synthetic>` "You've hit your session limit · resets 4am (Europe/London)" text,
  * whose wall-clock reset is resolved against the line's own timestamp.
+ * `family` names the capped model family of a per-model limit ('fable', 'opus'…).
  */
-export function limitHitOf(obj: any, ts: number): { kind: LimitHitRow['kind']; resetsAt: number | null } | null {
+export function limitHitOf(
+  obj: any,
+  ts: number,
+): { kind: LimitHitRow['kind']; resetsAt: number | null; family: string | null } | null {
   if (obj?.type !== 'assistant') return null;
   const ql = obj.quotaLimits && typeof obj.quotaLimits === 'object' ? obj.quotaLimits : null;
   const flagged = obj.isApiErrorMessage === true && (obj.error === 'rate_limit' || obj.apiErrorStatus === 429 || ql !== null);
   if (!flagged && obj.message?.model !== '<synthetic>') return null;
   const text = toolResultText(obj.message?.content); // an assistant message's text blocks, same shape
-  if (!flagged && !LIMIT_TEXT.test(text)) return null;
+  // A 429 alone is not a usage limit (per-minute API limits, server load).
+  if (ql === null && !LIMIT_TEXT.test(text)) return null;
 
   const kind = limitKindFromType(ql?.rateLimitType) ?? limitKindFromText(text);
+  let family: string | null = null;
+  if (kind === 'model') {
+    const named = (typeof ql?.rateLimitType === 'string' ? ql.rateLimitType.match(MODEL_FAMILY)?.[0] : undefined)
+      ?? text.match(NAMED_LIMIT_TEXT)?.[1];
+    family = named ? named.toLowerCase() : null;
+  }
   let resetsAt = epochMs(ql?.resetsAt);
   if (resetsAt === null) {
     const pipe = text.match(/limit reached\|(\d{9,13})\b/i);
@@ -557,7 +615,7 @@ export function limitHitOf(obj: any, ts: number): { kind: LimitHitRow['kind']; r
       resetsAt = nextWallClock(ts, hour, Number(m[2] ?? 0), m[4]);
     }
   }
-  return { kind, resetsAt };
+  return { kind, resetsAt, family };
 }
 
 /**
@@ -657,6 +715,8 @@ export async function parseFileRows(file: ScannedFile): Promise<FileRows> {
   const seenPrUrls = new Set<string>();
   const seenPromptKeys = new Set<string>();
   const lastModel = new Map<string, string>(); // sessionId -> last real model, for limit hits
+  // tool_use id -> lines estimated from an edit's input, used when its result has no patch.
+  const inputEdits = new Map<string, { filePath: string | null; added: number; removed: number }>();
 
   // Turn timing: main-session files only (a subagent's prompts are its parent's tool
   // calls). A turn runs from a prompt to the last assistant line or tool result before
@@ -813,10 +873,12 @@ export async function parseFileRows(file: ScannedFile): Promise<FileRows> {
         if (!seenLimitKeys.has(key)) {
           seenLimitKeys.add(key);
           // The refusal itself is a `<synthetic>` line; the model it refused is the one
-          // the session was last answered by.
+          // the session was last answered by — unless a per-model cap names another family.
+          const last = lastModel.get(sessionId) ?? '';
           limitHits.push({
             key, ts, sessionId, source, kind: hit.kind,
-            model: lastModel.get(sessionId) ?? '', resetsAt: hit.resetsAt,
+            model: hit.family && !last.toLowerCase().includes(hit.family) ? hit.family : last,
+            resetsAt: hit.resetsAt,
           });
         }
       }
@@ -836,11 +898,13 @@ export async function parseFileRows(file: ScannedFile): Promise<FileRows> {
       if (obj.type === 'queue-operation') {
         if (obj.operation === 'dequeue') dequeued = true;
       } else if (obj.type === 'assistant') {
-        dequeued = false;
+        const synthetic = obj.message?.model === '<synthetic>';
+        // Only a refusal or API error ends a turn; other synthetic lines can come days later.
+        const extendsTurn = !synthetic || obj.isApiErrorMessage === true;
+        if (extendsTurn) dequeued = false;
         if (turn && turn.sessionId === sessionId && ts >= turn.ts) {
-          if (ts > turn.endTs) turn.endTs = ts;
-          const real = obj.message?.model !== '<synthetic>';
-          if (real && (turn.firstReplyTs === null || ts < turn.firstReplyTs)) turn.firstReplyTs = ts;
+          if (extendsTurn && ts > turn.endTs) turn.endTs = ts;
+          if (!synthetic && (turn.firstReplyTs === null || ts < turn.firstReplyTs)) turn.firstReplyTs = ts;
         }
       } else if (obj.type === 'user') {
         const role = userTurnRole(obj, dequeued);
@@ -871,6 +935,7 @@ export async function parseFileRows(file: ScannedFile): Promise<FileRows> {
       sm.turns++;
       const content = obj.message.content;
       let resultId = ''; // the line's tool_result, which toolUseResult describes
+      const succeeded: string[] = [];
 
       const handleText = (t: string) => {
         if (/continued from a previous conversation/i.test(t)) sm.compactions++;
@@ -908,6 +973,7 @@ export async function parseFileRows(file: ScannedFile): Promise<FileRows> {
             if (isError) sm.errorCount++;
             if (rejected) sm.rejectionCount++;
             if (!isError) sm.nonErrorResultIds.push(toolId);
+            if (!isError && !rejected && toolId) succeeded.push(toolId);
 
             const resultText = toolResultText(block.content);
             const agentIdMatch = resultText ? resultText.match(/agentId:\s*([a-z0-9]+)/) : null;
@@ -936,6 +1002,12 @@ export async function parseFileRows(file: ScannedFile): Promise<FileRows> {
         const pr = tur.gitOperation?.pr;
         if (pr && typeof pr === 'object') addPr(pr.url, pr.number, null, ts, sessionId);
       }
+      for (const id of succeeded) {
+        const est = inputEdits.get(id);
+        if (!est || seenLineChangeIds.has(id)) continue;
+        seenLineChangeIds.add(id);
+        lineChanges.push({ key: id, ts, sessionId, source, ...est });
+      }
       continue;
     }
 
@@ -960,6 +1032,11 @@ export async function parseFileRows(file: ScannedFile): Promise<FileRows> {
         const toolName: string = block.name ?? '';
         const toolId: string = block.id ?? '';
         const toolInput = block.input ?? {};
+
+        if (toolId && !inputEdits.has(toolId)) {
+          const est = countInputEditLines(toolName, toolInput);
+          if (est) inputEdits.set(toolId, { filePath: extractFilePath(toolInput), ...est });
+        }
 
         // Dedup by tool_use id, NOT by message key. Only 10,173 of 45,420 distinct
         // tool ids appear on the first line for a key — the earlier lines are
