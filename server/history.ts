@@ -83,25 +83,30 @@ export function buildCommandUsage({ slash, events, source, days, now, limit = 25
   const sessionSource = new Map<string, UsageSource>();
   for (const e of events) if (e.sessionId && !sessionSource.has(e.sessionId)) sessionSource.set(e.sessionId, e.source);
 
+  const skillRuns = new Map<string, Set<string>>(); // skill → sessions that ran it
+  const ranSkill = new Set<string>(); // `${session}|${skill}`
+  for (const e of events) {
+    if (e.ts < from || !e.attributionSkill) continue;
+    if (!sourceMatches(e.source, source)) continue;
+    const session = e.rootSessionId || e.sessionId;
+    let set = skillRuns.get(e.attributionSkill);
+    if (!set) { set = new Set(); skillRuns.set(e.attributionSkill, set); }
+    set.add(session);
+    ranSkill.add(`${session}|${e.attributionSkill}`);
+  }
+  let skillSessions = 0;
+  for (const set of skillRuns.values()) skillSessions += set.size;
+
   const slashCounts = new Map<string, number>();
   let slashCommands = 0;
   for (const s of slash) {
     if (s.ts < from) continue;
     if (!sourceMatches(sessionSource.get(s.sessionId) ?? 'code', source)) continue;
+    // A typed skill command is the same run its skill session already counts.
+    if (ranSkill.has(`${s.sessionId}|${s.command.slice(1)}`)) continue;
     slashCounts.set(s.command, (slashCounts.get(s.command) ?? 0) + 1);
     slashCommands++;
   }
-
-  const skillRuns = new Map<string, Set<string>>(); // skill → sessions that ran it
-  for (const e of events) {
-    if (e.ts < from || !e.attributionSkill) continue;
-    if (!sourceMatches(e.source, source)) continue;
-    let set = skillRuns.get(e.attributionSkill);
-    if (!set) { set = new Set(); skillRuns.set(e.attributionSkill, set); }
-    set.add(e.rootSessionId || e.sessionId);
-  }
-  let skillSessions = 0;
-  for (const set of skillRuns.values()) skillSessions += set.size;
 
   const commands = [
     ...[...slashCounts].map(([command, count]) => ({ command, count, kind: 'slash' as const })),

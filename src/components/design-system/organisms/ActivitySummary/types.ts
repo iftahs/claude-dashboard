@@ -23,7 +23,7 @@ export interface SummaryCard {
   label: string;
   value: string;
   sub: string;
-  /** Second sub-line: the server-side figure (Codex) or the Claude/Codex split (Both). */
-  extra: string | null;
+  /** Extra sub-lines: the Claude/Codex split (Both), then OpenAI's server-side figure (Codex, Both). */
+  extra: string[];
   help: ReactNode;
 }

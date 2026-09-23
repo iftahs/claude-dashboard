@@ -145,6 +145,9 @@ export interface DatasetDef {
 const WORKFLOWS_CLAUDE_ONLY =
   'Workflows are runs of Claude Code\'s Workflow orchestration tool — Codex has no equivalent, so there is nothing to show while the dashboard is on Codex.';
 
+const RETRIES_CLAUDE_ONLY =
+  'Codex patches never retry — each one applies, fails or is declined, and the next is a new change — so there is no one-shot rate while the dashboard is on Codex.';
+
 const SOFT_TIMEOUT_MS = 1500;
 const round2 = (n: number) => Math.round(n * 100) / 100;
 const pct = (rate: number) => Math.round(rate * 1000) / 10;
@@ -283,8 +286,13 @@ export const DATASETS: DatasetDef[] = [
   {
     id: 'retries',
     describes: 'Edit-retry analysis: one-shot success rate on Edit/Write, how many edits were retried, and the tokens/cost wasted on retries.',
+    describesFor: {
+      both: 'Edit-retry analysis for CLAUDE edits only (Codex patches never retry): one-shot success rate on Edit/Write, how many edits were retried, and the tokens/cost wasted on retries.',
+    },
+    claudeOnly: RETRIES_CLAUDE_ONLY,
     trigger: /\bretr(y|ies|ied)\b|\bone[\s-]?shot\b|\bwasted?\b|\bre[\s-]?edit/i,
     async load({ days, source }) {
+      if (platformOf(source) === 'codex') return { unavailable: RETRIES_CLAUDE_ONLY };
       const { d, now } = await scopedInsights(source);
       const r = memoBuilder('retries', [days, source], insightsFingerprint(), () => buildRetries(d, days, now));
       return {
@@ -292,7 +300,7 @@ export const DATASETS: DatasetDef[] = [
         source,
         totalEdits: r.totalEdits,
         retried: r.retried,
-        oneShotRatePct: pct(r.oneShotRate),
+        oneShotRatePct: r.oneShotRate === null ? null : pct(r.oneShotRate),
         wastedTokens: r.wastedTokens,
         wastedEstCostUsd: round2(r.wastedCost),
       };

@@ -543,8 +543,9 @@ export interface InsightsErrors {
 }
 
 export interface InsightsRetries {
-  oneShotRate: number;
-  /** Claude Edit/Write/MultiEdit calls only. */
+  /** null when totalEdits is 0. */
+  oneShotRate: number | null;
+  /** Claude Edit/Write/MultiEdit calls only; declined ones never ran and are left out. */
   totalEdits: number;
   retried: number;
   wastedTokens: number;
@@ -601,8 +602,11 @@ export interface InsightsYield {
   tokensUncommitted: number;
   /** committed / repoSessions. */
   rate: number;
+  /** Committed sessions that also opened a PR — a subset of `committed`. */
   prSessions: number;
   prCount: number;
+  /** Uncommitted repo sessions that opened a PR (commits from an earlier session). */
+  prOnlySessions: number;
   topUncommitted: { project: string; date: string; effectiveTokens: number }[];
 }
 

@@ -260,6 +260,27 @@ export function buildErrors(d: InsightsData, days: number, now = Date.now(), per
   };
 }
 
+export interface ToolShare {
+  name: string;
+  count: number;
+}
+
+export function buildToolUsage(d: InsightsData, days: number, now = Date.now()) {
+  const from = cutoff(days, now);
+  const counts = new Map<string, number>();
+  let totalCalls = 0;
+  for (const tc of d.toolCalls) {
+    // A guardian deny is the reviewer's verdict, not a tool Codex called.
+    if (tc.ts < from || tc.name === GUARDIAN_DENY_TOOL) continue;
+    counts.set(tc.name, (counts.get(tc.name) ?? 0) + 1);
+    totalCalls++;
+  }
+  const tools: ToolShare[] = [...counts.entries()]
+    .map(([name, count]) => ({ name, count }))
+    .sort((a, b) => b.count - a.count);
+  return { rangeFrom: from, rangeTo: now, totalCalls, tools };
+}
+
 // ---------------------------------------------------------------------------
 // buildRetries
 // ---------------------------------------------------------------------------
@@ -282,7 +303,6 @@ export function buildRetries(d: InsightsData, days: number, now = Date.now()) {
       codexEdits++;
       continue;
     }
-    totalEdits++;
     let arr = sessionCalls.get(tc.sessionId);
     if (!arr) {
       arr = [];
@@ -310,11 +330,13 @@ export function buildRetries(d: InsightsData, days: number, now = Date.now()) {
     // Detect retries: errored call followed by same tool + same filePath
     const seen = new Map<string, boolean>(); // key=tool+filepath, value=hadError
     for (const tc of calls) {
-      const result: ToolResultRecord | undefined = d.toolResults.get(tc.id);
-      const isError = result ? (result.is_error || result.rejected) : false;
+      const outcome = outcomeOf(d.toolResults.get(tc.id));
+      // A declined edit never ran: not an attempt, a failure or a waste.
+      if (outcome === 'rejected') continue;
+      totalEdits++;
       const key = `${tc.name}::${tc.filePath ?? ''}`;
 
-      if (!isError) {
+      if (outcome === 'ok') {
         if (seen.get(key) === true) {
           // This is a retry that succeeded
           retried++;
@@ -330,7 +352,8 @@ export function buildRetries(d: InsightsData, days: number, now = Date.now()) {
   }
 
   return {
-    oneShotRate: totalEdits > 0 ? oneShotOk / totalEdits : 1,
+    /** null with no Claude edits in the window (always under Codex) — never a vacuous 100%. */
+    oneShotRate: totalEdits > 0 ? oneShotOk / totalEdits : null,
     totalEdits,
     retried,
     wastedTokens: Math.round(wastedTokens),
@@ -526,6 +549,7 @@ export function buildYield(d: InsightsData, days: number, now = Date.now(), limi
   let tokensUncommitted = 0;
   let prSessions = 0;
   let prCount = 0;
+  let prOnlySessions = 0;
 
   const topUncommitted: Array<{ project: string; date: string; effectiveTokens: number }> = [];
 
@@ -537,14 +561,15 @@ export function buildYield(d: InsightsData, days: number, now = Date.now(), limi
       tokensNoRepo += sm.effectiveTokens;
       continue;
     }
-    if (sm.prUrls.length > 0) {
-      prSessions++;
-      prCount += sm.prUrls.length;
-    }
     if (sm.committed) {
       committed++;
       tokensCommitted += sm.effectiveTokens;
+      if (sm.prUrls.length > 0) {
+        prSessions++;
+        prCount += sm.prUrls.length;
+      }
     } else {
+      if (sm.prUrls.length > 0) prOnlySessions++;
       uncommitted++;
       tokensUncommitted += sm.effectiveTokens;
       topUncommitted.push({ project: projectName(sm), date: localDateKey(sm.firstTs), effectiveTokens: sm.effectiveTokens });
@@ -565,9 +590,11 @@ export function buildYield(d: InsightsData, days: number, now = Date.now(), limi
     uncommitted,
     tokensUncommitted,
     rate: repoSessions > 0 ? committed / repoSessions : 0,
-    /** Repo sessions that opened or linked at least one pull request, and how many PRs. */
+    /** Committed sessions that also opened or linked a pull request, and how many PRs — the funnel's last stage. */
     prSessions,
     prCount,
+    /** Uncommitted repo sessions with a PR (e.g. opened for an earlier session's commits) — outside the funnel. */
+    prOnlySessions,
     topUncommitted: topUncommitted
       .sort((a, b) => b.effectiveTokens - a.effectiveTokens)
       .slice(0, limit),

@@ -18,6 +18,10 @@ function split(s: UsageSummaryData, fmt: (p: UsageSummary) => string): string | 
   }`;
 }
 
+function lines(...xs: (string | null)[]): string[] {
+  return xs.filter((x): x is string => !!x);
+}
+
 /** Why "lifetime" only reaches back so far, in the platform's own terms. */
 function retentionNote(platform: Platform): string {
   if (platform === 'codex') return 'It covers the Codex rollouts on this machine, from the first one.';
@@ -28,8 +32,9 @@ function retentionNote(platform: Platform): string {
 
 /**
  * The four Activity-summary cards — identical labels on every platform, values
- * from /api/usage/summary. Under Codex (and Both) the lifetime card adds OpenAI's
- * server-side count; under Both each card adds the Claude / Codex split.
+ * from /api/usage/summary. Under Both each card adds the Claude / Codex split; under
+ * Codex and Both the lifetime card also adds OpenAI's server-side count when the
+ * ChatGPT profile reports one.
  */
 export function summaryCards(
   s: UsageSummaryData,
@@ -52,9 +57,9 @@ export function summaryCards(
       label: 'Lifetime tokens',
       value: compact(s.lifetimeEffectiveTokens),
       sub: since,
-      extra: bothSplit ? split(s, (p) => compact(p.lifetimeEffectiveTokens)) : serverLine,
+      extra: lines(bothSplit ? split(s, (p) => compact(p.lifetimeEffectiveTokens)) : null, serverLine),
       help: `Effective tokens (input + output + cache writes, cache reads excluded) over every usage event in the logs. ${retentionNote(platform)}${
-        platform !== 'claude'
+        serverLine
           ? " OpenAI's figure is its own lifetime count for the account — every device, every token incl. cached input — so it is compared with the local all-token sum, not the effective figure."
           : ''
       }`,
@@ -64,7 +69,7 @@ export function summaryCards(
       label: 'Peak day',
       value: s.peakDay ? compact(s.peakDay.effectiveTokens) : '—',
       sub: s.peakDay ? dayKeyLabel(s.peakDay.date) : '—',
-      extra: bothSplit ? split(s, (p) => (p.peakDay ? compact(p.peakDay.effectiveTokens) : '—')) : null,
+      extra: lines(bothSplit ? split(s, (p) => (p.peakDay ? compact(p.peakDay.effectiveTokens) : '—')) : null),
       help: 'The local calendar day with the most effective tokens in the logs — the busiest day on record.',
     },
     {
@@ -72,7 +77,7 @@ export function summaryCards(
       label: 'Current streak',
       value: `${s.currentStreakDays}d`,
       sub: `longest ${s.longestStreakDays}d`,
-      extra: bothSplit ? split(s, (p) => `${p.currentStreakDays}d`) : null,
+      extra: lines(bothSplit ? split(s, (p) => `${p.currentStreakDays}d`) : null),
       help: "Consecutive local calendar days with any usage, ending today (or yesterday, until today's first message). Longest is the longest such run in the logs.",
     },
     {
@@ -80,7 +85,7 @@ export function summaryCards(
       label: 'Active days',
       value: s.activeDays.toLocaleString(),
       sub: s.spanDays > 0 ? `of ${s.spanDays.toLocaleString()} days · ${activePct}%` : '—',
-      extra: bothSplit ? split(s, (p) => p.activeDays.toLocaleString()) : null,
+      extra: lines(bothSplit ? split(s, (p) => p.activeDays.toLocaleString()) : null),
       help: 'Local calendar days with at least one usage event, out of the days since the first one.',
     },
   ];

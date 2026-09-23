@@ -38,7 +38,11 @@ export function ActivitySummary({ summary, loading, platform, codexServerLifetim
             sub={
               <>
                 {c.sub}
-                {c.extra && <span className="mt-0.5 block text-xs text-zinc-500">{c.extra}</span>}
+                {c.extra.map((line) => (
+                  <span key={line} className="mt-0.5 block text-xs text-zinc-500">
+                    {line}
+                  </span>
+                ))}
               </>
             }
           />

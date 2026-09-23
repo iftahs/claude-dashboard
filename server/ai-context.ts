@@ -17,8 +17,10 @@
 import { getEvents, eventsFingerprint } from './cache.ts';
 import { getInsights, insightsFingerprint } from './insights-scan.ts';
 import { memoBuilder } from './builder-cache.ts';
-import { buildWeekly, buildModels, buildTools, buildProjectStats, filterSource, type SourceFilter } from './aggregate.ts';
-import { buildErrors, buildRetries, buildMcp, buildYield, buildRejections, buildSubagentStats, scopeInsights } from './insights.ts';
+import { buildWeekly, buildModels, buildProjectStats, filterSource, type SourceFilter } from './aggregate.ts';
+import {
+  buildErrors, buildRetries, buildMcp, buildYield, buildRejections, buildSubagentStats, buildToolUsage, scopeInsights,
+} from './insights.ts';
 import {
   catalogFor, codexLimitFields, loadDatasets, platformOf, readClaudeLive, readCodexLive, topN, datasetsDisabled,
   type AiPlatform, type CatalogEntry, type DatasetId, type LiveRead, type Slice,
@@ -62,7 +64,8 @@ export interface AiPayload {
   topProjects: Slice<{ name: string; estCostUsd: number; effectiveTokens: number; sessions: number }>;
   behavior: {
     errorRatePct: number;
-    oneShotRatePct: number;
+    /** null with no Claude edits in the window — always under Codex, whose patches never retry. */
+    oneShotRatePct: number | null;
     wastedTokens: number;
     wastedEstCostUsd: number;
     /** Delegated work (Claude Task subagents, Codex non-Guardian subagents); null with no sessions. */
@@ -164,9 +167,9 @@ async function assemble(scope: AiScope, ids: DatasetId[], redact: boolean): Prom
 
   const weekly = memoBuilder('weekly', [days, source], fp, () => buildWeekly(scoped, computedAt, days));
   const models = memoBuilder('models', [days, source], fp, () => buildModels(scoped, computedAt, days));
-  const tools = memoBuilder('tools', [days, source], fp, () => buildTools(scoped, computedAt, days));
   const projects = memoBuilder('projects', [days, source], fp, () => buildProjectStats(scoped, computedAt, days));
 
+  const tools = memoBuilder('tools', [days, source], ifp, () => buildToolUsage(si, days, computedAt));
   const errors = memoBuilder('errors', [days, source], ifp, () => buildErrors(si, days, computedAt));
   const retries = memoBuilder('retries', [days, source], ifp, () => buildRetries(si, days, computedAt));
   const mcp = memoBuilder('mcp', [days, source], ifp, () => buildMcp(si, days, computedAt));
@@ -229,7 +232,7 @@ async function assemble(scope: AiScope, ids: DatasetId[], redact: boolean): Prom
     ),
     behavior: {
       errorRatePct: pct(errors.errorRate),
-      oneShotRatePct: pct(retries.oneShotRate),
+      oneShotRatePct: retries.oneShotRate === null ? null : pct(retries.oneShotRate),
       wastedTokens: retries.wastedTokens,
       wastedEstCostUsd: round2(retries.wastedCost),
       delegationRatePct: sub.delegation.rate === null ? null : pct(sub.delegation.rate),

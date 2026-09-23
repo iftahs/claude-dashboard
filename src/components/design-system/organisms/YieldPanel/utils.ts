@@ -3,9 +3,15 @@ import type { FunnelStage } from './types';
 
 /**
  * Sessions → in a git repo → committed → opened a PR. Every stage is a count of
- * sessions, drawn against the first stage; the commit RATE is the KPI row's.
+ * sessions and a subset of the one above, drawn against the first stage; the
+ * commit RATE is the KPI row's.
  */
 export function funnelStages(d: InsightsYield): FunnelStage[] {
+  const prHint =
+    (d.prCount > d.prSessions
+      ? `Committed and opened or linked a pull request — ${d.prCount} PRs in all.`
+      : 'Committed and opened or linked a pull request.') +
+    (d.prOnlySessions > 0 ? ` Not counted: ${d.prOnlySessions} that opened a PR without committing.` : '');
   return [
     { key: 'sessions', label: 'Sessions', count: d.sessions, barClass: 'bg-zinc-500', hint: 'Every session in the window.' },
     {
@@ -14,8 +20,7 @@ export function funnelStages(d: InsightsYield): FunnelStage[] {
     },
     { key: 'committed', label: 'Committed', count: d.committed, barClass: 'bg-emerald-500', hint: 'Ran a git commit that succeeded.' },
     {
-      key: 'pr', label: 'Opened a PR', count: d.prSessions, barClass: 'bg-[#0ea5e9]',
-      hint: d.prCount > d.prSessions ? `${d.prCount} pull requests in all.` : 'Opened or linked a pull request.',
+      key: 'pr', label: 'Opened a PR', count: d.prSessions, barClass: 'bg-[#0ea5e9]', hint: prHint,
     },
   ];
 }

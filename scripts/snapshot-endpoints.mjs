@@ -41,7 +41,7 @@ const SOURCED = [
   '/api/usage/models?days=7',
   '/api/usage/contributors',
   '/api/activity',
-  '/api/tools?days=7',
+  '/api/insights/tools?days=7',
   '/api/heatmap?days=90',
   '/api/projects?days=90',
   '/api/sessions',

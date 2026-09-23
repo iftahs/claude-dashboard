@@ -32,10 +32,10 @@ export function RetryPanel({ data, naText, note }: RetryPanelProps) {
 
   const { oneShotRate, totalEdits, retried, wastedTokens, wastedCost } = data;
 
-  if (totalEdits === 0) {
+  if (totalEdits === 0 || oneShotRate === null) {
     return (
       <div className="text-sm text-zinc-500">
-        No Edit/Write calls in this window.{note && <span className="text-zinc-600"> {note}</span>}
+        No Edit/Write calls ran in this window.{note && <span className="text-zinc-600"> {note}</span>}
       </div>
     );
   }

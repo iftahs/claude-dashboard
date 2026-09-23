@@ -203,7 +203,7 @@ export function panelCopy(platform: Platform) {
     },
     yield: {
       title: 'Yield · sessions → commit → PR',
-      help: 'Of the sessions in this window: how many ran in a git repo (a branch or remote was recorded, or the session ran git), how many committed, and how many opened a pull request. Sessions outside any repo sit apart instead of counting as misses. Lists the biggest uncommitted repo sessions.',
+      help: 'Of the sessions in this window: how many ran in a git repo (a branch or remote was recorded, or the session ran git), how many committed, and how many of those opened a pull request. Sessions outside any repo sit apart instead of counting as misses. Lists the biggest uncommitted repo sessions.',
     },
     subagents: {
       title: codex

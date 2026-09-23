@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { chatSystem, sectionSystem, suggestSystem, buildSuggestMessage, type AiPayload } from './ai-context.ts';
-import { CATALOG, catalogFor, codexLimitFields, platformOf } from './ai-datasets.ts';
+import { CATALOG, catalogFor, codexLimitFields, loadDatasets, platformOf } from './ai-datasets.ts';
 import type { CodexLiveData } from './codex-live.ts';
 
 test('platformOf: Claude surfaces are claude, codex is codex, all is both', () => {
@@ -48,6 +48,7 @@ test('catalogFor: workflows are unavailable under Codex; Codex wording has no Cl
   assert.equal(codex.length, CATALOG.length);
   const wf = codex.find((c) => c.id === 'workflows');
   assert.ok(wf?.unavailable, 'workflows flagged unavailable');
+  assert.ok(codex.find((c) => c.id === 'retries')?.unavailable, 'Codex patches have no one-shot rate');
   for (const id of ['limits', 'subagents', 'contributors', 'plugins', 'sessions'] as const) {
     const c = codex.find((x) => x.id === id);
     assert.doesNotMatch(c!.describes, /Anthropic|Claude CLI|Task subagents/, id);
@@ -60,6 +61,11 @@ test('catalogFor: workflows are unavailable under Codex; Codex wording has no Cl
     CATALOG,
   );
   assert.ok(claude.every((c) => !c.unavailable));
+});
+
+test('retries under Codex is unavailable, never a vacuous 100% one-shot rate', async () => {
+  const out = await loadDatasets(['retries'], { days: 30, source: 'codex', limit: 10, redact: false });
+  assert.deepEqual(Object.keys(out.retries as object), ['unavailable']);
 });
 
 test('buildSuggestMessage lists only datasets askable on the scope', () => {

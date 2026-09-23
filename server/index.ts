@@ -4,7 +4,7 @@ import { exec } from 'node:child_process';
 import { promisify } from 'node:util';
 import express from 'express';
 import { getEvents, eventsFingerprint } from './cache.ts';
-import { buildRecent, buildWeekly, buildModels, buildActivity, buildTools, buildHourlyHeatmap, buildProjectStats, buildUsageSummary, buildEffort, filterSource, statsCacheApplies, type SourceFilter, type UsageSummaryData } from './aggregate.ts';
+import { buildRecent, buildWeekly, buildModels, buildActivity, buildHourlyHeatmap, buildProjectStats, buildUsageSummary, buildEffort, filterSource, statsCacheApplies, type SourceFilter, type UsageSummaryData } from './aggregate.ts';
 import { claudeDir, readConfig, readCredentials, readStatsSummary, readSessionMetas, fetchLiveUsage, fetchLiveProfile, fetchLiveUsageFor, fetchLiveProfileFor, readAccountCredentials, expiredTokenMessage, detectLitellm, fetchLiteLlmSpend, MAX_WINDOW_DAYS } from './scan.ts';
 import { getInsights, insightsFingerprint } from './insights-scan.ts';
 import { archiveSummary, forgetArchivedHistory, primeData } from './data.ts';
@@ -12,7 +12,7 @@ import { memoBuilder } from './builder-cache.ts';
 import {
   buildErrors, buildRetries, buildLanguages, buildBranches, buildMcp,
   buildComplexity, buildYield, buildRejections, buildSubagentStats, buildFileChurn, scopeInsights,
-  buildTurnLatency, buildInsightsSummary, knownProjectRoots,
+  buildTurnLatency, buildInsightsSummary, buildToolUsage, knownProjectRoots,
 } from './insights.ts';
 import { buildContributors } from './contributors.ts';
 import { getCommandUsage } from './history.ts';
@@ -617,20 +617,6 @@ app.get('/api/activity', async (req, res) => {
   }
 });
 
-app.get('/api/tools', async (req, res) => {
-  try {
-    const days = intParam(req.query.days, 7, 1, 31);
-    const { events, computedAt } = await getEvents();
-    const source = parseSource(req.query.source);
-    const data = memoBuilder('tools', [days, source], eventsFingerprint(), () =>
-      buildTools(filterSource(events, source), computedAt, days),
-    );
-    res.json(wrap(data, computedAt));
-  } catch (e) {
-    res.status(500).json({ error: String(e) });
-  }
-});
-
 app.get('/api/heatmap', async (req, res) => {
   try {
     const days = intParam(req.query.days, 90, 7, 365);
@@ -688,6 +674,21 @@ app.get('/api/insights/errors', async (req, res) => {
     const source = parseSource(req.query.source);
     const data = memoBuilder('errors', [days, source], insightsFingerprint(), () =>
       buildErrors(scopeInsights(insights, source), days, computedAt),
+    );
+    res.json(wrap(data, computedAt));
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+// Insights rows, one per tool_use id: usage dedup keeps one line per message and drops most Claude tool calls.
+app.get('/api/insights/tools', async (req, res) => {
+  try {
+    const days = clampDays(req.query.days);
+    const { insights, computedAt } = await getInsights();
+    const source = parseSource(req.query.source);
+    const data = memoBuilder('tools', [days, source], insightsFingerprint(), () =>
+      buildToolUsage(scopeInsights(insights, source), days, computedAt),
     );
     res.json(wrap(data, computedAt));
   } catch (e) {

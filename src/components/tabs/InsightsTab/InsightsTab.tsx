@@ -59,7 +59,7 @@ export function InsightsTab() {
 
   const summary = usePolling<InsightsSummary>(q('/api/insights/summary'), POLL);
   const insightErrors = usePolling<InsightsErrors>(q('/api/insights/errors'), POLL);
-  const tools = usePolling<ToolsData>(q('/api/tools'), POLL);
+  const tools = usePolling<ToolsData>(q('/api/insights/tools'), POLL);
   const insightMcp = usePolling<InsightsMcp>(q('/api/insights/mcp'), POLL);
   const insightRejections = usePolling<InsightsRejections>(q('/api/insights/rejections'), POLL);
   const insightRetries = usePolling<InsightsRetries>(q('/api/insights/retries'), POLL);
@@ -123,7 +123,11 @@ export function InsightsTab() {
         <Section title={copy.rejections.title} help={copy.rejections.help} {...aiProps('rejections', insightRejections.data)}>
           <RejectionsPanel data={insightRejections.data} platform={platform} />
         </Section>
-        <Section title={copy.retries.title} help={copy.retries.help} {...aiProps('retries', insightRetries.data)}>
+        <Section
+          title={copy.retries.title}
+          help={copy.retries.help}
+          {...(copy.retries.naText ? {} : aiProps('retries', insightRetries.data))}
+        >
           <RetryPanel data={insightRetries.data} naText={copy.retries.naText} note={copy.retries.note} />
         </Section>
       </div>

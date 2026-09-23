@@ -912,29 +912,6 @@ export function buildEffort(events: UsageEvent[], now: number, days: number): Ef
   };
 }
 
-export interface ToolShare {
-  name: string;
-  count: number;
-}
-
-/** Tool-usage breakdown over a window, derived live from JSONL events. */
-export function buildTools(events: UsageEvent[], now: number, days: number) {
-  const from = now - days * 24 * HOUR;
-  const counts = new Map<string, number>();
-  let totalCalls = 0;
-  for (const e of events) {
-    if (e.ts < from) continue;
-    for (const name of e.tools) {
-      counts.set(name, (counts.get(name) ?? 0) + 1);
-      totalCalls += 1;
-    }
-  }
-  const tools: ToolShare[] = [...counts.entries()]
-    .map(([name, count]) => ({ name, count }))
-    .sort((a, b) => b.count - a.count);
-  return { rangeFrom: from, rangeTo: now, totalCalls, tools };
-}
-
 /** Per-project cost & token breakdown derived from UsageEvents. */
 export function buildProjectStats(events: UsageEvent[], now: number, days: number) {
   const from = now - days * 24 * HOUR;

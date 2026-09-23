@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   buildBranches, buildComplexity, buildErrors, buildFileChurn, buildInsightsSummary, buildMcp,
-  buildRejections, buildRetries, buildSubagentStats, buildTurnLatency, buildYield, classifyError,
+  buildRejections, buildRetries, buildSubagentStats, buildToolUsage, buildTurnLatency, buildYield, classifyError,
   hasRepo, knownProjectRoots, repoNameFromUrl, worktreeRepo,
 } from './insights.ts';
 import { buildCommandUsage, parseSlashHistory } from './history.ts';
@@ -127,6 +127,41 @@ test('buildRetries measures Claude edits only and reports the Codex edits it lef
   const codexOnly = buildRetries(data({ toolCalls: [call('x1', 'Edit', 'codex')], results: [ok('x1')] }), 7, NOW);
   assert.equal(codexOnly.totalEdits, 0);
   assert.equal(codexOnly.codexEdits, 1);
+  // No Claude edits: no rate at all, never a vacuous 100%.
+  assert.equal(codexOnly.oneShotRate, null);
+  assert.equal(buildRetries(data(), 7, NOW).oneShotRate, null);
+});
+
+test('buildRetries: a declined edit is not an attempt, a failure or a waste', () => {
+  const d = data({
+    sessionsMeta: new Map([['s', session('s', 'code', { assistantMsgs: 2, effectiveTokens: 200 })]]),
+    toolCalls: [call('d1', 'Edit', 'code', { filePath: 'a.ts' }), call('e1', 'Edit', 'code', { filePath: 'a.ts' })],
+    results: [reject('d1'), ok('e1')],
+  });
+  const r = buildRetries(d, 7, NOW);
+  assert.equal(r.totalEdits, 1);
+  assert.equal(r.retried, 0);
+  assert.equal(r.oneShotRate, 1);
+  assert.equal(r.wastedTokens, 0);
+  assert.equal(r.wastedCost, 0);
+
+  const onlyDeclined = buildRetries(data({ toolCalls: [call('d1', 'Write', 'code')], results: [reject('d1')] }), 7, NOW);
+  assert.deepEqual([onlyDeclined.totalEdits, onlyDeclined.oneShotRate], [0, null]);
+});
+
+test('buildToolUsage counts one call per tool_use id, leaving out guardian verdicts', () => {
+  const d = data({
+    toolCalls: [
+      call('b1', 'Bash', 'code'), call('b2', 'Bash', 'code'), call('r1', 'Read', 'code'),
+      call('c1', 'Bash', 'codex'), call('m1', 'mcp__srv__go', 'code', { mcpServer: 'srv' }),
+      call('g1', GUARDIAN_DENY_TOOL, 'codex'),
+      call('old', 'Read', 'code', { ts: OLD }),
+    ],
+  });
+  const t = buildToolUsage(d, 30, NOW);
+  assert.equal(t.totalCalls, 5);
+  assert.deepEqual(t.tools.map((x) => [x.name, x.count]), [['Bash', 3], ['Read', 1], ['mcp__srv__go', 1]]);
+  assert.deepEqual([t.rangeFrom, t.rangeTo], [NOW - 30 * 24 * HOUR, NOW]);
 });
 
 test('hasRepo: a branch, a remote or any git activity — not the cwd', () => {
@@ -161,6 +196,18 @@ test('buildYield: commit rate over repo sessions, no-repo sessions apart, PR fun
   assert.equal(y.prCount, 2);
   // The scratch chat is never "top uncommitted" — it could not commit.
   assert.deepEqual(y.topUncommitted.map((t) => t.project), ['app']);
+  assert.equal(y.prOnlySessions, 0);
+});
+
+test('buildYield: the PR stage nests inside Committed; a PR-only session sits apart', () => {
+  const d = data({
+    sessionsMeta: new Map([
+      ['a', session('a', 'code', { gitBranch: 'feat', committed: true, gitCommits: 1 })],
+      ['b', session('b', 'code', { gitBranch: 'feat', prUrls: ['u1'] })],
+    ]),
+  });
+  const y = buildYield(d, 30, NOW);
+  assert.deepEqual([y.committed, y.prSessions, y.prCount, y.prOnlySessions], [1, 0, 0, 1]);
 });
 
 test('buildRejections splits guardian denials from declines a person made', () => {
@@ -382,4 +429,23 @@ test('buildCommandUsage: slash commands by surface, skills once per session, not
 
   const codex = buildCommandUsage({ slash, events, source: 'codex', days: 30, now: NOW });
   assert.deepEqual([codex.totalCommands, codex.commands.length], [0, 0]);
+});
+
+test('buildCommandUsage: a skill typed as a slash command counts once, as the skill', () => {
+  const slash = [
+    { ts: T, command: '/grill-me', sessionId: 'code-1' },
+    { ts: T, command: '/grill-me', sessionId: 'code-2' }, // typed, but the skill never ran here
+    { ts: T, command: '/acme:lint', sessionId: 'code-1' },
+  ];
+  const events = [
+    event({ sessionId: 'code-1', rootSessionId: 'code-1', attributionSkill: 'grill-me' }),
+    event({ sessionId: 'sub-1', rootSessionId: 'code-1', isSidechain: true, attributionSkill: 'acme:lint' }),
+    event({ sessionId: 'code-2', rootSessionId: 'code-2' }),
+  ];
+  const u = buildCommandUsage({ slash, events, source: 'all', days: 30, now: NOW });
+  assert.deepEqual(
+    u.commands.map((c) => [c.command, c.count, c.kind]),
+    [['/grill-me', 1, 'slash'], ['acme:lint', 1, 'skill'], ['grill-me', 1, 'skill']],
+  );
+  assert.deepEqual([u.slashCommands, u.skillSessions, u.totalCommands, u.uniqueCommands], [1, 2, 3, 3]);
 });
