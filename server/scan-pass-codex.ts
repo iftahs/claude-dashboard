@@ -231,7 +231,7 @@ export async function parseCodexFileRows(file: ScannedFile): Promise<FileRows> {
     rows.toolResults.push({ toolId, sessionId: sessionId(), isError, rejected, errorText, agentIdFromResult: null });
     if (rejected) rejectionCount++;
     if (isError) errorCount++;
-    else nonErrorResultIds.push(toolId);
+    else if (!rejected) nonErrorResultIds.push(toolId);
     if (turnId) {
       let names = toolsByTurn.get(turnId);
       if (!names) { names = []; toolsByTurn.set(turnId, names); }
@@ -281,10 +281,13 @@ export async function parseCodexFileRows(file: ScannedFile): Promise<FileRows> {
           if (!errorText && typeof it.exit_code === 'number') errorText = `exit code ${it.exit_code}`;
         }
         emitTool(id, ts, turnId, name, filePath ? hostPath(filePath) : null, failed, errorText, declined);
-        for (const pc of parsed) {
-          const cmd = str(pc?.cmd);
-          if (/git\s+commit/.test(cmd)) gitCommitIds.push(id);
-          if (/git\s+push/.test(cmd)) gitPushIds.push(id);
+        // A declined command never ran, so it is no commit or push candidate at all.
+        if (!declined) {
+          for (const pc of parsed) {
+            const cmd = str(pc?.cmd);
+            if (/git\s+commit/.test(cmd)) gitCommitIds.push(id);
+            if (/git\s+push/.test(cmd)) gitPushIds.push(id);
+          }
         }
         return;
       }

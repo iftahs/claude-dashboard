@@ -25,8 +25,9 @@ import type { FileRows } from './scan-pass.ts';
  * invalidates every cached blob.
  *   2: Codex rollouts (scan-pass-codex.ts) join the store; `source: 'codex'` rows.
  *   4: `rejected` requires an is_error result; insight rows from files up to 64 MB.
+ *   5: a declined Codex item is never a success or a git commit/push candidate.
  */
-const SCHEMA_VERSION = 4;
+const SCHEMA_VERSION = 5;
 
 export function cacheDir(): string {
   return process.env.DASHBOARD_CACHE_DIR || join(homedir(), '.claude-dashboard-cache');

@@ -118,6 +118,46 @@ test('declined items are rejections, not errors and not successes', async () => 
   assert.equal(buildErrors(insights, 30, NOW).categories.rejected, 2);
 });
 
+test('a declined git commit / push is not a commit or a push; a completed one is', async () => {
+  let n = 0;
+  const turnId = '22222222-2222-4222-8222-222222222222';
+  const cmd = (id: string, status: string, command: string) =>
+    line(n++, 'event_msg', {
+      type: 'item_completed', turn_id: turnId,
+      item: { type: 'CommandExecution', id, status, exit_code: status === 'completed' ? 0 : null, parsed_cmd: [{ type: 'unknown', cmd: command }] },
+    });
+  const rows = await parse(PARENT, [
+    line(n++, 'session_meta', { id: PARENT, cwd: 'C:/work/demo', thread_source: 'user', source: 'vscode' }),
+    line(n++, 'event_msg', { type: 'task_started', turn_id: turnId }),
+    line(n++, 'turn_context', { turn_id: turnId, model: 'gpt-test', approvals_reviewer: 'user' }),
+    cmd('cmd_commit_declined', 'declined', 'git commit -m wip'),
+    cmd('cmd_push_declined', 'declined', 'git push origin main'),
+  ]);
+  const session = rows.sessions[0];
+  assert.deepEqual([session.gitCommitIds, session.gitPushIds, session.nonErrorResultIds], [[], [], []]);
+
+  const sm = (r: FileRows) => mergeRows([r], []).insights.sessionsMeta.get(PARENT);
+  assert.deepEqual(
+    { committed: sm(rows)?.committed, gitCommits: sm(rows)?.gitCommits, gitPushes: sm(rows)?.gitPushes, rejections: sm(rows)?.rejectionCount },
+    { committed: false, gitCommits: 0, gitPushes: 0, rejections: 2 },
+  );
+
+  // merge.ts holds the line on its own too (e.g. rows cached by an older parser).
+  const stale: FileRows = {
+    ...rows,
+    sessions: [{ ...session, gitCommitIds: ['cmd_commit_declined'], gitPushIds: ['cmd_push_declined'] }],
+  };
+  assert.equal(sm(stale)?.committed, false);
+  assert.equal(sm(stale)?.gitPushes, 0);
+
+  const ok = await parse(PARENT, [
+    line(n++, 'session_meta', { id: PARENT, cwd: 'C:/work/demo', thread_source: 'user', source: 'vscode' }),
+    cmd('cmd_commit_ok', 'completed', 'git commit -m done'),
+  ]);
+  assert.equal(sm(ok)?.committed, true);
+  assert.equal(sm(ok)?.gitCommits, 1);
+});
+
 test('each guardian verdict is one review; a deny is a rejected call on the parent thread', async () => {
   const rows = await parse(GUARDIAN, guardianLines());
 

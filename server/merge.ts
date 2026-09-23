@@ -121,7 +121,8 @@ export function mergeRows(files: FileRows[], sessionMetas: any[]): MergeResult {
         id: r.toolId, is_error: r.isError, rejected: r.rejected, errorText: r.errorText,
       });
       if (r.agentIdFromResult) resultBySession.set(`${r.toolId}|${r.sessionId}`, r.agentIdFromResult);
-      if (!r.isError) nonErrorResultIds.add(r.toolId);
+      // A rejected call never ran: a declined Codex `git commit` is not a commit.
+      if (!r.isError && !r.rejected) nonErrorResultIds.add(r.toolId);
     }
   }
 
