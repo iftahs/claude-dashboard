@@ -203,11 +203,17 @@ function alwaysThinks(model: string): boolean {
  * text; the system suffix is the documented mitigation — note it names XML tags
  * generically and never tells the model not to think, which makes leakage worse.
  */
+/** Extra `max_tokens` for models that always think: their thinking and the visible
+ *  answer share one budget, and at effort 'low' a short answer still needs room after
+ *  the thinking. Answer length is held by the prompts, which ask for brevity. */
+const THINKING_HEADROOM = 2048;
+
 function messagesBody(input: AiCallInput, model: string, extra?: Record<string, unknown>) {
   const thinkingOff = thinksByDefault(model);
+  const budget = input.maxTokens ?? MAX_OUTPUT_TOKENS;
   return {
     model,
-    max_tokens: input.maxTokens ?? MAX_OUTPUT_TOKENS,
+    max_tokens: alwaysThinks(model) ? budget + THINKING_HEADROOM : budget,
     system: thinkingOff
       ? `${input.system}\n\nDo not include internal or system XML tags in your response.`
       : input.system,
@@ -242,6 +248,8 @@ async function callMessages(headers: Record<string, string>, input: AiCallInput,
   const text = Array.isArray(data?.content)
     ? data.content.filter((b: any) => b?.type === 'text').map((b: any) => b.text).join('').trim()
     : '';
+  if (!text && data?.stop_reason === 'max_tokens')
+    throw new AiCallError('Model used its whole token budget before answering (max_tokens).');
   if (!text) throw new AiCallError('Empty response from model');
   return text;
 }

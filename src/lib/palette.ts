@@ -76,8 +76,8 @@
  * on #1c1c24 drifts into magenta, within 13 ΔE of the fable red. So the steps are
  * assigned by tier: opus 5.5 takes the canonical amber and every superseded 5/25
  * opus (5, 4.5–4.8) shares the brighter step (#c98500 ↔ #eda100 ΔE 9.6 normal /
- * 9.3 CVD); GPT models share a violet step with their price tier — 6 Sol with
- * 5.6 Terra (2/10–12), 6 Luna with 5.6 Luna / 5.4 Mini, 5.6 Sol with 5.5. No hex
+ * 9.3 CVD); GPT models share a violet step with their price tier — 6 Sol and
+ * 5.3 Codex with 5.6 Terra (1.75–2 / 10–14), 6 Luna with 5.6 Luna / 5.4 Mini, 5.6 Sol with 5.5. No hex
  * value changed, so the validator report above still holds.
  */
 const MODEL_TABLE: Array<[RegExp, string]> = [
@@ -97,7 +97,7 @@ const MODEL_TABLE: Array<[RegExp, string]> = [
   [/haiku/i, '#1f5fa8'], // legacy haiku — deepest blue
   // OpenAI / Codex family — violet, steps by price tier (see the header for the numbers).
   [/gpt-5\.6-sol|gpt-5\.5/i, '#6222c4'], // deep violet — 4–5 / 20–30 tier
-  [/gpt-6-sol|gpt-5\.6-terra/i, '#8a3af0'], // canonical violet — 2 / 10–12 tier
+  [/gpt-6-sol|gpt-5\.6-terra|gpt-5\.3-codex/i, '#8a3af0'], // canonical violet — 1.75–2 / 10–14 tier
   [/gpt-6-luna|gpt-5\.6-luna|gpt-5\.4-mini/i, '#a578f8'], // light violet — sub-dollar tier
   [/gpt-6/i, '#4c1d95'], // deepest violet — flagship tier (gpt-6-astra, 10/50) + unlisted gpt-6-*
   [/gpt|codex/i, '#c0a8ff'], // lightest — guardian auto-review + any unlisted gpt-*
