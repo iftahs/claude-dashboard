@@ -40,11 +40,7 @@ function activeAgents(d: LiveSubagents | null): number {
   return d.running.length + d.mainAgents.filter((m) => m.active || m.delegating).length;
 }
 
-/**
- * The window that binds first: the highest % used, a window the provider reports
- * exhausted counting as 100. On a tie the one that resets later wins — it keeps
- * the user waiting longer. A window that is not reached never reads 100.
- */
+// Highest % used wins (exhausted counts as 100); ties go to whichever resets later, since that keeps the user waiting longer.
 export function bindingLimit(readings: readonly LimitReading[]): BindingLimit | null {
   let best: { r: LimitReading; pct: number } | null = null;
   for (const r of readings) {
@@ -68,11 +64,8 @@ export function bindingLimit(readings: readonly LimitReading[]): BindingLimit | 
  * platform is pinned to 'claude' in that case, so Claude-only users get exactly
  * the Claude numbers.
  *
- * `limitPct` is the one number the sidebar badge and the browser tab show: the
- * BINDING window — the fuller of the 5-hour and weekly windows, or 100 when the
- * provider says a limit is reached — for the platform on screen, and the fullest
- * across both platforms under 'both'. A weekly window at 95% binds harder than a
- * 5-hour one at 30%, so showing one fixed window hid the limit that was about to hit.
+ * `limitPct` is the BINDING window — the fuller of the 5-hour and weekly windows (100 if reached) for the platform
+ * on screen, fullest across both under 'both' — not one fixed window, which could hide the limit about to hit.
  */
 export function useLiveMetrics(): LiveMetrics {
   const { platform, showClaude, showCodex } = useSource();

@@ -26,20 +26,13 @@ export function toolLabel(name: string): string {
   return `${m[1].replace(/^claude_ai_/, '').replace(/_/g, ' ')} · ${m[2]}`;
 }
 
-/**
- * A logged reasoning-effort level as UI text: `xhigh` → `X-high`, `unknown` (no
- * effort in the log) → `Not logged`; anything else is capitalised as logged.
- */
 export function effortLabel(effort: string): string {
   if (effort === 'unknown' || !effort) return 'Not logged';
   if (effort === 'xhigh') return 'X-high';
   return effort.charAt(0).toUpperCase() + effort.slice(1);
 }
 
-/**
- * "Sep 22" (or "Sep 22 '26") for a YYYY-MM-DD key. The key is read as a calendar
- * date, not a timestamp, so a UTC-day key and a local-day key label the same way.
- */
+// Read as a calendar date, not a timestamp, so a UTC-day key and a local-day key label the same way.
 export function ymdLabel(key: string, withYear = false): string {
   const [y, m, d] = key.split('-').map(Number);
   if (!y || !m || !d) return key;
@@ -61,8 +54,7 @@ export function dayLabel(ms: number): string {
   return new Date(ms).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
 }
 
-/** "Sep 22 '26" — for day axes spanning more than ~2 months, where a bare
- *  "Mon, Sep 22" could be either year. */
+// For day axes spanning more than ~2 months, where a bare "Mon, Sep 22" could be either year.
 export function dayLabelWithYear(ms: number): string {
   const d = new Date(ms);
   return `${d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} '${String(d.getFullYear()).slice(-2)}`;

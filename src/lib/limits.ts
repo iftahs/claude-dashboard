@@ -1,15 +1,6 @@
-/**
- * Shared rate-limit vocabulary: the 70 / 90 % tone thresholds every limit display
- * uses (BlockGauge ring, PlanUsage bars, the sidebar Live badge), the live-window
- * ETA, and the limit-alert settings. One place, so a gauge, a bar and a badge
- * showing the same % never disagree on its colour.
- */
-
 import type { CodexLiveData, LiveUsageData } from '@/types';
 
-/** Utilisation at which a limit display turns amber. */
 export const LIMIT_WARN_PCT = 70;
-/** Utilisation at which a limit display turns red. */
 export const LIMIT_DANGER_PCT = 90;
 
 /** Named like the SidebarBadge tones, so the badge can use it as-is. */
@@ -43,11 +34,7 @@ export interface LiveEta {
   projectedPct: number | null;
 }
 
-/**
- * Where a live rate-limit window is heading: the provider's own % used, divided by
- * the time since the window opened (reset − length). Uses no local token counts, so
- * it agrees with the ring it sits under whatever the local logs cover.
- */
+// The provider's own % divided by time since the window opened (reset − length); uses no local token counts, so it agrees with the ring under it regardless of local log coverage.
 export function liveWindowEta(pct: number, resetsAt: number, windowMs: number, now: number): LiveEta {
   const none = { minsUntilLimit: null, projectedPct: null };
   const start = resetsAt - windowMs;
@@ -71,8 +58,6 @@ export function windowName(windowSec: number): string {
   return `${Math.round(windowSec / 86400)}-day`;
 }
 
-// ── Limit alerts ────────────────────────────────────────────────────────────
-
 export type LimitAlertMode = 'off' | 'notification' | 'sound';
 
 export interface LimitAlertConfig {
@@ -85,11 +70,7 @@ export const DEFAULT_LIMIT_ALERT_THRESHOLDS: readonly number[] = [LIMIT_WARN_PCT
 
 const MODES: readonly LimitAlertMode[] = ['off', 'notification', 'sound'];
 
-/**
- * The limit-alert preference from Settings (`settings.limitAlerts`), whatever shape
- * it is stored in: a mode string like `budgetAlert`, a boolean, or
- * `{ mode?, enabled?, thresholds? }`. Absent or malformed → notifications at 70 / 90 %.
- */
+// Accepts a mode string, a boolean, or { mode?, enabled?, thresholds? } (backward-compat shapes); absent or malformed → notifications at 70/90%.
 export function resolveLimitAlerts(raw: unknown): LimitAlertConfig {
   const fallback: LimitAlertConfig = { mode: 'notification', thresholds: [...DEFAULT_LIMIT_ALERT_THRESHOLDS] };
   if (typeof raw === 'string') return MODES.includes(raw as LimitAlertMode) ? { ...fallback, mode: raw as LimitAlertMode } : fallback;
@@ -113,13 +94,7 @@ function epoch(iso: string | null | undefined): number | null {
   return Number.isNaN(t) ? null : t;
 }
 
-/**
- * Every window a limit alert can watch right now: Claude.ai's five_hour and
- * seven_day (pass null in API mode or on a live error), and Codex's 5-hour and
- * weekly windows. A window with no reset time is not running, so it is skipped.
- * Codex's `limitReached` marks its fullest open window as reached — the provider's
- * own flag outranks a snapshot that read 98%.
- */
+// A window with no reset time is skipped (not running); Codex's limitReached flags its fullest open window as reached, overriding a snapshot that merely read 98%.
 export function limitReadings(
   claude: LiveUsageData | null,
   codex: CodexLiveData | null,

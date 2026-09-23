@@ -8,11 +8,7 @@ export interface SessionPeriod {
   since: number | null;
 }
 
-/**
- * The span the session list covers. /api/sessions is not windowed — it lists
- * every session still on disk (or archived) — so this is "since <date>", never a
- * selectable "last N days" window.
- */
+// /api/sessions is not windowed — it lists every session on disk (or archived), so this is "since <date>", never a selectable "last N days" window.
 export function useSessionPeriod(sessions: SessionMeta[] | null): SessionPeriod {
   return useMemo(() => {
     if (!sessions || sessions.length === 0) return { days: 0, since: null };

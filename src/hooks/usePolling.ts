@@ -28,13 +28,7 @@ interface Cached {
 // Only a response at most two poll intervals old is re-shown (see freshHit).
 const cache = new Map<string, Cached>();
 
-/**
- * The cached response for `url` when it is at most two poll intervals old, else
- * null. A poll that was switched off (the platform gating of the 2.5s agent and
- * 4s workflow polls) leaves an entry of any age behind; re-shown as current, an
- * hour-old "agent waiting" snapshot fired a false alert until the first fresh
- * response replaced it. Older than that, show the loading state instead.
- */
+// A switched-off poll can leave a stale entry of any age; re-shown as current it caused a false "agent waiting" alert, so only entries ≤2 intervals old are reused.
 function freshHit(url: string, intervalMs: number): Cached | null {
   const hit = cache.get(url);
   return hit && Date.now() - hit.fetchedAt <= 2 * intervalMs ? hit : null;
@@ -77,10 +71,7 @@ export function usePolling<T>(url: string, intervalMs = 5000): PollState<T> {
   const [lastFetch, setLastFetch] = useState(0);
 
   useEffect(() => {
-    // Per effect run, not a shared ref: on a URL switch (platform/range filter) a
-    // fetch for the old URL can resolve after this run has started. A ref reset to
-    // true here would let it through and paint the previous filter's data over the
-    // new one — for up to a whole interval on the 60s polls.
+    // Per-effect flag, not a shared ref: on a URL switch, a late response for the old URL could otherwise paint stale data over the new filter's.
     let cancelled = false;
     // An empty URL means "disabled" (e.g. a feature-gated poll): make no request,
     // settle to an idle/empty state, and skip the interval entirely.

@@ -24,11 +24,7 @@ export interface TagsApi {
   setTagsFor: (path: string, tags: string[]) => void;
   /** Every distinct tag in use, sorted. */
   allTags: () => string[];
-  /**
-   * Move tags stored under an old project path onto its current one (merged,
-   * de-duplicated) and drop the old key. Idempotent: once an old key is gone
-   * there is nothing left to move, so it runs once per key in practice.
-   */
+  /** Move tags from an old project path onto its current one (merged, de-duplicated); idempotent since a moved key leaves nothing behind to move again. */
   migrate: (moves: TagMove[]) => void;
 }
 
@@ -53,12 +49,7 @@ function cleanTags(list: string[]): string[] {
   return clean;
 }
 
-/**
- * The tag map after applying `moves`, or null when none of them applies. Project
- * paths used to be decoded from Claude Code's folder names (lossy: `iftah.dev`
- * came back as `dev-projects-iftah-dev`); they now come from the transcript cwd,
- * and /api/projects lists each project's old paths so no tag is orphaned.
- */
+// Old project paths were decoded lossily from folder names (e.g. iftah.dev → dev-projects-iftah-dev); they now come from the transcript cwd, and /api/projects lists each project's old paths so no tag is orphaned.
 export function migrateTagMap(tags: TagMap, moves: TagMove[]): TagMap | null {
   let next: TagMap | null = null;
   for (const { from, to } of moves) {

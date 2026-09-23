@@ -50,11 +50,7 @@ function useCapDraft(limits: Limits | null, onSave: (l: Limits | null) => void):
   };
 }
 
-/**
- * Draft state + save/clear handlers for the Settings panel's per-platform
- * spending-limit forms and the AI-key form. Keeps the parsing/persistence logic
- * out of the presentational SettingsView (which just renders inputs bound to this).
- */
+// Draft state + save/clear handlers for the Settings panel's per-platform spending-limit forms and the AI-key form; keeps parsing/persistence out of the presentational SettingsView.
 export function useSettingsForm({ limits, onChangeLimits, aiConfig, onChangeAiConfig }: Params) {
   const caps: Record<CapPlatform, CapDraft> = {
     claude: useCapDraft(limits.claude, (l) => onChangeLimits('claude', l)),

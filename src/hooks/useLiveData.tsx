@@ -57,10 +57,8 @@ const LiveDataContext = createContext<LiveDataCtx | null>(null);
  * window state shared between Live and Trends. Source-aware polls run through
  * `withSrc`; the LiteLLM poll is gated on gateway detection so Code-only /
  * direct-Anthropic users poll nothing; the Codex polls are gated the same way on
- * `codexAvailable` (they feed the Codex panels, the sidebar badge and the header
- * agent traffic signal). The 2.5s agent polls are further gated on the platform
- * switcher (`showClaude` / `showCodex`), and both workflow polls on
- * `showClaude` — Workflows is a Claude tab, shown under Claude and Both.
+ * `codexAvailable` (they feed the Codex panels, the sidebar badge and the header agent traffic signal); the 2.5s
+ * agent polls are further gated on showClaude/showCodex, and workflow polls on showClaude (a Claude-only tab).
  */
 export function LiveDataProvider({ children }: { children: ReactNode }) {
   const { withSrc, codexAvailable, showClaude, showCodex } = useSource();
@@ -69,12 +67,9 @@ export function LiveDataProvider({ children }: { children: ReactNode }) {
   const [weekDays, setWeekDays] = useState(7);
 
   const recent = usePolling<RecentData>(withSrc(`/api/usage/recent?hours=${recentHours}`), POLL);
-  // Long windows move slowly and their payload is large (up to 365 buckets), so
-  // they poll once a minute instead of every 5 s.
+  // Long windows move slowly and have a large payload (up to 365 buckets), so they poll once a minute instead of every 5 s.
   const weekly = usePolling<WeeklyData>(withSrc(`/api/usage/weekly?days=${weekDays}`), weeklyPollMs(weekDays));
-  // Live, budget rows and alerts always need the last 7 days at the fast rate,
-  // whatever the Trends window is. With weekDays = 7 the URLs match and the
-  // in-flight map collapses the two polls into one request.
+  // Live, budget rows and alerts always need the last 7 days at the fast rate; when weekDays=7 the URLs match and the in-flight map collapses both polls into one.
   const liveWeekly = usePolling<WeeklyData>(withSrc('/api/usage/weekly?days=7'), POLL);
   const models = usePolling<ModelsData>(withSrc('/api/usage/models?days=7'), POLL);
   const litellm = usePolling<LiteLlmSpendData>(
@@ -82,12 +77,7 @@ export function LiveDataProvider({ children }: { children: ReactNode }) {
     // The server caches gateway spend for 5 minutes; polling faster only re-slices it.
     60_000,
   );
-  // Live limits stay app-wide on both platforms (the sidebar badge, tab title and
-  // notifications read them). The fast agent polls run only while their platform
-  // is on screen — every consumer already hides the other side's data. Workflows
-  // are Claude Code's: tabsFor() drops the tab only under Codex, so the polls run
-  // whenever Claude is on screen (Claude or Both) — the tab and its sidebar badge
-  // are their only readers.
+  // Live limits stay app-wide (badge/title/notifications read them); the fast agent + workflow polls run only while their platform is on screen.
   const workflowsOn = showClaude;
   const liveUsage = usePolling<LiveUsageData>('/api/usage/live', 15000);
   const liveSubagents = usePolling<LiveSubagents>(showClaude ? '/api/subagents/live' : '', 2500);

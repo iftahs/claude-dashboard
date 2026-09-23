@@ -70,20 +70,7 @@ interface PlatformRows {
   rows: BudgetPeriod[];
 }
 
-/**
- * Soft (non-blocking) budget alerts — LiteLLM-inspired, evaluated PER PLATFORM:
- * Claude's spend against Claude's caps and Codex's against Codex's, whatever the
- * header switcher shows (switching the view never fires or hides an alert).
- *
- * Each platform's 7-day spend comes from `liveWeekly` when that poll is already
- * scoped to the platform (a Claude-only install is, once /api/sources answers), else from its own
- * explicit `?source=claude` / `?source=codex` poll — which only runs while that
- * platform has a cap and alerts are on. Fires a browser notification (and
- * optional chime) the first time spend crosses 70 / 90 / 100% of a cap, once per
- * threshold per calendar window; tracking resets when the period rolls over (a
- * new resetsAt), and what fired persists across reloads and tabs like
- * useLimitAlerts'. 'off' is a no-op. Same permission-request pattern as useLimitAlerts.
- */
+// Evaluated PER PLATFORM (Claude vs Codex caps), independent of the header switcher; fired state persists across reloads and tabs like useLimitAlerts'.
 export function useBudgetAlerts(mode: Settings['budgetAlert']) {
   const [caps] = usePlatformLimits();
   const { effectiveSource, codexAvailable, sourcesLoaded, sourcesError } = useSource();
@@ -95,9 +82,7 @@ export function useBudgetAlerts(mode: Settings['budgetAlert']) {
   const on = mode !== 'off';
   const claudeCapped = on && hasCaps(caps.claude);
   const codexCapped = on && codexAvailable && hasCaps(caps.codex);
-  // liveWeekly (and the Trends-window `weekly` behind costPerDay) already cover
-  // exactly this platform: reuse them instead of polling the same numbers twice.
-  // Until /api/sources answers, the unscoped poll may still include Codex spend.
+  // Reuse liveWeekly/weekly instead of polling twice; until /api/sources answers, the unscoped poll may still include Codex spend.
   const claudeInView = sourcesLoaded && (effectiveSource === 'claude' || (!codexAvailable && effectiveSource === null));
   const codexInView = effectiveSource === 'codex';
 

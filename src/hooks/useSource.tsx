@@ -54,10 +54,7 @@ export interface DataDir {
 }
 
 interface SourceCtx {
-  /**
-   * Effective platform — 'claude' whenever Codex data is absent, whatever was
-   * stored. With nothing stored, 'codex' for a Codex-only user, else 'claude'.
-   */
+  /** Effective platform — 'claude' whenever Codex data is absent; with nothing stored, 'codex' for a Codex-only user, else 'claude'. */
   platform: Platform;
   setPlatform: (p: Platform) => void;
   /** Switcher options; empty (switcher hidden) until Codex data exists. */
@@ -81,21 +78,11 @@ interface SourceCtx {
   /** The `?source=` value data URLs get right now, or null when they get none. */
   effectiveSource: 'claude' | SourceFilter | null;
   withSrc: (url: string) => string;
-  /**
-   * /api/sources has answered at least once. Until then the platform is a
-   * placeholder ('claude') — a Codex-only user is about to be moved to Codex — so
-   * anything platform-specific that cannot be taken back (a toast) should wait.
-   */
+  /** /api/sources has answered at least once; until then the platform is a 'claude' placeholder, so anything irreversible (a toast) should wait. */
   sourcesLoaded: boolean;
   /** The /api/sources fetch error while it has never succeeded; null once any response landed. */
   sourcesError: string | null;
-  /**
-   * Whether the platform + surface on screen has ANY local events (lifetime, from
-   * /api/sources), or null until it answers. What the empty state keys on — not the
-   * Live/Trends windows, which read zero for anyone who simply has not used the
-   * tool today. A boolean rather than the count, so the context does not change on
-   * every new event.
-   */
+  /** Whether the platform+surface on screen has ANY local events ever (lifetime, from /api/sources), or null until it answers — not the Live/Trends windows, which read zero for an idle-today user. */
   hasScopeData: boolean | null;
   /** The data folders behind the platform + surface on screen (empty on an older backend). */
   dataDirs: DataDir[];
@@ -119,8 +106,7 @@ export function SourceProvider({ children }: { children: ReactNode }) {
   const [storedPlatform, setStoredPlatform] = useState<Platform | null>(loadPlatform);
   const [source, setSourceState] = useState<SourceFilter>('all');
 
-  // With no stored choice, a Codex-only user (Codex events, no Claude Code or
-  // Cowork ones) starts on Codex instead of an empty Claude dashboard.
+  // With no stored choice, a Codex-only user (Codex events, no Claude/Cowork ones) starts on Codex instead of an empty Claude dashboard.
   const defaultPlatform: Platform = codexAvailable && codeN + coworkN === 0 ? 'codex' : 'claude';
   const platform: Platform = codexAvailable ? storedPlatform ?? defaultPlatform : 'claude';
 

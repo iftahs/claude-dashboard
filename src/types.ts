@@ -17,12 +17,7 @@ export interface SourceSplit {
   codex: TokenTotals;
 }
 
-/**
- * /api/sources — which usage surfaces have local data (lifetime event counts) and
- * where each platform's data is read from. Gates all Cowork and Codex UI, the
- * empty state and a Codex-only user's default platform. The dirs are optional:
- * an older backend omits them, and the sidebar falls back to the envelope's claudeDir.
- */
+/** /api/sources — which usage surfaces have local data and where each platform's files live; dirs are optional (older backend omits them, sidebar falls back to claudeDir). */
 export interface SourcesInfo {
   code: { events: number; lastTs: number };
   cowork: { available: boolean; events: number; lastTs: number };
@@ -104,10 +99,7 @@ export interface ActiveBlock {
   byModel: Record<string, number>;
 }
 
-/**
- * GET /api/codex/block — the Codex counterpart of `RecentData.activeBlock`: local
- * Codex usage inside the current rate-limit window (the 5-hour one, else weekly).
- */
+/** GET /api/codex/block — the Codex counterpart of `RecentData.activeBlock`: local usage inside the current rate-limit window (5-hour, else weekly). */
 export interface CodexBlock extends ActiveBlock {
   windowSec: number;
   /** 'live'/'passive': the provider's window (reset − length); 'local': rolled from the first Codex event. */
@@ -239,8 +231,7 @@ export interface DailyActivity {
   /** YYYY-MM-DD — the local calendar day, or the UTC day for `?utc=1`. */
   date: string;
   effectiveTokens: number;
-  /** Every token, cache reads included (the server always sends it; optional so
-   *  client-side placeholder days need not invent one). */
+  /** Every token, cache reads included; optional so client-side placeholder days need not invent one. */
   totalTokens?: number;
   messageCount: number;
   toolCallCount: number;
@@ -390,10 +381,7 @@ export interface LiveExtraUsage {
   weekly: unknown | null;
 }
 
-/**
- * Each Claude surface's share of this week's usage so far (the rows add up to 100):
- * Claude Code, Chats, Cowork, Other. Not a share of the quota.
- */
+/** Each Claude surface's share of this week's usage so far (rows sum to 100: Code, Chats, Cowork, Other) — not a share of the quota. */
 export interface LiveWeeklyBreakdown {
   as_of: string | null;
   window_started_at: string | null;
@@ -713,12 +701,7 @@ export interface MainAgent {
   delegating: boolean;
   status: 'running';
   traffic: AgentTrafficStatus;
-  /**
-   * The last turn finished and the session is idle on the user — a soft state,
-   * never red and never an alert. Sent by both live agent endpoints
-   * (/api/subagents/live, /api/codex/agents/live); optional so an older backend
-   * still type-checks and simply never shows it.
-   */
+  /** The last turn finished and the session is idle on the user — a soft state, never red/alerting; optional so an older backend still type-checks. */
   yourTurn?: boolean;
 }
 

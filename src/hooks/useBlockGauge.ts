@@ -41,14 +41,7 @@ const NEUTRAL = '#71717a';
 /**
  * All of BlockGauge's derived view-model: ring geometry/color, reset countdown,
  * burn rate + ETA, and the live-vs-estimate selection. Ticks every second so the
- * countdown stays live. Limit alerts are app-level (useLimitAlerts), not here, so
- * they fire on every tab and platform.
- *
- * The rows are the local block (the Claude session's current block, or Codex's
- * current window); the ring and the ETA are the provider's live % when there is one.
- * The ETA extrapolates that % at its average pace since the window opened, so it can
- * never contradict the ring — the local block's tokens against the 6M heuristic are
- * only the offline fallback.
+ * countdown stays live. Limit alerts are app-level (useLimitAlerts), not here, so they fire on every tab and platform.
  */
 export function useBlockGauge({
   block,
@@ -72,10 +65,7 @@ export function useBlockGauge({
   const now = Date.now();
   const hasLive = !isApi && !!live;
 
-  // An expired local block must read as ended, live reading or not (a live window
-  // with no reset, or a Codex block that fell back to the local anchor), not as
-  // the last session's tokens. The client-clock check covers a server block
-  // memoised before it expired. Once it has ended, that block is the previous one.
+  // An expired local block must read as ended (live or not), not as the last session's tokens; the client-clock check catches a block memoised before it expired.
   const blockEnded = !!block && (!block.isActive || block.resetsAt <= now);
   const current = blockEnded ? null : block?.totals;
   const previous = blockEnded ? block?.totals : block?.prevTotals;
@@ -104,22 +94,18 @@ export function useBlockGauge({
   const dash = c * Math.max(0, Math.min(1, ringPct / 100));
   const ringColor = !isApi && tokPct === null ? NEUTRAL : limitColor(ringPct);
 
-  // Resets in — when there is no active block (live resets_at=null, or the local
-  // block has ended), show helpful hint
+  // Resets in — when there is no active block (live resets_at=null, or the local block has ended), show a helpful hint.
   const liveResetsAt = hasLive && live!.resetsAt ? Date.parse(live!.resetsAt) : NaN;
   const noActiveBlock = hasLive ? live!.resetsAt == null : blockEnded;
   const blockResetsAt = !isNaN(liveResetsAt) ? liveResetsAt : (block?.resetsAt ?? (now + windowMs));
   const remainingMs = Math.max(0, blockResetsAt - now);
   const resetStr = noActiveBlock ? 'on next message' : formatRemaining(remainingMs);
 
-  // ── Burn rate: this block's local pace ────────────────────────────────────
   const blockStart = block?.start ?? now;
   const elapsedMs = Math.max(60_000, now - blockStart); // floor at 1 min to avoid div-by-zero
   const burnRatePerHour = effective > 0 ? Math.round((effective / elapsedMs) * 3600_000) : 0;
   const burnCostPerHour = cost > 0 ? (cost / elapsedMs) * 3600_000 : 0;
 
-  // ── Limit ETA: the live % at its pace since the window opened; offline, the
-  //    local block against the heuristic limit (none when the limit is unknown) ──
   let minsUntilLimit: number | null = null;
   let projectedPct: number | null = null;
   if (hasLive && !isNaN(liveResetsAt)) {

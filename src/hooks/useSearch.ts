@@ -12,10 +12,7 @@ const DEBOUNCE_MS = 450;
 /** The server clamps `days` to 1–90. */
 const MAX_DAYS = 90;
 
-/**
- * Debounced transcript search, scoped to the selected platform / surface like the
- * session table it feeds — under Codex a Claude transcript hit could not be opened.
- */
+// Scoped to the selected platform/surface like the session table it feeds — under Codex a Claude transcript hit could not be opened.
 export function useSearch(query: string, days = 50): SearchState {
   const { withSrc } = useSource();
   const [state, setState] = useState<SearchState>({ results: null, loading: false, error: null });

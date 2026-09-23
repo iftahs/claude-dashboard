@@ -2,12 +2,7 @@ import { useState } from 'react';
 import { usePolling } from './usePolling';
 import type { ArchiveSummary, Envelope } from '../types';
 
-/**
- * The opt-in history archive (server env DASHBOARD_RETAIN_HISTORY=1): its status
- * from GET /api/archive, and `forget()`, which deletes it via POST
- * /api/archive/forget — a JSON body, as the server's CSRF guard requires of every
- * write. The forget response (the emptied summary) shows until a newer poll lands.
- */
+// forget() POSTs a JSON body (the server's CSRF guard requires one on every write); its response shows until a newer poll lands.
 export function useArchive() {
   const poll = usePolling<ArchiveSummary>('/api/archive', 60_000);
   const [after, setAfter] = useState<{ summary: ArchiveSummary; at: number } | null>(null);

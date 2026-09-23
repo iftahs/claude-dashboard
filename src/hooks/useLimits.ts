@@ -10,11 +10,7 @@ export interface Limits {
 /** A platform that has its own spending caps. */
 export type CapPlatform = 'claude' | 'codex';
 
-/**
- * Spending caps per platform. Codex is null until the user sets Codex caps — the
- * one-time migration from the single global set gives Claude the old caps and
- * Codex none, so a Claude-only user sees exactly what they had.
- */
+// Codex is null until the user sets Codex caps; the one-time migration gives Claude the old global caps and Codex none.
 export interface PlatformLimits {
   claude: Limits;
   codex: Limits | null;
@@ -44,10 +40,7 @@ function parse(json: string | null): unknown {
   }
 }
 
-/**
- * Stored caps → PlatformLimits. A v3 record wins; otherwise the v2 global caps
- * become Claude's and Codex starts with none. Malformed values read as "no cap".
- */
+// v3 record wins; otherwise v2's global caps become Claude's and Codex starts with none. Malformed values read as "no cap".
 export function migrateLimits(v3: string | null, v2: string | null): PlatformLimits {
   const stored = parse(v3);
   if (stored && typeof stored === 'object' && 'claude' in stored) {
@@ -65,8 +58,7 @@ function read(key: string): string | null {
   }
 }
 
-// One store for every hook instance (App, Settings, the budget alerts), so a cap
-// saved in Settings reaches the Live tab and the alerts without a reload.
+// One store for every hook instance, so a cap saved in Settings reaches the Live tab and alerts without a reload.
 let current: PlatformLimits | null = null;
 const listeners = new Set<() => void>();
 
@@ -105,7 +97,6 @@ export function hasCaps(l: Limits | null | undefined): boolean {
   return !!l && (l.dailyLimit != null || l.weeklyLimit != null || l.monthlyLimit != null);
 }
 
-/** Both platforms' caps plus a per-platform setter (Settings, budget alerts). */
 export function usePlatformLimits(): [PlatformLimits, (platform: CapPlatform, limits: Limits | null) => void] {
   return [useSyncExternalStore(subscribe, snapshot), setPlatformLimits];
 }
@@ -114,11 +105,7 @@ function sum(a: number | null, b: number | null): number | null {
   return a != null && b != null ? a + b : null;
 }
 
-/**
- * The caps that match what the header platform shows: Claude's, Codex's, or under
- * Both the sum of the two — a combined cap only for a period both platforms cap,
- * since Both compares the combined spend.
- */
+// Under Both, sums the two platforms' caps — but only for a period both actually cap, since Both compares combined spend.
 export function limitsFor(all: PlatformLimits, platform: Platform): Limits {
   if (platform === 'claude') return all.claude;
   const codex = all.codex ?? NO_LIMITS;

@@ -3,7 +3,6 @@ import { useSource } from './useSource';
 import { isYourTurn } from '@/components/design-system/organisms/AgentActivity/utils';
 import type { AgentTrafficStatus, LiveSubagents } from '../types';
 
-/** Traffic tallies of one platform's live agents feed. */
 export interface PlatformTraffic {
   running: number;
   waiting: number;
@@ -23,11 +22,7 @@ export interface AgentTrafficCounts extends PlatformTraffic {
 
 const NONE: PlatformTraffic = { running: 0, waiting: 0, finished: 0, yourTurn: 0 };
 
-/**
- * One feed's tallies. `running` and `waiting` come from the server's counts (running
- * = subagents + mains working or delegating, the same number the sidebar badge
- * shows); `yourTurn` is counted from the mains so an older server simply reports 0.
- */
+// running/waiting mirror the server's sidebar-badge counts; yourTurn is computed here, so an older server simply reports 0.
 export function platformTraffic(d: LiveSubagents | null | undefined): PlatformTraffic {
   if (!d) return NONE;
   return {
@@ -41,10 +36,8 @@ export function platformTraffic(d: LiveSubagents | null | undefined): PlatformTr
 /**
  * Traffic-light tallies + dominant state from the live agents polls, scoped to the
  * platform switcher: Claude Code only under 'claude', Codex (ChatGPT desktop) only
- * under 'codex', summed under 'both'. The header lamp and the Agents badge key off
- * these counts; the attention alert (useAgentAlerts) also covers the hidden platform.
- * The Codex poll is disabled (empty data) unless Codex data exists locally — and the
- * platform is pinned to Claude then — so Claude-only users see exactly the Claude counts.
+ * under 'codex', summed under 'both'. The Codex poll is disabled (empty data) unless Codex data exists locally
+ * (platform pinned to Claude then), so Claude-only users see exactly the Claude counts.
  */
 export function useAgentTraffic(): AgentTrafficCounts {
   const { showClaude, showCodex } = useSource();

@@ -31,12 +31,7 @@ function playChime() {
   }
 }
 
-/**
- * Notification copy for the agents waiting on each platform. "Waiting" means
- * something different per platform, so each names its own causes and never
- * borrows the other's wording: Claude — a permission prompt, a rejected tool call
- * or an API error; Codex — an approval request, a declined action or a failed turn.
- */
+// "Waiting" means something different per platform, so each names its own causes rather than sharing wording.
 export function agentAlertText(claude: number, codex: number): { title: string; body: string } {
   const total = claude + codex;
   const title = total === 1 ? 'Agent needs your attention' : 'Agents need your attention';
@@ -67,14 +62,7 @@ export function agentAlertText(claude: number, codex: number): { title: string; 
  * browser notification and/or chime per the user's Settings choice. 'visual'
  * mode is a no-op here. Same permission-request pattern as useLimitAlerts.
  *
- * Counts come from BOTH platforms whatever the switcher shows — the badges stay
- * scoped to the view, but a Claude session stuck on a permission prompt still
- * alerts while the view is on Codex (and vice versa). The visible platforms' counts
- * come from the shared live polls; a hidden one is polled here, slowly, only while
- * alerts are on. `_viewWaiting` (the view-scoped total) is kept for the call site
- * and no longer read.
- *
- * The soft "your turn" state never alerts: only `counts.waiting` is watched.
+ * Counts cover BOTH platforms regardless of the switcher — a hidden platform is polled here and can still alert.
  */
 export function useAgentAlerts(_viewWaiting: number, mode: Settings['agentAlert']) {
   const { liveSubagents, codexAgents } = useLiveData();
@@ -85,9 +73,7 @@ export function useAgentAlerts(_viewWaiting: number, mode: Settings['agentAlert'
     alertsOn && codexAvailable && !showCodex ? '/api/codex/agents/live' : '',
     HIDDEN_POLL_MS,
   );
-  // null = that feed has no data yet (loading, or just handed over between the view
-  // poll and the hidden poll on a platform switch) — never read as a drop to zero,
-  // or its first response would look like a rise and re-alert an old wait.
+  // null = no data yet (loading, or mid-handover on a platform switch) — never read as a drop to zero, or it would re-alert an old wait.
   const claudeFeed = showClaude ? liveSubagents.data : hiddenClaude.data;
   const codexFeed = showCodex ? codexAgents.data : hiddenCodex.data;
   const claude = claudeFeed ? claudeFeed.counts.waiting : null;

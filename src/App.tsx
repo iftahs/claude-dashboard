@@ -58,25 +58,17 @@ const TABS: { id: Tab; icon: string; label: string }[] = [
   { id: 'settings', icon: '⚙', label: 'Settings' },
 ];
 
-/**
- * Tabs per platform. Every tab renders the selected platform's data, side by side
- * under Both, so the list is the same everywhere except that Codex alone drops
- * Workflows: Claude Code's workflow journals have no Codex counterpart (Codex
- * records no multi-agent runs). Under Both, Workflows stays and shows the Claude
- * runs with a scope note, and Workspace is on every platform.
- */
+// Codex alone drops Workflows — no Codex counterpart; every other platform keeps the full list.
 function tabsFor(platform: Platform) {
   return platform === 'codex' ? TABS.filter((t) => t.id !== 'workflows') : TABS;
 }
 
-/** What to say when the platform on screen has no local usage at all. */
 function emptyCopy(platform: Platform): string {
   if (platform === 'codex') return 'No Codex usage found. Run a thread in the ChatGPT desktop app, then this dashboard will populate.';
   if (platform === 'both') return 'No usage logs found. Use Claude Code or Codex, then this dashboard will populate.';
   return 'No usage logs found. Use Claude Code, then this dashboard will populate.';
 }
 
-/** The Live tab's note when its live limits render over no local usage. */
 function liveOnlyCopy(platform: Platform): string {
   const what = platform === 'codex' ? 'a Codex thread' : platform === 'both' ? 'Claude Code or Codex' : 'Claude Code';
   return `No local usage yet — the plan limits here are read live from your account. The charts fill in once you use ${what}.`;
@@ -115,19 +107,14 @@ export default function App() {
   useDocumentTitle();
 
   const error = recent.error || weekly.error;
-  // Empty means the platform on screen has no local events AT ALL (lifetime counts
-  // from /api/sources), not "nothing in the last 12 h / 7 d" — a user who simply
-  // has not worked today must still see their history. The windows only confirm
-  // it: they refresh every 5 s against the sources poll's 60 s, so first use shows
-  // up at once.
+  // "Empty" = zero events ever (lifetime, from /api/sources), not just an empty window — an idle-today user must still see history.
   const windowsEmpty =
     !recent.loading &&
     !weekly.loading &&
     (recent.data?.totals.totalTokens ?? 0) === 0 &&
     (weekly.data?.totals.totalTokens ?? 0) === 0;
   const empty = hasScopeData === false && windowsEmpty;
-  // Live limits come from the provider, not the local logs, so the Live tab still
-  // has something true to show with no local usage.
+  // Live limits come from the provider, not local logs, so Live still has something true to show with no local usage.
   const hasLiveLimits =
     (showClaude && !isApi && !!liveUsage.data && !liveUsage.data.error) ||
     (showCodex && !!codexLive.data && !codexLive.data.error);

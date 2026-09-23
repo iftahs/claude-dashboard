@@ -13,12 +13,7 @@ interface TabDef {
 
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
 
-/**
- * Decorates the static tab list with live trailing badges (running agents, the
- * binding rate-limit window, running workflows). Badge JSX lives in the
- * SidebarBadge atom — no inline pill markup. The limit badge takes its tone from
- * limitTone() (70 / 90 %), the same thresholds as the gauge ring and the plan bars.
- */
+// Decorates the tab list with live badges (running agents, the binding rate-limit window, running workflows); the limit badge's tone comes from limitTone() (70/90%), same thresholds as the gauge ring and plan bars.
 export function useSidebarTabs(tabs: TabDef[]): SidebarTab[] {
   const { runningAgentCount, liveWorkflowCount, limitPct, limitTooltip } = useLiveMetrics();
   const { waiting: waitingAgentCount } = useAgentTraffic();
@@ -55,8 +50,7 @@ export function useSidebarTabs(tabs: TabDef[]): SidebarTab[] {
             };
           }
         }
-        // The binding rate-limit window for the platform(s) on screen — the fullest
-        // 5-hour or weekly window, 100% once one is reached (see useLiveMetrics).
+        // The binding rate-limit window for the platform(s) on screen — fullest 5-hour or weekly window, 100% once reached (see useLiveMetrics).
         if (t.id === 'live' && limitPct != null) {
           return {
             ...t,

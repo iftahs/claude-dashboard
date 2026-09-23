@@ -14,9 +14,7 @@ import { isTokenExpired } from '@/components/design-system/organisms/CodexPlanPa
 /**
  * App-level side effects: anonymous analytics + the toast notifications that
  * replaced the old inline banners (update available, Claude.ai offline/expired,
- * Codex token expired, pay-as-you-go note) + the alert hooks. Each toast is
- * scoped to the platform it is about. Kept out of the render tree so App stays
- * a thin shell.
+ * Codex token expired, pay-as-you-go note) + the alert hooks, each scoped to the platform it's about. Kept out of the render tree so App stays a thin shell.
  */
 export function useDashboardNotifications(activeTab: string) {
   const { configData, detectedMode, effectiveMode, isApi, settings } = useConfigMode();
@@ -31,8 +29,7 @@ export function useDashboardNotifications(activeTab: string) {
   useLimitAlerts();
 
   // Soft (non-blocking) budget alerts (LiteLLM-inspired) — fire app-wide, not
-  // just on the Live tab, the first time spend crosses a cap threshold. Each
-  // platform is checked against its own caps, whatever the header shows.
+  // just on the Live tab, the first time spend crosses a cap threshold. Each platform is checked against its own caps.
   useBudgetAlerts(settings.budgetAlert);
 
   // ── Product analytics (anonymous, path-free events only — see lib/analytics) ──
@@ -92,10 +89,7 @@ export function useDashboardNotifications(activeTab: string) {
     });
   }, [isApi, detectedMode, showClaude, liveUsage.data?.error, notify, dismiss]);
 
-  // Codex token expired / rejected — the Codex counterpart of the Claude.ai toast
-  // above. Only while Codex is on screen; clears as soon as the live poll recovers
-  // (the ChatGPT app refreshes its own token — the dashboard never does). Other
-  // Codex errors (no login, no snapshot) are shown inline on the Live plan card.
+  // Codex token expired/rejected — Codex counterpart of the Claude.ai toast; the ChatGPT app refreshes its own token, the dashboard never does.
   useEffect(() => {
     const err = showCodex ? codexLive.data?.error : undefined;
     const rejected = !!err && /rejected/i.test(err);
@@ -112,12 +106,7 @@ export function useDashboardNotifications(activeTab: string) {
     });
   }, [showCodex, codexLive.data?.error, notify, dismiss]);
 
-  // Pay-as-you-go note — shown once per session when API mode is active and
-  // Claude is on screen. It is about Claude.ai (Anthropic's API rates), so a
-  // Codex-only view — e.g. a Codex user with no Claude.ai login, whose detected
-  // mode is 'api' — never sees it; switching to Claude later still shows it once.
-  // It waits for /api/sources: until then the platform is a 'claude' placeholder
-  // that a Codex-only user is about to leave.
+  // Pay-as-you-go note — shown once per session when API mode is active and Claude is on screen; waits for /api/sources so a Codex-only user never sees it.
   const apiNotified = useRef(false);
   useEffect(() => {
     if (!showClaude) {

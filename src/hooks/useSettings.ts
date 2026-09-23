@@ -12,9 +12,7 @@ export interface Settings {
   // How to alert when spend crosses a budget cap threshold (70/90/100%):
   // off, a browser notification, or notification + an audible chime.
   budgetAlert: 'off' | 'notification' | 'sound';
-  // Rate-limit alerts (Claude 5-hour / weekly, Codex 5-hour / weekly), read by
-  // useLimitAlerts through resolveLimitAlerts (lib/limits), which also accepts the
-  // older string / boolean shapes. Unset = notifications at 70 / 90 %.
+  // Read via resolveLimitAlerts (lib/limits), which also accepts older string/boolean shapes. Unset = notifications at 70 / 90 %.
   limitAlerts?: LimitAlertConfig;
   // First day of the week for weekly windows/reset. 'auto' resolves from the
   // browser locale (see useConfigMode → weekStart).

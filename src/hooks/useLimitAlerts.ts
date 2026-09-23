@@ -5,8 +5,7 @@ import { isFiniteNumber, readAlertMemory, writeAlertMemory } from '../lib/alert-
 import { useConfigMode } from './useConfigMode';
 import { useLiveData } from './useLiveData';
 
-/** Short WebAudio chime — no asset needed. Best-effort; silent on failure.
- *  (Kept local like useAgentAlerts' / useBudgetAlerts' chimes, so each alert hook is self-contained.) */
+// Short WebAudio chime — no asset needed; kept local like the other alert hooks' chimes so each stays self-contained.
 function playChime() {
   try {
     const Ctx =
@@ -61,18 +60,7 @@ function message(r: LimitReading, level: number): { title: string; body: string 
   };
 }
 
-/**
- * App-wide rate-limit alerts for every provider window with live data — Claude.ai's
- * 5-hour and weekly limits and Codex's 5-hour and weekly windows — whichever
- * platform the header shows and whichever tab is open (they used to live inside
- * the Live tab's gauge, so they fired only there, and only for Claude).
- *
- * Each threshold (Settings → `limitAlerts`, default 70 / 90 %) fires once per
- * window, plus once when the limit is reached; tracking resets when the window
- * rolls over (a reset time a window-length later) or its % falls well below the
- * lowest threshold. What fired is kept in localStorage, so a reload or a second
- * tab doesn't alert again for the same window.
- */
+// App-wide alerts for every provider window (Claude + Codex, 5h + weekly), regardless of tab or header; each threshold fires once per window (localStorage-deduped across reloads/tabs).
 export function useLimitAlerts() {
   const { liveUsage, codexLive } = useLiveData();
   const { isApi, settings } = useConfigMode();
