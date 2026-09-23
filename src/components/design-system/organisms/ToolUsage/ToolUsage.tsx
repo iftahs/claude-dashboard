@@ -1,17 +1,17 @@
 import { compact } from '@/lib/format';
 import type { ToolUsageProps } from './types';
 
-export function ToolUsage({ tools, totalCalls }: ToolUsageProps) {
+export function ToolUsage({ tools, totalCalls, days = 7, limit = 8 }: ToolUsageProps) {
   if (tools.length === 0) {
     return <div className="text-sm text-zinc-500">No tool calls in this window.</div>;
   }
-  const top = tools.slice(0, 8);
+  const top = tools.slice(0, limit);
   const max = top[0]?.count ?? 1;
 
   return (
     <div>
       <div className="mb-3 text-xs text-zinc-500">
-        <span className="font-semibold text-zinc-300">{compact(totalCalls)}</span> tool calls · 7d
+        <span className="font-semibold text-zinc-300">{compact(totalCalls)}</span> tool calls · {days}d
       </div>
       <div className="space-y-2">
         {top.map((t) => {

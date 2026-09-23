@@ -14,6 +14,7 @@ import { memoBuilder } from './builder-cache.ts';
 import {
   buildErrors, buildRetries, buildLanguages, buildBranches, buildMcp,
   buildComplexity, buildYield, buildRejections, buildSubagentStats, buildFileChurn, scopeInsights,
+  buildTurnLatency, buildInsightsSummary, knownProjectRoots,
 } from './insights.ts';
 import { buildContributors } from './contributors.ts';
 import { getCommandUsage } from './history.ts';
@@ -913,14 +914,16 @@ app.get('/api/insights/subagents', async (req, res) => {
   }
 });
 
-// File churn — most-edited files (Edit/Write/MultiEdit) over the window.
+// File churn — most-edited files (Edit/Write/MultiEdit) over the window. The
+// project label may come from any platform's known folders (unscoped roots): a
+// Codex chat started in a scratch folder still edits files of a real repo.
 app.get('/api/insights/churn', async (req, res) => {
   try {
     const days = clampDays(req.query.days);
     const { insights, computedAt } = await getInsights();
     const source = parseSource(req.query.source);
     const data = memoBuilder('churn', [days, source], insightsFingerprint(), () =>
-      buildFileChurn(scopeInsights(insights, source), days, computedAt),
+      buildFileChurn(scopeInsights(insights, source), days, computedAt, 25, knownProjectRoots(insights)),
     );
     res.json(wrap(data, computedAt));
   } catch (e) {
@@ -928,11 +931,46 @@ app.get('/api/insights/churn', async (req, res) => {
   }
 });
 
-// Slash-command / skill usage from history.jsonl (no source filter).
+// Turn latency — median / p90 turn time and time to first token, with a histogram
+// split per platform (so Both can stack Claude and Codex instead of blending them).
+app.get('/api/insights/turns', async (req, res) => {
+  try {
+    const days = clampDays(req.query.days);
+    const { insights, computedAt } = await getInsights();
+    const source = parseSource(req.query.source);
+    const data = memoBuilder('turns', [days, source], insightsFingerprint(), () =>
+      buildTurnLatency(scopeInsights(insights, source), days, computedAt),
+    );
+    res.json(wrap(data, computedAt));
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+// The Insights KPI row: failure rate (rejections excluded), rejection rate, commit
+// rate over repo sessions, delegation / auto-review rate — overall and per platform.
+app.get('/api/insights/summary', async (req, res) => {
+  try {
+    const days = clampDays(req.query.days);
+    const { insights, computedAt } = await getInsights();
+    const source = parseSource(req.query.source);
+    const data = memoBuilder('insight-summary', [days, source], insightsFingerprint(), () =>
+      buildInsightsSummary(scopeInsights(insights, source), days, computedAt),
+    );
+    res.json(wrap(data, computedAt));
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+// Slash commands (history.jsonl, Claude Code only) + skills (per-request
+// attributionSkill, counted once per session), scoped by ?source=.
 app.get('/api/insights/commands', async (req, res) => {
   try {
     const days = clampDays(req.query.days);
-    res.json(wrap(await getCommandUsage(days), Date.now()));
+    const source = parseSource(req.query.source);
+    const { computedAt } = await getEvents();
+    res.json(wrap(await getCommandUsage(days, computedAt, source), computedAt));
   } catch (e) {
     res.status(500).json({ error: String(e) });
   }

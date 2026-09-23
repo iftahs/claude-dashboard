@@ -482,19 +482,28 @@ export interface ProjectData {
 
 export interface InsightsErrors {
   totalCalls: number;
+  /** Failed calls — rejections are never counted as failures. */
   errors: number;
   errorRate: number;
+  rejections: number;
+  rejectionRate: number;
+  /** Failure categories only (no 'rejected'). */
   categories: Record<string, number>;
+  /** Tools that failed at least once, most failures first (clipped). */
   perTool: { name: string; calls: number; errors: number; errorRate: number }[];
+  perToolTotal: number;
   trend: { date: string; calls: number; errors: number }[];
 }
 
 export interface InsightsRetries {
   oneShotRate: number;
+  /** Claude Edit/Write/MultiEdit calls only. */
   totalEdits: number;
   retried: number;
   wastedTokens: number;
   wastedCost: number;
+  /** Codex edits in the window, left out: a Codex patch never retries. */
+  codexEdits: number;
 }
 
 export interface InsightsLanguages {
@@ -517,28 +526,45 @@ export interface InsightsMcp {
   perServer: { server: string; calls: number; errors: number }[];
 }
 
+export type InsightPlatform = 'claude' | 'codex';
+
 export interface ComplexityPoint {
   sessionId: string;
   project: string;
   turns: number;
   toolCalls: number;
+  /** Subagent spawns + Codex guardian reviews — the dot size. */
   subagents: number;
   effectiveTokens: number;
   durationMin: number;
   date: string;
+  platform: InsightPlatform;
 }
 
 export interface InsightsYield {
+  /** Every session in the window. */
+  sessions: number;
+  /** Sessions that could commit (a branch, a remote, or git activity). */
+  repoSessions: number;
+  noRepo: number;
+  tokensNoRepo: number;
   committed: number;
   tokensCommitted: number;
   uncommitted: number;
   tokensUncommitted: number;
+  /** committed / repoSessions. */
   rate: number;
+  prSessions: number;
+  prCount: number;
   topUncommitted: { project: string; date: string; effectiveTokens: number }[];
 }
 
 export interface InsightsRejections {
   total: number;
+  /** Codex guardian denials (tool name `GuardianReview`). */
+  guardianDenials: number;
+  /** Declines a person made: Claude permission prompts, Codex items under the 'user' reviewer. */
+  userDeclines: number;
   perTool: { name: string; calls: number; rejections: number }[];
 }
 
@@ -547,7 +573,50 @@ export interface SubagentStats {
   byType: Record<string, number>;
   byModel: Record<string, number>;
   avgPerSession: number;
+  /** Any spawn, guardian reviews included (legacy blend). */
   delegationRate: number;
+  delegation: { spawns: number; sessions: number; rate: number | null; avgPerSession: number };
+  autoReview: { reviews: number; denials: number; sessions: number; rate: number | null; avgPerSession: number };
+}
+
+/** /api/insights/turns — per-turn latency (mirrors server buildTurnLatency). */
+export interface LatencyStats {
+  turns: number;
+  medianMs: number | null;
+  p90Ms: number | null;
+  medianTtftMs: number | null;
+  p90TtftMs: number | null;
+  activeMs: number;
+}
+
+export interface InsightsTurns extends LatencyStats {
+  histogram: { label: string; upToMs: number | null; claude: number; codex: number; total: number }[];
+  byPlatform: Record<InsightPlatform, LatencyStats | null>;
+}
+
+/** /api/insights/summary — the Insights KPI row (mirrors server InsightKpis). */
+export interface InsightKpis {
+  totalCalls: number;
+  failures: number;
+  failureRate: number | null;
+  rejections: number;
+  rejectionRate: number | null;
+  sessions: number;
+  repoSessions: number;
+  committed: number;
+  commitRate: number | null;
+  delegatingSessions: number;
+  delegationSpawns: number;
+  delegationRate: number | null;
+  codexSessions: number;
+  reviews: number;
+  denials: number;
+  reviewedSessions: number;
+  autoReviewRate: number | null;
+}
+
+export interface InsightsSummary extends InsightKpis {
+  byPlatform: Record<InsightPlatform, InsightKpis | null>;
 }
 
 /** Traffic-light status: finished (green) · running (yellow) · waiting (red).
@@ -747,9 +816,13 @@ export interface AiInsightResponse {
 // ── Workspace & extra insights panels ────────────────────────────────────────
 
 export interface CommandUsageData {
+  /** Slash-command invocations + skill sessions. */
   totalCommands: number;
   uniqueCommands: number;
-  commands: { command: string; count: number }[];
+  /** Slash commands count invocations; skills count the sessions that ran them. */
+  commands: { command: string; count: number; kind: 'slash' | 'skill' }[];
+  slashCommands: number;
+  skillSessions: number;
 }
 
 export interface FileChurnEntry {

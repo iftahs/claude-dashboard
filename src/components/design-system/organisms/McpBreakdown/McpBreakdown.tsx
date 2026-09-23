@@ -1,8 +1,10 @@
 import { Skeleton } from '@/components/design-system/atoms/Skeleton/Skeleton';
 import { compact } from '@/lib/format';
+import { builtInCopy } from './utils';
 import type { McpBreakdownProps } from './types';
 
-export function McpBreakdown({ data }: McpBreakdownProps) {
+export function McpBreakdown({ data, platform }: McpBreakdownProps) {
+  const copy = builtInCopy(platform);
   if (!data) {
     return (
       <div className="space-y-4">
@@ -52,10 +54,10 @@ export function McpBreakdown({ data }: McpBreakdownProps) {
 
       {/* Plain-language explanation of what the split means */}
       <p className="text-[11px] leading-relaxed text-zinc-500">
-        <span className="text-zinc-400">Built-in</span> = Claude's native tools (Read, Bash, Edit…).{' '}
+        <span className="text-zinc-400">Built-in</span> = {copy.agentNoun} native tools ({copy.examples}).{' '}
         <span className="text-zinc-400">MCP</span> = tools from connected MCP servers. Numbers are
         tool-call counts in this window; <span className="text-red-400">errors</span> are calls that
-        failed or were rejected.
+        failed (a declined call never reached the server, so it is not one).
       </p>
 
       {/* Per-server table: name · calls · errors, columns aligned */}

@@ -115,7 +115,11 @@ test('declined items are rejections, not errors and not successes', async () => 
     rejections.perTool.map((t) => [t.name, t.rejections, t.calls]).sort(),
     [['Bash', 1, 1], ['Edit', 1, 3]],
   );
-  assert.equal(buildErrors(insights, 30, NOW).categories.rejected, 2);
+  // Rejections are counted beside failures, never as one of them.
+  const errors = buildErrors(insights, 30, NOW);
+  assert.equal(errors.rejections, 2);
+  assert.equal(errors.errors, 1);
+  assert.equal(errors.categories['patch-failed'], 1);
 });
 
 test('a declined git commit / push is not a commit or a push; a completed one is', async () => {
