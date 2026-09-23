@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { memoBuilder } from './builder-cache.ts';
+import { MEMO_MAX, memoBuilder, memoSize } from './builder-cache.ts';
 import { canReuseMerge, memoToken, type MergeBasis } from './data.ts';
 
 const MINUTE = 60_000;
@@ -29,6 +29,26 @@ test('an idle dashboard still rebuilds time-windowed output once a minute', () =
   assert.equal(builds, 1);
   assert.equal(build(T0 + MINUTE + 1_000), T0 + MINUTE + 1_000, 'next minute: rebuilt');
   assert.equal(builds, 2);
+});
+
+test('the memo is capped, and evicts the entry rebuilt longest ago', () => {
+  const token = memoToken(7, T0);
+  const build = (days: number) => memoBuilder('test-cap', [days, 'all'], token, () => days);
+  // A key sweep (e.g. every integer days value × source) must not grow the map without bound.
+  for (let d = 0; d < MEMO_MAX * 3; d++) build(d);
+  assert.ok(memoSize() <= MEMO_MAX);
+
+  let builds = 0;
+  const counted = (days: number) =>
+    memoBuilder('test-cap', [days, 'all'], token, () => {
+      builds++;
+      return days;
+    });
+  const newest = MEMO_MAX * 3 - 1;
+  assert.equal(counted(newest), newest);
+  assert.equal(builds, 0, 'the most recent key is still cached');
+  assert.equal(counted(0), 0);
+  assert.equal(builds, 1, 'the oldest key was evicted and is rebuilt');
 });
 
 const basis: MergeBasis = { fingerprint: 111, metaSig: 222 };

@@ -65,6 +65,22 @@ function parseSource(raw: unknown): SourceFilter {
   return raw === 'code' || raw === 'cowork' || raw === 'codex' || raw === 'claude' ? raw : 'all';
 }
 
+/**
+ * A numeric query/body param as an integer in [lo, hi]; `def` when it is absent
+ * or not a number. Every `hours`/`days` goes through here, never a bare Number():
+ *  - `?days=abc` is NaN, which slips through Math.min/Math.max, and a NaN window
+ *    once hung the day-bucket loop until the process ran out of memory;
+ *  - qs turns a repeated key (`?days=7&days=8`) into an array — the first wins;
+ *  - rounding bounds builder-cache's keys: `days=10.5`, `10.51`, … would each
+ *    pin a full builder output in the memo for the life of the process.
+ */
+function intParam(raw: unknown, def: number, lo: number, hi: number): number {
+  const v = Array.isArray(raw) ? raw[0] : raw;
+  if (v === undefined || v === null || v === '') return def;
+  const n = Math.round(Number(v));
+  return Number.isFinite(n) ? Math.max(lo, Math.min(hi, n)) : def;
+}
+
 app.get('/api/health', (_req, res) => {
   res.json({ ok: true, claudeDir: claudeDir() });
 });
@@ -501,7 +517,7 @@ app.get('/api/codex/agents/live', async (_req, res) => {
 // return wrap({ error }) at HTTP 200 so the frontend just hides the cards.
 app.get('/api/usage/litellm', async (req, res) => {
   try {
-    const days = Math.max(7, Math.min(28, Number(req.query.days ?? 7)));
+    const days = intParam(req.query.days, 7, 7, 28);
     res.json(wrap(await fetchLiteLlmSpend(days), Date.now()));
   } catch (e: any) {
     res.json(wrap({ error: e.message || String(e) }, Date.now()));
@@ -511,7 +527,7 @@ app.get('/api/usage/litellm', async (req, res) => {
 
 app.get('/api/usage/recent', async (req, res) => {
   try {
-    const hours = Math.max(1, Math.min(72, Number(req.query.hours ?? 12)));
+    const hours = intParam(req.query.hours, 12, 1, 72);
     const { events, computedAt } = await getEvents();
     const source = parseSource(req.query.source);
     const data = memoBuilder('recent', [hours, source], eventsFingerprint(), () =>
@@ -525,7 +541,7 @@ app.get('/api/usage/recent', async (req, res) => {
 
 app.get('/api/usage/weekly', async (req, res) => {
   try {
-    const days = Math.max(7, Math.min(28, Number(req.query.days ?? 7)));
+    const days = intParam(req.query.days, 7, 7, 28);
     const { events, computedAt } = await getEvents();
     const source = parseSource(req.query.source);
     const data = memoBuilder('weekly', [days, source], eventsFingerprint(), () =>
@@ -539,7 +555,7 @@ app.get('/api/usage/weekly', async (req, res) => {
 
 app.get('/api/usage/models', async (req, res) => {
   try {
-    const days = Math.max(1, Math.min(31, Number(req.query.days ?? 7)));
+    const days = intParam(req.query.days, 7, 1, 31);
     const { events, computedAt } = await getEvents();
     const source = parseSource(req.query.source);
     const data = memoBuilder('models', [days, source], eventsFingerprint(), () =>
@@ -569,7 +585,7 @@ app.get('/api/usage/contributors', async (req, res) => {
 
 app.get('/api/activity', async (req, res) => {
   try {
-    const days = Math.max(7, Math.min(180, Number(req.query.days ?? 126)));
+    const days = intParam(req.query.days, 126, 7, 180);
     const { events, computedAt } = await getEvents();
     const source = parseSource(req.query.source);
     const stats = statsCacheApplies(source) ? await readStatsSummary() : undefined;
@@ -586,7 +602,7 @@ app.get('/api/activity', async (req, res) => {
 
 app.get('/api/tools', async (req, res) => {
   try {
-    const days = Math.max(1, Math.min(31, Number(req.query.days ?? 7)));
+    const days = intParam(req.query.days, 7, 1, 31);
     const { events, computedAt } = await getEvents();
     const source = parseSource(req.query.source);
     const data = memoBuilder('tools', [days, source], eventsFingerprint(), () =>
@@ -600,7 +616,7 @@ app.get('/api/tools', async (req, res) => {
 
 app.get('/api/heatmap', async (req, res) => {
   try {
-    const days = Math.max(7, Math.min(365, Number(req.query.days ?? 90)));
+    const days = intParam(req.query.days, 90, 7, 365);
     const { events, computedAt } = await getEvents();
     const source = parseSource(req.query.source);
     const data = memoBuilder('heatmap', [days, source], eventsFingerprint(), () =>
@@ -614,7 +630,7 @@ app.get('/api/heatmap', async (req, res) => {
 
 app.get('/api/projects', async (req, res) => {
   try {
-    const days = Math.max(7, Math.min(365, Number(req.query.days ?? 30)));
+    const days = intParam(req.query.days, 30, 7, 365);
     const { events, computedAt } = await getEvents();
     // buildProjectStats already drops cowork; the source filter keeps behavior
     // consistent when the UI explicitly scopes to one surface.
@@ -633,7 +649,7 @@ app.get('/api/projects', async (req, res) => {
 // ---------------------------------------------------------------------------
 
 function clampDays(raw: unknown, def = 7): number {
-  return Math.max(1, Math.min(90, Number(raw ?? def)));
+  return intParam(raw, def, 1, 90);
 }
 
 app.get('/api/insights/errors', async (req, res) => {

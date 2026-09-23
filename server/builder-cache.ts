@@ -13,8 +13,13 @@
  * `now` up to a minute old: windows slide once a minute rather than once per 5s
  * rescan. (Keyed on the data alone, as it once was, an idle dashboard served
  * windows frozen at the last file write.) When the token flips (a file changed,
- * or a new minute began), the prior entry for that key is overwritten in place,
- * so the map stays bounded to builders × params × sources.
+ * or a new minute began), the prior entry for that key is overwritten in place.
+ *
+ * Keys are builders × params × sources. index.ts parses every numeric param with
+ * intParam() (integer, clamped), which bounds that product, but a sweep of every
+ * range × source still reaches thousands of keys — so the map is also capped at
+ * MEMO_MAX. A rebuilt entry moves to the back of the Map's insertion order and
+ * the front one is evicted, so the keys the open tabs keep polling survive.
  */
 
 interface Entry {
@@ -22,7 +27,15 @@ interface Entry {
   value: unknown;
 }
 
+/** Far above what the UI polls at once (a few dozen keys), far below a key sweep. */
+export const MEMO_MAX = 256;
+
 const store = new Map<string, Entry>();
+
+/** Number of memoised outputs held right now (tests). */
+export function memoSize(): number {
+  return store.size;
+}
 
 /**
  * Return the cached builder output for (name, keyParts) when it was computed
@@ -38,6 +51,11 @@ export function memoBuilder<T>(
   const hit = store.get(key);
   if (hit && hit.token === token) return hit.value as T;
   const value = compute();
+  store.delete(key); // re-insert at the back: recently rebuilt = recently used
+  if (store.size >= MEMO_MAX) {
+    const oldest = store.keys().next().value;
+    if (oldest !== undefined) store.delete(oldest);
+  }
   store.set(key, { token, value });
   return value;
 }

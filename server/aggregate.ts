@@ -55,8 +55,11 @@ function eventTokens(e: UsageEvent): number {
  * Local midnight of every calendar day from `from`'s day up to (not including) `to`.
  * Built with calendar arithmetic rather than +24 h steps: a DST day is 23 or 25 h
  * long, so fixed steps drift to 23:00/01:00 and then repeat or skip a date.
+ * A non-finite bound yields []: with NaN every `s` is NaN, `s >= to` is never
+ * true, and the loop would push until the process ran out of memory.
  */
 export function localDayStarts(from: number, to: number): number[] {
+  if (!Number.isFinite(from) || !Number.isFinite(to) || to <= from) return [];
   const d = new Date(from);
   const out: number[] = [];
   for (let i = 0; ; i++) {

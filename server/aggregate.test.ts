@@ -4,7 +4,9 @@ import { execFileSync } from 'node:child_process';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import type { UsageEvent } from './scan.ts';
-import { buildActivity, buildRecent, filterSource, statsCacheApplies, type SourceFilter } from './aggregate.ts';
+import {
+  buildActivity, buildRecent, buildWeekly, filterSource, localDayStarts, statsCacheApplies, type SourceFilter,
+} from './aggregate.ts';
 
 const HOUR = 3600_000;
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -144,6 +146,17 @@ test('daily buckets stay one per local date across the US spring-forward (2026-0
   assert.equal(tokens('2026-03-10'), 1, '00:30 is not pushed into the previous day by a 01:00 bucket start');
   assert.equal(tokens('2026-03-12'), 1);
   assert.deepEqual(r.activity, dates);
+});
+
+test('a non-finite window yields no day buckets instead of looping forever', () => {
+  const now = Date.UTC(2026, 8, 23, 12);
+  assert.deepEqual(localDayStarts(NaN, now), []);
+  assert.deepEqual(localDayStarts(now - 86_400_000, NaN), []);
+  assert.deepEqual(localDayStarts(now, now - 1), []);
+  // ?days=abc once reached these builders as NaN and never returned.
+  assert.deepEqual(buildWeekly([ev(now - HOUR)], now, NaN).buckets, []);
+  assert.deepEqual(buildActivity([ev(now - HOUR)], now, NaN).dailyActivity, []);
+  assert.equal(buildWeekly([ev(now - HOUR)], now, 7).buckets.length, 8);
 });
 
 test('hourly buckets are unchanged: contiguous epoch hours', () => {
