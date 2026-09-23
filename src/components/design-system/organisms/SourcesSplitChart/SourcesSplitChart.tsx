@@ -3,13 +3,7 @@ import { LegendDot } from '@/components/design-system/atoms/LegendDot/LegendDot'
 import { compact, usd } from '@/lib/format';
 import type { SourcesSplitChartProps } from './types';
 
-/**
- * Split of effective tokens (and equivalent cost) inside the window — between
- * surfaces (Claude Code / Cowork, plus Codex under Both) or, under the Codex
- * platform, between threads and guardian reviews. One component, one slot, so
- * every platform shows the same card. A $0 segment (the unpriced guardian model)
- * shows tokens only.
- */
+// One component, one slot for every platform; a $0 segment (the unpriced guardian model) shows tokens only.
 export function SourcesSplitChart({ segments, weekDays, help, scope = '' }: SourcesSplitChartProps) {
   return (
     <Section title={`Sources${scope} · effective tokens · ${weekDays}d`} help={help}>

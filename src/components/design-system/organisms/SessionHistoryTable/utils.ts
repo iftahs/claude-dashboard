@@ -49,8 +49,7 @@ export function formatTurnMs(ms: number): string {
   return `${Math.floor(m / 60)}h ${m % 60}m`;
 }
 
-// Claude Desktop gives each chat its own scratch workspace, like the ChatGPT app's
-// `Documents/Codex/<date>/<slug>`: `…/Claude/scratch-workspaces/<ids…>/scratch-<date>-<hash>`.
+// Matches the Claude Desktop scratch-workspace path, e.g. `.../Claude/scratch-workspaces/<ids>/scratch-<date>-<hash>`.
 const CLAUDE_CHAT_DIR = /[\\/]Claude[\\/]scratch-workspaces[\\/](?:[^\\/]+[\\/])*(scratch-[^\\/]+)[\\/]?$/i;
 
 /** The desktop app whose per-chat scratch folder `path` is, with the folder's slug; null for a real project. */
@@ -63,10 +62,7 @@ export function chatFolder(path: string, source: UsageSource | undefined): { app
   return m ? { app: 'Claude', slug: m[1] } : null;
 }
 
-/** Display name + optional surface badge for one session row. Cowork keeps its
- *  literal "Cowork" name; a desktop chat's scratch folder reads "Codex chat" /
- *  "Claude chat" (its slug only when the session has no title to show instead);
- *  Codex rows get a "Codex" badge. */
+// A desktop chat's scratch folder reads "Codex chat" / "Claude chat" (slug only when there's no title).
 export function sessionLabel(s: SessionMeta): { name: string; badge: string | null } {
   if (s.source === 'cowork') return { name: 'Cowork', badge: null };
   const badge = s.source === 'codex' ? 'Codex' : null;
@@ -105,10 +101,7 @@ export function matchesQuery(s: SessionMeta, query: string): boolean {
   );
 }
 
-/**
- * Export rows. Titles and PR URLs stay out (a count only): they name customers
- * and private repos, and an export is the one thing that leaves the machine.
- */
+// Titles and PR URLs stay out (a count only) — they name customers and private repos, and an export leaves the machine.
 export function exportRows(data: SessionMeta[]) {
   return data.map((s) => ({
     session_id: s.session_id,

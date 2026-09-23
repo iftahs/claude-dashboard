@@ -40,14 +40,7 @@ function CompareTooltip({ active, payload }: CompareTooltipProps) {
   );
 }
 
-/**
- * OpenAI's per-day Codex token count (authoritative, every device) next to what
- * the local rollouts add up to for the same day — both in UTC days and both in
- * all tokens (cached input included), so the bars are directly comparable. The
- * gap that remains is real: the server counts mobile/web usage this machine never
- * sees. Lives on Trends in the slot where the Claude platform shows the LiteLLM
- * "Actual billed" card — each platform's server-side figure beside the estimate.
- */
+// Both series are UTC days in all-tokens, so directly comparable; the remaining gap is real (mobile/web usage this machine never sees).
 export function CodexDailyCompareChart({ server, local, loading, days }: CodexDailyCompareChartProps) {
   const rows = useMemo(() => mergeDaily(server, local, days), [server, local, days]);
   const totals = useMemo(() => compareTotals(rows), [rows]);

@@ -7,7 +7,6 @@ export interface SubagentStatsPanelProps {
   platform: Platform;
 }
 
-/** One stat tile. */
 export interface StatTile {
   label: string;
   value: string;

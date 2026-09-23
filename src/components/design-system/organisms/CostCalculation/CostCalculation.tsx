@@ -4,8 +4,7 @@ import { InfoTip } from '@/components/design-system/atoms/InfoTip/InfoTip';
 import type { CostCalculationProps, ModelPrice, PriceGroup, PricePlatform } from './types';
 import { billingBlurb, calcCost, priceGroups } from './utils';
 
-/** "$3.00" (sub-cent rates keep their digits: "$0.125"), or "—" for the cache-write
- *  column of a model with no published write rate. */
+/** "$3.00", but sub-cent rates keep their digits: "$0.125". */
 function rate(model: ModelPrice, field: 'input' | 'output' | 'cacheWrite' | 'cacheRead') {
   if (field === 'cacheWrite' && model.platform === 'openai' && model.cacheWrite === 0) return '—';
   const v = model[field];
@@ -230,8 +229,7 @@ export function CostCalculation({ platform }: CostCalculationProps) {
               />
             </div>
 
-            {/* Cache Write Tokens — OpenAI models without a published write rate say so
-                rather than implying the slider moves the total. */}
+            {/* Models without a published write rate say so, rather than implying the slider moves the total. */}
             <div
               className="group cursor-pointer select-none"
               onDoubleClick={() => setCacheWriteTokens(50_000)}

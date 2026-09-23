@@ -10,14 +10,7 @@ const DAY = 86_400_000;
 export const SERVER_COLOR = '#8a3af0';
 export const LOCAL_COLOR = '#14b8a6';
 
-/**
- * One row per UTC day for the last `days` days ending today (UTC), joining the
- * two series on their `YYYY-MM-DD` key. OpenAI keys its daily usage by UTC date,
- * and the local series comes from `/api/activity?utc=1`, so both sides bucket the
- * same 24 hours. The local side plots `totalTokens` — every token, cached input
- * included — which is the unit the server count lines up with (effective tokens
- * would sit ~20× below it on a cache-heavy day).
- */
+// Joins by UTC YYYY-MM-DD key; plots `totalTokens` (not effective) — the unit OpenAI's server count matches, ~20x higher than effective on a cache-heavy day.
 export function mergeDaily(
   server: { date: string; tokens: number }[],
   local: DailyActivity[],

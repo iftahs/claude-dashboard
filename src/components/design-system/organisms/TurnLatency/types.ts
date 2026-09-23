@@ -20,7 +20,6 @@ export interface HistogramTooltipProps {
   split: boolean;
 }
 
-/** One latency stat tile. */
 export interface LatencyTile {
   label: string;
   value: string;

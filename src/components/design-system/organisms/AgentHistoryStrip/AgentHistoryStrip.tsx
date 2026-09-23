@@ -17,11 +17,7 @@ function MiniStat({ label, value, sub }: MiniStatProps) {
   );
 }
 
-/**
- * Compact "last N days" summary for the Agents tab — spawns, per-session delegation
- * and the busiest subagent types — so the tab says something useful when no agent is
- * running. One component for both platforms; the Agents tab renders one per platform.
- */
+// So the Agents tab says something useful when no agent is running; one component, rendered once per platform.
 export function AgentHistoryStrip({ data, loading, error, title, help, days, stacked = false, unit }: AgentHistoryStripProps) {
   const { rows, rest } = topTypes(data?.byType ?? {}, 4);
   const layout = stacked ? 'grid gap-4' : 'grid gap-4 sm:grid-cols-2';

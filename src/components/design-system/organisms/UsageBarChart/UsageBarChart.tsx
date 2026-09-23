@@ -44,8 +44,7 @@ function CustomTooltip({ active, payload, label, metric = 'tokens' }: CustomTool
         </div>
         {metric !== 'cost' && (bucketCost !== undefined || typeof bucketTotal === 'number') && (
           <div className="mt-2 space-y-1 border-t border-white/10 pt-2 text-xs">
-            {/* The bars are effective tokens; the all-tokens figure (cache reads
-                included) lives only here, so the chart reads in one unit. */}
+            {/* Bars are effective tokens; the all-tokens (cache reads included) figure lives only here. */}
             {typeof bucketTotal === 'number' && !isProjected && (
               <div className="flex items-center justify-between gap-4">
                 <span className="text-zinc-500 font-medium">All tokens incl. cache reads</span>
@@ -81,10 +80,7 @@ function UsageBarChartImpl({
   const now = Date.now();
   const DAY = 86_400_000;
 
-  // Tokens mode stacks EFFECTIVE tokens per model (input + output + cache writes),
-  // the unit of every other token figure — the cards, the delta chip and the
-  // projection. Total tokens are cache-read dominated (20–35× effective) and appear
-  // only in the tooltip. `byModel` is the fallback for a payload from an older server.
+  // `byModel` is the fallback for a payload from an older server without byModelEffective.
   const data = buckets.map((b) => {
     const row: Record<string, number | string | boolean> = {
       label: labelFor(b.start),
@@ -112,7 +108,6 @@ function UsageBarChartImpl({
     if (Math.abs(lastBucket.start - now) < 2 * DAY) {
       let t = lastBucket.start + DAY;
 
-      // Tokens projection: average daily effective tokens (the bars' unit)
       const avgTokensPerDay =
         projectionTokensPerDay ?? buckets.reduce((acc, curr) => acc + curr.effectiveTokens, 0) / buckets.length;
 
@@ -191,9 +186,5 @@ function UsageBarChartImpl({
   );
 }
 
-/**
- * Memoised: its parent re-renders on every live poll (the shared LiveData context
- * changes about once a second), and on long windows this chart has hundreds of
- * categories × every model series. Its props only change when its own data does.
- */
+// Memoised — parent re-renders ~1/s from the live context; a long window can have hundreds of categories x every model series.
 export const UsageBarChart = memo(UsageBarChartImpl);

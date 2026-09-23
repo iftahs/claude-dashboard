@@ -4,11 +4,7 @@ import { compact } from '@/lib/format';
 import { declineNoun, emptyRejections, rejectionToolLabel } from './utils';
 import type { RejectionsPanelProps } from './types';
 
-/**
- * Calls that never ran because someone said no, per tool. The rejection RATE is
- * the KPI row's; the caption here splits WHO said no — a person declining a prompt,
- * or Codex's guardian auto-reviewer denying the action.
- */
+// Rejection RATE is the KPI row's; this splits WHO said no — a person declining, or Codex's guardian denying.
 export function RejectionsPanel({ data, platform }: RejectionsPanelProps) {
   if (!data) {
     return (

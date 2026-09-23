@@ -1,11 +1,7 @@
 import type { InsightsYield } from '@/types';
 import type { FunnelStage } from './types';
 
-/**
- * Sessions → in a git repo → committed → opened a PR. Every stage is a count of
- * sessions and a subset of the one above, drawn against the first stage; the
- * commit RATE is the KPI row's.
- */
+// Each stage is a subset of the one above, drawn against the first stage; the commit RATE is the KPI row's.
 export function funnelStages(d: InsightsYield): FunnelStage[] {
   const prHint =
     (d.prCount > d.prSessions

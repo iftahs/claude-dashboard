@@ -14,7 +14,6 @@ export function formatPlan(subscriptionType: string | null | undefined): string 
   return subscriptionType;
 }
 
-/** Value text colour per tile tone. */
 export const TONE_CLASS: Record<ProfileTone, string> = {
   clay: 'text-clay-400',
   emerald: 'text-emerald-400',
@@ -37,7 +36,6 @@ function spaced(mode: string): string {
   return mode.replace(/([a-z])([A-Z])/g, '$1 $2');
 }
 
-/** The Claude Code CLI settings (settings.json + the live plan) as a profile card. */
 export function claudeProfileView(config: ClaudeConfig, isApi: boolean): ConfigProfileView {
   const allowedDirs = config.permissions?.additionalDirectories ?? [];
   const allowedCommands = config.permissions?.allow ?? [];
@@ -92,10 +90,7 @@ export function formatChatGptPlan(planType: string | null | undefined): string {
 
 const LOGIN: Record<'chatgpt' | 'apikey', string> = { chatgpt: 'ChatGPT', apikey: 'API key' };
 
-/**
- * Codex's config.toml (allowlisted keys, see server/codex-config.ts) plus the plan
- * from the live limits, in the same slots as the Claude card.
- */
+// config.toml is allowlisted keys only, see server/codex-config.ts.
 export function codexProfileView(config: CodexConfigData, live: CodexLiveData | null): ConfigProfileView {
   const apiKey = config.authMode === 'apikey';
   const { trusted, untrusted, total } = config.projects;

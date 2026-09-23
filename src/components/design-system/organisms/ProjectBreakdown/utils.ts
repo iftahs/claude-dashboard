@@ -5,12 +5,7 @@ import type { LocalProjectStat, ProjectPlatform } from './types';
 
 export const normalizePath = (p: string) => p.toLowerCase().replace(/[^a-z0-9]/g, '');
 
-/**
- * A project's label. The desktop apps give every chat-only conversation its own
- * scratch folder (Codex: `Documents/Codex/<date>/<slug>`, Claude Desktop:
- * `scratch-workspaces/…/scratch-<date>-<hash>`), so such a row reads
- * "Codex chat · <thread title>" / "Claude chat · <title>" when it has one.
- */
+// A desktop-app scratch folder (chat-only conversation) reads "Codex chat · <title>" / "Claude chat · <title>".
 function projectLabel(path: string, sessions: SessionMeta[]): string {
   const chat = chatFolder(path, sessions[0]?.source);
   if (!chat) return projectName(path);
@@ -18,13 +13,7 @@ function projectLabel(path: string, sessions: SessionMeta[]): string {
   return `${chat.app} chat · ${titled.length === 1 ? titled[0].title : chat.slug}`;
 }
 
-/**
- * Roll session metadata (+ /api/projects cost) up into one LocalProjectStat per
- * project path. Shared by ProjectBreakdown (sorted rows) and TagBreakdown
- * (grouped by user tag) so both agree on per-project cost/token totals. Claude and
- * Codex sessions share project paths (both come from the real working directory),
- * so under Both one repo is one row.
- */
+// Shared by ProjectBreakdown and TagBreakdown so both agree on totals; Claude/Codex share project paths, so under Both one repo is one row.
 export function buildProjectStats(
   sessions: SessionMeta[],
   projectCosts?: ProjectStat[],

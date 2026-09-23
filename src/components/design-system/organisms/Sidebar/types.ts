@@ -9,7 +9,6 @@ export interface SidebarTab {
   badge?: ReactNode;
 }
 
-/** One data folder behind what is on screen. */
 export interface SidebarDataDir {
   /** Platform or surface name ('Claude' / 'Cowork' / 'Codex'), shown when there is more than one. */
   label: string;

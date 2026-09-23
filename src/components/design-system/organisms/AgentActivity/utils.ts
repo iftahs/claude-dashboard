@@ -33,21 +33,11 @@ export function isYourTurn(m: MainAgent | LiveMainAgent): boolean {
   return (m as LiveMainAgent).yourTurn === true;
 }
 
-// ── Project labels (both platforms) ────────────────────────────────────────
-// Both live endpoints send each session's full working directory; only a short
-// label ever reaches the screen, built the same way for Claude and Codex.
-
-// The Claude desktop app runs chat-only Claude Code sessions in a scratch folder,
-// `…/Claude/scratch-workspaces/<account>/<profile>/scratch-<date>-<id>`.
+// Matches the Claude desktop scratch-workspace path, e.g. `.../Claude/scratch-workspaces/<acct>/<profile>/scratch-<date>-<id>`.
 const CLAUDE_SCRATCH_DIR = /[\\/]Claude[\\/]scratch-workspaces[\\/](?:[^\\/]+[\\/])*([^\\/]+)[\\/]?$/i;
 // A git worktree Claude Code created: `<repo>/.claude/worktrees/<name>`.
 const CLAUDE_WORKTREE_DIR = /([^\\/]+)[\\/]\.claude[\\/]worktrees[\\/]([^\\/]+)[\\/]?$/;
 
-/**
- * Display label for an agent's working directory: "Codex chat · <slug>" /
- * "Claude chat · <slug>" for the desktop apps' scratch folders, "<repo> (<worktree>)"
- * for a Claude Code worktree, otherwise the last path segment.
- */
 export function agentProjectLabel(path: string): string {
   if (!path) return '';
   const scratch = path.match(CLAUDE_SCRATCH_DIR);
@@ -57,12 +47,7 @@ export function agentProjectLabel(path: string): string {
   return codexProjectLabel(path); // "Codex chat · <slug>", else the last path segment
 }
 
-/**
- * Both live agent endpoints carry each session's *full* cwd in `project`, and
- * AgentActivity renders `project` verbatim — so shorten it before it reaches the
- * screen. Run once per poll result (the 2.5 s poll returns a new object each
- * tick; re-mapping on every render would churn the card animations).
- */
+// Runs once per poll result, not per render — remapping on every render would churn the card animations.
 export function toDisplayAgents(data: LiveAgentsData | null): LiveAgentsData | null {
   if (!data) return null;
   return {
@@ -73,9 +58,7 @@ export function toDisplayAgents(data: LiveAgentsData | null): LiveAgentsData | n
   };
 }
 
-// ── Copy ───────────────────────────────────────────────────────────────────
-// One organism renders both platforms; only the wording differs. The Claude
-// strings are the defaults so a Claude-only dashboard reads exactly as before.
+// The Claude strings are the defaults so a Claude-only dashboard reads exactly as before.
 
 /** Section title (the platform suffix is added by the Agents tab). */
 export const AGENT_TITLE = 'Agents · live activity';

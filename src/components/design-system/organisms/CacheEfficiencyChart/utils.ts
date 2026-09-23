@@ -5,11 +5,7 @@ export function avgHitRate(points: CacheEfficiencyPoint[]): number {
   return points.length ? points.reduce((s, d) => s + d.hitRate, 0) / points.length : 0;
 }
 
-/**
- * Rows for the multi-series chart: one per date any series has, ascending, with
- * each series' hit rate under its key. A day a platform was idle stays
- * `undefined`, so its line breaks there instead of dipping to a fake 0%.
- */
+// A day a platform was idle stays `undefined`, so its line breaks there instead of dipping to a fake 0%.
 export function mergeCacheSeries(series: CacheSeries[]): {
   rows: CacheCompareRow[];
   points: Map<string, Map<string, CacheEfficiencyPoint>>;

@@ -32,12 +32,7 @@ function BreakdownTable({ label, rows, color, nameOf = (n) => n }: BreakdownTabl
   );
 }
 
-/**
- * "What's contributing to your limits usage?" — Day/Week headline behaviours plus
- * skill / subagent / plugin / MCP tables, per platform: cost-weighted with the
- * Claude Code CLI's wording for Claude, effective-token-weighted with thread wording
- * for Codex (the server picks both from the scope it is asked for).
- */
+// Cost-weighted (Claude Code CLI wording) or effective-token-weighted (Codex) — the server picks based on scope.
 export function LimitsContributors({ source, showEmpty = false }: LimitsContributorsProps) {
   const { withSrc, platform } = useSource();
   const url = source ? `/api/usage/contributors?source=${source}` : withSrc('/api/usage/contributors');
@@ -49,8 +44,7 @@ export function LimitsContributors({ source, showEmpty = false }: LimitsContribu
   const codex = source ? source === 'codex' : platform === 'codex';
 
   const hasBreakdowns = BREAKDOWNS.some(({ key }) => win[key].length > 0);
-  // Nothing worth showing in either window → hide the whole panel (unless a
-  // side-by-side pair needs the card to hold its place).
+  // Nothing worth showing → hide the panel, unless a side-by-side pair needs the card to hold its place.
   const dayEmpty = !data.day.behaviors.length && !BREAKDOWNS.some(({ key }) => data.day[key].length);
   const weekEmpty = !data.week.behaviors.length && !BREAKDOWNS.some(({ key }) => data.week[key].length);
   if (dayEmpty && weekEmpty && !showEmpty) return null;

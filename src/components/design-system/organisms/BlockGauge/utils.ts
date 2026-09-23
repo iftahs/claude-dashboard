@@ -22,7 +22,6 @@ export function formatMins(mins: number): string {
 export const GATEWAY_API_HELP =
   'The big number is the estimated cost of your current 5-hour block (published API rates, from local logs). The daily-cap ring uses your real billed spend so far today from your LiteLLM gateway — see Spend vs caps below for the real today / week / month figures. Set a daily cap in ⚙ Settings.';
 
-/** The Claude wording — what the card said before it served more than one platform. */
 export const CLAUDE_GAUGE_LABELS: BlockGaugeLabels = {
   title: 'Claude Code · block usage',
   apiTitle: 'Claude Code · spend this block',

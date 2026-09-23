@@ -53,7 +53,6 @@ function CapInputs({ draft, heading }: { draft: CapDraft; heading?: string }) {
   );
 }
 
-/** Settings tab panel: usage mode, Codex status, alerts, spending limits, history archive, AI Insights config, telemetry. */
 export function SettingsView({
   limits,
   onChangeLimits,
@@ -132,7 +131,6 @@ export function SettingsView({
         </p>
       </section>
 
-      {/* ── Codex status ───────────────────────────────────────────── */}
       {codex && (
         <section className="mt-6 border-t border-white/10 pt-5">
           <h4 className="mb-1 text-sm font-semibold text-zinc-300">Codex</h4>
@@ -172,7 +170,6 @@ export function SettingsView({
         />
       </section>
 
-      {/* ── Limit alerts ───────────────────────────────────────────── */}
       <section className="mt-6 border-t border-white/10 pt-5">
         <h4 className="mb-1 text-sm font-semibold text-zinc-300">Limit alerts</h4>
         <p className="mb-3 text-xs text-zinc-500">
@@ -272,7 +269,6 @@ export function SettingsView({
         </div>
       </section>
 
-      {/* ── History archive ────────────────────────────────────────── */}
       <section className="mt-6 border-t border-white/10 pt-5">
         <h4 className="mb-1 text-sm font-semibold text-zinc-300">History archive</h4>
         <p className="mb-3 text-xs text-zinc-500">

@@ -1,11 +1,7 @@
 import type { Platform } from '@/hooks/useSource';
 import type { InsightPlatform } from '@/types';
 
-/**
- * Platform colours — the same clay / teal pair the Trends platform comparison uses,
- * so Claude and Codex read the same in every Both chart. A single-platform view keeps
- * the clay fill it always had.
- */
+// Same clay/teal pair as the Trends platform comparison, so Claude and Codex read the same in every Both chart.
 export const PLATFORM_DOT_COLOR: Record<InsightPlatform, string> = { claude: '#d97757', codex: '#14b8a6' };
 export const PLATFORM_NAME: Record<InsightPlatform, string> = { claude: 'Claude', codex: 'Codex' };
 

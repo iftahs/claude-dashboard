@@ -3,11 +3,7 @@ import { compact } from '@/lib/format';
 import { funnelStages } from './utils';
 import type { YieldPanelProps } from './types';
 
-/**
- * Where sessions land: a funnel from every session down to the ones that opened a
- * pull request. Sessions outside a git repo (a chat in a scratch folder) could never
- * commit, so they sit apart instead of counting as misses.
- */
+// Sessions outside a git repo could never commit, so they sit apart instead of counting as misses.
 export function YieldPanel({ data }: YieldPanelProps) {
   if (!data) {
     return (
@@ -35,7 +31,6 @@ export function YieldPanel({ data }: YieldPanelProps) {
 
   return (
     <div className="space-y-5">
-      {/* Funnel */}
       <div className="space-y-2">
         {stages.map((s) => (
           <div key={s.key} className="flex items-center gap-3" title={s.hint}>
@@ -53,7 +48,6 @@ export function YieldPanel({ data }: YieldPanelProps) {
         ))}
       </div>
 
-      {/* Tokens: landed vs not, and the sessions that never could land */}
       <div className="grid grid-cols-3 gap-2 text-xs">
         <div className="rounded-lg bg-emerald-500/5 p-2 ring-1 ring-emerald-500/10">
           <div className="text-zinc-500">Committed</div>
@@ -69,7 +63,6 @@ export function YieldPanel({ data }: YieldPanelProps) {
         </div>
       </div>
 
-      {/* Top uncommitted repo sessions */}
       {data.topUncommitted.length > 0 && (
         <div>
           <div className="mb-2 text-xs font-semibold uppercase tracking-wider text-zinc-500">

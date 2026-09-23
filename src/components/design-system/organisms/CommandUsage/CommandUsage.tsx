@@ -4,10 +4,7 @@ import { BarsSkeleton } from '@/components/design-system/atoms/Skeleton/Skeleton
 import { compact } from '@/lib/format';
 import type { CommandUsageProps } from './types';
 
-/**
- * Slash commands (invocations) and skills (sessions that ran the skill) in one
- * ranked list; a badge marks the skills, since the two count different things.
- */
+// A badge marks skill rows — slash commands count invocations, skills count sessions that ran them.
 export function CommandUsage({ data, emptyText = 'No slash commands or skills recorded in this window.' }: CommandUsageProps) {
   if (!data) return <BarsSkeleton rows={5} />;
   if (data.commands.length === 0) {

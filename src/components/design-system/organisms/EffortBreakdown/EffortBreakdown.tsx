@@ -43,12 +43,7 @@ function SliceList({ slices }: { slices: EffortSlice[] }) {
   );
 }
 
-/**
- * Reasoning effort × model: the all-models effort mix (effective tokens, with a
- * legend carrying tokens and estimated cost per level), then one row per model
- * — its effort mix, estimated cost and reasoning share of output. Identical for
- * Claude and Codex; under Both the model rows already separate the platforms.
- */
+// Identical for Claude and Codex; under Both the model rows already separate the platforms.
 export function EffortBreakdown({ data }: EffortBreakdownProps) {
   const [hovered, setHovered] = useState<string | null>(null);
   if (data.models.length === 0) {
@@ -100,8 +95,7 @@ export function EffortBreakdown({ data }: EffortBreakdownProps) {
             <EffortBar slices={m.efforts} />
             <span className="text-right text-xs tabular-nums text-zinc-400">{m.cost > 0 ? usd(m.cost) : '—'}</span>
             <span className="text-right text-xs tabular-nums text-zinc-400">{reasoningLabel(m.reasoning)}</span>
-            {/* The whole row is the hover target (bigger than the 8px bar); the
-                card opens below the first row so the section header never clips it. */}
+            {/* Card opens below the first row so the section header never clips it. */}
             {hovered === m.model && (
               <div
                 className={`pointer-events-none absolute left-1/2 z-10 -translate-x-1/2 ${

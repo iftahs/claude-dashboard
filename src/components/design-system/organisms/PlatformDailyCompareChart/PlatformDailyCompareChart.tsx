@@ -135,9 +135,5 @@ function PlatformDailyCompareChartImpl({
   );
 }
 
-/**
- * Memoised: its parent re-renders on every live poll (the shared LiveData context
- * changes about once a second), and on long windows this chart has hundreds of
- * categories × every model series. Its props only change when its own data does.
- */
+// Memoised — parent re-renders ~1/s from the live context; a long window can have hundreds of categories x every model series.
 export const PlatformDailyCompareChart = memo(PlatformDailyCompareChartImpl);

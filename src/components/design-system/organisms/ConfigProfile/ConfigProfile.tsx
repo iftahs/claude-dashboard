@@ -4,12 +4,7 @@ import { Skeleton } from '@/components/design-system/atoms/Skeleton/Skeleton';
 import type { ConfigProfileProps } from './types';
 import { TONE_CLASS } from './utils';
 
-/**
- * The active settings of one coding agent — Claude Code or Codex — in one card:
- * six headline tiles, four switches, the integration counts and two lists. The
- * platform decides the content (see claudeProfileView / codexProfileView), never
- * the layout.
- */
+// Platform decides the content (claudeProfileView / codexProfileView in utils.ts), never the layout.
 export function ConfigProfile({ profile }: ConfigProfileProps) {
   if (!profile) {
     return (

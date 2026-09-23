@@ -3,10 +3,7 @@ import type { Platform } from '@/hooks/useSource';
 import type { SubagentStats } from '@/types';
 import type { StatTile } from './types';
 
-/**
- * The panel's tiles per platform. Counts only: the delegation / auto-review RATE
- * is the Insights KPI row's. Codex's guardian reviews are counted one per verdict.
- */
+// Counts only — the delegation/auto-review RATE is the Insights KPI row's.
 export function statTiles(d: SubagentStats, platform: Platform): StatTile[] {
   const spawns: StatTile = { label: 'Subagent spawns', value: compact(d.delegation.spawns) };
   const reviews: StatTile = { label: 'Guardian reviews', value: compact(d.autoReview.reviews) };

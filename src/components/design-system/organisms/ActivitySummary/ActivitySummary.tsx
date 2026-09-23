@@ -3,12 +3,7 @@ import { StatCardSkeleton } from '@/components/design-system/atoms/Skeleton/Skel
 import type { ActivitySummaryProps } from './types';
 import { summaryCards } from './utils';
 
-/**
- * Lifetime activity row — Lifetime tokens · Peak day · Current streak · Active
- * days — computed from every usage event of the platform on screen. The same four
- * cards on Claude, Codex and Both; these used to be Codex-only profile stats on the
- * Live tab, and now sit on Trends beside the activity heatmap they summarise.
- */
+// Same four cards on Claude, Codex and Both — computed from every usage event of the platform on screen.
 export function ActivitySummary({ summary, loading, platform, codexServerLifetime, scope = '' }: ActivitySummaryProps) {
   if (!summary) {
     if (!loading) return null;

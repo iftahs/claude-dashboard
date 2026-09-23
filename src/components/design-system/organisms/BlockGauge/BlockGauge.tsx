@@ -4,12 +4,7 @@ import { useBlockGauge } from '@/hooks/useBlockGauge';
 import { GATEWAY_API_HELP } from './utils';
 import type { BlockGaugeProps } from './types';
 
-/**
- * The current rate-limit block for one platform: a ring with the live % used (or,
- * in API mode, spend against the daily cap), then the local block's tokens, the
- * previous block, cache reads, the reset countdown and the burn rate + limit ETA.
- * Every platform-specific string comes from `labels` (Claude by default).
- */
+// Every platform-specific string comes from `labels` (Claude by default).
 export function BlockGauge(props: BlockGaugeProps) {
   const { liveError = null, isApi = false, todayActualCost = null } = props;
   const {
@@ -145,8 +140,7 @@ export function BlockGauge(props: BlockGaugeProps) {
           <span className="tabular-nums text-zinc-400 font-semibold">{resetStr}</span>
         </div>
 
-        {/* Burn rate row — the ETA can stand alone: the live % moves with usage
-            from other devices even when this machine logged nothing yet. */}
+        {/* ETA can stand alone — live % moves with usage from other devices too. */}
         {(burnRateStr || limitEtaStr) && (
           <div className="flex justify-between pt-1 mt-1 border-t border-white/10" style={{ color: burnColor }}>
             <span className="text-zinc-500">Burn rate</span>

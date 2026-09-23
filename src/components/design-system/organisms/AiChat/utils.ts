@@ -1,10 +1,6 @@
 import type { Platform } from '@/hooks/useSource';
 
-/**
- * Starter questions per platform. Each must be answerable on that platform: no
- * workflow question under Codex (workflows are Claude Code only), and the limits
- * question names the provider whose quota the chat will read.
- */
+// Each question must be answerable on its platform — no workflow question under Codex (Claude Code only).
 export const SUGGESTIONS: Record<Platform, string[]> = {
   claude: [
     'Which workflow cost me the most?',
@@ -26,7 +22,6 @@ export const SUGGESTIONS: Record<Platform, string[]> = {
   ],
 };
 
-/** What the empty chat invites the user to ask about. */
 export const INTRO: Record<Platform, string> = {
   claude: 'Ask anything about your Claude Code usage. Answers are based on your local usage aggregates.',
   codex: 'Ask anything about your Codex usage. Answers are based on your local usage aggregates.',

@@ -40,11 +40,7 @@ function EpisodeRow({ episode: e, showPlatform, now }: LimitHitRowProps) {
   );
 }
 
-/**
- * When a usage limit refused requests: episodes in the last 7 / 30 days, whether one
- * is blocking right now, and the most recent ones — the same card on every platform
- * (Claude from `rate_limit` refusals, Codex from `usage_limit_exceeded` turns).
- */
+// Same card on every platform — Claude from `rate_limit` refusals, Codex from `usage_limit_exceeded` turns.
 export function LimitHits({ maxRows = 6 }: LimitHitsProps) {
   const { withSrc, platform } = useSource();
   const { data, loading } = usePolling<LimitHitsData>(withSrc('/api/insights/limits?days=30'), 60000);

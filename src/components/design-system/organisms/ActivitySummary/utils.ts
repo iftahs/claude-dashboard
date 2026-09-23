@@ -30,12 +30,7 @@ function retentionNote(platform: Platform): string {
   return platform === 'both' ? `${claude} Codex covers the rollouts on this machine.` : claude;
 }
 
-/**
- * The four Activity-summary cards — identical labels on every platform, values
- * from /api/usage/summary. Under Both each card adds the Claude / Codex split; under
- * Codex and Both the lifetime card also adds OpenAI's server-side count when the
- * ChatGPT profile reports one.
- */
+// Under Both each card adds the Claude/Codex split; under Codex/Both the lifetime card also adds OpenAI's server-side count when available.
 export function summaryCards(
   s: UsageSummaryData,
   platform: Platform,

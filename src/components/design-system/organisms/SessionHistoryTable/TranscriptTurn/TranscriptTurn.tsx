@@ -1,7 +1,6 @@
 import { shortModel, toolLabel } from '@/lib/format';
 import type { TranscriptTurnProps } from './types';
 
-/** One transcript turn: role icon, time + model, text bubble, tool chips. */
 export function TranscriptTurn({ turn }: TranscriptTurnProps) {
   const isUser = turn.role === 'user';
   const ts = turn.ts

@@ -2,7 +2,6 @@ import type { CapPlatform, Limits, PlatformLimits } from '@/hooks/useLimits';
 import type { Settings } from '@/hooks/useSettings';
 import type { AiConfig, ArchiveSummary } from '@/types';
 
-/** One label → value line of a status block (the Codex status). */
 export interface StatusRow {
   label: string;
   value: string;
@@ -27,11 +26,7 @@ export interface SettingsViewProps {
   onChangeSettings: (s: Settings) => void;
   /** Backend-detected mode, shown in the "Auto" label. */
   detectedMode: 'api' | 'subscription';
-  /**
-   * Codex status rows (plan, token, data folder). Null when this machine has no
-   * Codex data — every Codex control is then hidden and Settings reads exactly as
-   * it did before Codex support.
-   */
+  /** Null when this machine has no Codex data — every Codex control is then hidden. */
   codex: StatusRow[] | null;
   archive: ArchiveView;
   /** Anonymous-analytics opt-out (true = telemetry disabled by this user). */

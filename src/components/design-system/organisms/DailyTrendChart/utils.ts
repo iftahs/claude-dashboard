@@ -10,11 +10,7 @@ export function trendDelta(data: WeeklyData | null, metric: DailyMetric): number
   return prevVal > 0 ? Math.round(((currentVal - prevVal) / prevVal) * 100) : null;
 }
 
-/** Per-day CSV/JSON payload for the export button. The per-model columns are
- *  EFFECTIVE tokens, like the chart, so they sum to `effectiveTokens`;
- *  `totalTokens` (cache reads included) is its own column. Every row carries
- *  every model column (0 when idle) — CSV headers come from the first row, which
- *  on a long window is often an empty day. */
+// Every row carries every model column (0 when idle) — CSV headers come from the first row, often an empty day on a long window.
 export function trendExport(data: WeeklyData, weekDays: number) {
   const perModel = (b: WeeklyData['buckets'][number]) => b.byModelEffective ?? b.byModel;
   const models = [...new Set(data.buckets.flatMap((b) => Object.keys(perModel(b))))];

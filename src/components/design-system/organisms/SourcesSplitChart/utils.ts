@@ -10,14 +10,7 @@ export const SOURCE_LABEL: Record<UsageSource, string> = { code: 'Code', cowork:
 /** Surfaces in display order; a surface with no tokens in the window is dropped. */
 export const SOURCE_ORDER: UsageSource[] = ['code', 'cowork', 'codex'];
 
-/**
- * Codex thread-kind colours. Threads keep the Codex surface teal; guardian
- * reviews take the colour the model palette already gives their model
- * (codex-auto-review, the lightest violet), so the entity keeps one colour on
- * every chart. Pair validated with the dataviz validator on #1c1c24: normal ΔE
- * 22.2, deutan 12.2, contrast ≥ 3:1 (both sit above the dark lightness band, as
- * the existing surface colours already do).
- */
+// Guardian reuses its model's palette colour so the entity stays one colour on every chart; validated on #1c1c24 (ΔE 22.2, deutan 12.2, contrast ≥3:1).
 export const CODEX_KIND_COLOR = { threads: SOURCE_COLOR.codex, guardian: '#c0a8ff' } as const;
 export const CODEX_KIND_LABEL = { threads: 'Threads', guardian: 'Guardian reviews' } as const;
 

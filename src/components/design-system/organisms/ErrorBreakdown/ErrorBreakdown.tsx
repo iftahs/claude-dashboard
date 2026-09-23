@@ -25,10 +25,7 @@ function TrendTooltip({ active, payload }: TooltipProps) {
   );
 }
 
-/**
- * Where the failures are: by category, by tool, per day. The overall failure rate
- * is the Insights KPI row's to show, so this panel carries no rate hero of its own.
- */
+// Failure rate is the Insights KPI row's to show — no rate hero here.
 export function ErrorBreakdown({ data }: ErrorBreakdownProps) {
   if (!data) {
     return (
@@ -60,7 +57,6 @@ export function ErrorBreakdown({ data }: ErrorBreakdownProps) {
   return (
     <div className="space-y-5">
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-        {/* Failure categories */}
         <div>
           <div className="mb-2 text-xs font-semibold uppercase tracking-wider text-zinc-500">
             By category
@@ -82,7 +78,6 @@ export function ErrorBreakdown({ data }: ErrorBreakdownProps) {
           </div>
         </div>
 
-        {/* Failing tools: failures bar · failed / calls · the tool's own failure rate */}
         <div>
           <div className="mb-2 flex items-baseline justify-between text-xs font-semibold uppercase tracking-wider text-zinc-500">
             <span>By tool</span>

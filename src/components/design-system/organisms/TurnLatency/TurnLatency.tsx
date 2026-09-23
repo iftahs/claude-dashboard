@@ -27,11 +27,7 @@ function HistogramTooltip({ active, payload, split }: HistogramTooltipProps) {
   );
 }
 
-/**
- * How long a turn takes (prompt → last reply) and how long until the first token,
- * as median / p90 stats and a duration histogram. Under Both the stats split per
- * platform and the histogram stacks Claude over Codex.
- */
+// Under Both, stats split per platform and the histogram stacks Claude over Codex.
 export function TurnLatency({ data, platform }: TurnLatencyProps) {
   if (!data) {
     return (
@@ -55,7 +51,6 @@ export function TurnLatency({ data, platform }: TurnLatencyProps) {
 
   return (
     <div className="grid grid-cols-1 gap-6 lg:grid-cols-5">
-      {/* Stats */}
       <div className="space-y-3 lg:col-span-2">
         {split ? (
           <div className="overflow-hidden rounded-xl ring-1 ring-white/10">
@@ -99,7 +94,6 @@ export function TurnLatency({ data, platform }: TurnLatencyProps) {
         </div>
       </div>
 
-      {/* Histogram */}
       <div className="lg:col-span-3">
         <div className="mb-1 flex items-center justify-between text-xs font-semibold uppercase tracking-wider text-zinc-500">
           <span>Turns by duration</span>

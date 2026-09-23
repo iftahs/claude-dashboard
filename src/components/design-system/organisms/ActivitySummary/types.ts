@@ -7,17 +7,12 @@ export interface ActivitySummaryProps {
   summary: UsageSummaryData | null;
   loading: boolean;
   platform: Platform;
-  /**
-   * OpenAI's own lifetime token count for the account (every device, all tokens)
-   * from /api/codex/profile — shown beside the local figure under Codex and Both.
-   * null/undefined when the profile is unavailable.
-   */
+  /** OpenAI's lifetime token count from /api/codex/profile; null/undefined when the profile is unavailable. */
   codexServerLifetime?: number | null;
   /** Platform suffix for the heading (`titleScope(platform)`); '' under Claude. */
   scope?: string;
 }
 
-/** One summary card, already formatted. */
 export interface SummaryCard {
   key: 'lifetime' | 'peak' | 'streak' | 'active';
   label: string;

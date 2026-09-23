@@ -6,10 +6,8 @@ import type { ModelPrice, PriceGroup, PricePlatform } from './types';
  * `server/pricing.ts` — when a rate changes there, change it here too, or the
  * calculator will disagree with every cost figure in the app.
  *
- * The OpenAI rows are the Codex (ChatGPT desktop) models. GPT-5.6 and GPT-6 list a
- * cache-write rate, but Codex never reports cache writes, so it never moves an
- * estimate; models with no published write rate keep `cacheWrite: 0` and the
- * column renders as "—".
+ * GPT-5.6/6 list a cache-write rate but Codex never reports writes, so it never moves an estimate;
+ * models with no published rate keep `cacheWrite: 0` and the column renders as "—".
  */
 export const PRICING_DATA: ModelPrice[] = [
   // ── Anthropic ────────────────────────────────────────────────────────────
@@ -37,9 +35,7 @@ export const PRICING_DATA: ModelPrice[] = [
   { name: 'Claude 3 Haiku (Legacy)', family: 'haiku-legacy', platform: 'claude', input: 0.25, output: 1.25, cacheWrite: 0.3125, cacheRead: 0.03 },
 
   // ── OpenAI (Codex, via the ChatGPT desktop app) ──────────────────────────
-  // Current tiers first, most expensive down: GPT-6 Astra / Sol / Luna and
-  // GPT-5.6 Terra (no GPT-6 Terra exists). codex-auto-review is the guardian
-  // model that dominates the charts. Superseded tiers sit behind "Show other".
+  // Current tiers first, most expensive down — superseded tiers sit behind "Show other".
   { name: 'GPT-6 Astra', family: 'gpt-6-astra', platform: 'openai', input: 10, output: 50, cacheWrite: 12.5, cacheRead: 1.0, popular: true },
   { name: 'GPT-5.6 Terra', family: 'gpt-5-6-terra', platform: 'openai', input: 2, output: 12, cacheWrite: 2.5, cacheRead: 0.2, popular: true },
   { name: 'GPT-6 Sol', family: 'gpt-6-sol', platform: 'openai', input: 2, output: 10, cacheWrite: 2.5, cacheRead: 0.2, popular: true },

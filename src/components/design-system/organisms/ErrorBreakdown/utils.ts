@@ -1,7 +1,4 @@
-/**
- * Display names for the server's failure categories (server/insights.ts
- * classifyError). Unknown keys fall back to the key with dashes as spaces.
- */
+// Matches server/insights.ts classifyError; unknown keys fall back to the key with dashes as spaces.
 const CATEGORY_LABELS: Record<string, string> = {
   'exit-code': 'Command failed',
   'patch-failed': 'Patch failed',

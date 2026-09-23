@@ -5,12 +5,7 @@ import { LegendDot } from '@/components/design-system/atoms/LegendDot/LegendDot'
 import { ProgressBar } from '@/components/design-system/atoms/ProgressBar/ProgressBar';
 import type { ModelBreakdownProps } from './types';
 
-/**
- * Share of EFFECTIVE tokens by model (donut, legend and percentages) plus each
- * model's cost per 1M effective tokens. Total tokens are cache-read dominated and
- * once put a model with a third of the effective volume on top; they appear only
- * in the donut tooltip.
- */
+// Donut is EFFECTIVE tokens — total tokens are cache-read dominated and would mislead; shown only in the tooltip.
 export function ModelBreakdown({ models }: ModelBreakdownProps) {
   const data = models
     .filter((m) => m.effectiveTokens > 0)

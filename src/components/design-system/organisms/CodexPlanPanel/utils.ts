@@ -15,14 +15,7 @@ export const CODEX_PLAN_HELP = `Your ChatGPT plan's Codex rate-limit windows: th
 /** Row labels for the two Codex windows. */
 export const CODEX_PLAN_LABELS = { block: '5-hour limit', weekly: 'Weekly limit' };
 
-/**
- * Map one Codex window onto the `{ utilization, resets_at }` shape PlanUsage reads.
- * `resets_at` is null when the window has lapsed or is unknown — PlanUsage already
- * treats a null reset as "no active window" (Anthropic's payload does the same at
- * runtime; the `LiveLimitInfo` type just doesn't say so). A window the plan does
- * not have (e.g. 'go' has no 5-hour window) stays null so PlanUsage hides its row
- * instead of drawing a fake 0% — hence the single cast in `toPlanUsageLive`.
- */
+// A window the plan lacks (e.g. 'go' has no 5-hour) stays null so PlanUsage hides the row instead of drawing a fake 0%.
 function planWindow(w: CodexWindow | null) {
   return w ? { utilization: w.usedPct, resets_at: w.resetsAt } : null;
 }
@@ -33,11 +26,7 @@ export function toPlanUsageLive(live: CodexLiveData): LiveUsageData {
   return shaped as LiveUsageData;
 }
 
-/**
- * Premium models the plan gates separately (wham/usage `model_usage` lists only
- * those) as PlanUsage gate rows. "Unavailable" while a plan window is exhausted
- * almost always means the window, not the model, so it reads "paused".
- */
+// "Unavailable" during a plan-limit period almost always means the window, not the model — so it reads "paused".
 export function codexModelGates(live: CodexLiveData): PlanGateRow[] {
   return Object.entries(live.modelAvailability ?? {})
     .sort(([a], [b]) => a.localeCompare(b))
@@ -60,8 +49,6 @@ export function snapshotNote(live: CodexLiveData): string {
   const why = live.warning ? ` · ${live.warning}` : '';
   return `passive snapshot · ${age} — from the newest local rollout; open the ChatGPT app for live numbers${why}`;
 }
-
-// ── BlockGauge adapters ─────────────────────────────────────────────────────
 
 /** The window the Codex gauge rings: the 5-hour one, else the weekly one ('go' plan). */
 export function codexGaugeWindow(live: CodexLiveData | null | undefined): CodexWindow | null {
@@ -96,9 +83,7 @@ export function codexGaugeLabels(live: CodexLiveData | null | undefined, windowS
   };
 }
 
-// ── Server-side profile stats ───────────────────────────────────────────────
-// Not rendered on Live (lifetime / history figures belong on Trends, Sessions and
-// Models); kept for the tabs that show them next to their Claude equivalents.
+// Not rendered on Live (lifetime figures belong on Trends/Sessions/Models); kept for tabs showing Claude equivalents.
 
 /** "1h 12m" / "4m 20s" / "45s" for a duration in seconds. */
 export function formatSeconds(sec: number): string {

@@ -5,7 +5,6 @@ import { TranscriptPane } from '../TranscriptPane/TranscriptPane';
 import { formatDurationMs, prLabel, sessionTokens, singularNoun } from '../utils';
 import type { SessionDetailProps } from './types';
 
-/** The session modal body: summary, tool breakdown, PRs and the collapsible transcript. */
 export function SessionDetail({ session: s, transcript, onFetchTranscript, noun }: SessionDetailProps) {
   const one = singularNoun(noun);
   const [transcriptOpen, setTranscriptOpen] = useState(false);

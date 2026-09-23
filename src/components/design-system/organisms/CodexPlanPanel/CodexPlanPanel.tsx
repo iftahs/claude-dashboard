@@ -32,18 +32,11 @@ function PlanUnavailable({ error }: { error: string }) {
   );
 }
 
-/**
- * The Codex rate-limit card: the same PlanUsage molecule the Claude side uses, fed
- * OpenAI's two windows through the adapter plus the premium-model gates, with an
- * unavailable/expired state of its own. Takes the PlanUsage slot on the Live tab,
- * full width under the gauge row, exactly where the Claude card sits.
- */
+// Takes the PlanUsage slot on Live, full width under the gauge row — same position as the Claude card.
 export function CodexPlanCard({ live, weekStart }: CodexPlanCardProps) {
   const data = live.data;
   const ok = !!data && !data.error;
-  // Either the endpoint returned `{ error }` (token expired, offline with no local
-  // snapshot…) or the request itself failed (e.g. a backend without the Codex
-  // routes → HTTP 404). A passive snapshot carries `warning`, not `error`, and renders.
+  // A passive snapshot carries `warning`, not `error`, and still renders.
   const error = data?.error ?? live.error;
 
   if (ok) {

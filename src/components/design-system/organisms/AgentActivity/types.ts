@@ -1,11 +1,7 @@
 import type { ReactNode } from 'react';
 import type { LiveSubagents, MainAgent } from '@/types';
 
-/**
- * What both live agent endpoints (/api/subagents/live, /api/codex/agents/live)
- * send beyond the src/types.ts shapes. Optional, so an older backend still
- * type-checks and simply never shows the soft "your turn" state.
- */
+/** Optional fields, so an older backend still type-checks and simply never shows "your turn". */
 export interface LiveMainAgent extends MainAgent {
   /** The last turn finished and the session is idle on the user — soft, never red, never an alert. */
   yourTurn?: boolean;
@@ -30,9 +26,7 @@ export interface AgentActivityLabels {
   mainUnit?: [string, string];
   /** Empty-state line. Default: "No agents running right now". */
   empty?: string;
-  /** InfoTip on the red "N waiting" chip — what "waiting" means on this platform. */
   waitingHelp?: ReactNode;
-  /** InfoTip on the soft "N your turn" chip. */
   yourTurnHelp?: ReactNode;
 }
 

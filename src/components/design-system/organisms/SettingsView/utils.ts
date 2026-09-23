@@ -15,11 +15,7 @@ function titleCase(s: string): string {
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
-/**
- * The Codex status block: plan, whether the stored login still works, and which
- * data folder is read. `live` is /api/codex/live, `config` /api/codex/config;
- * `dir` prefers /api/sources' `codex.dir` when the backend sends it.
- */
+// `live` is /api/codex/live, `config` /api/codex/config; `dir` prefers /api/sources' `codex.dir` when sent.
 export function codexStatusRows(
   config: CodexConfigData | null,
   live: CodexLiveData | null,

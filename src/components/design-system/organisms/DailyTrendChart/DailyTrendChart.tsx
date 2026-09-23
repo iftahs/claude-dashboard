@@ -6,12 +6,7 @@ import { dayLabel, dayLabelWithYear } from '@/lib/format';
 import type { DailyMetric, DailyTrendChartProps } from './types';
 import { trendDelta, trendExport } from './utils';
 
-/**
- * Daily effective tokens (or equivalent cost), stacked by model, with a dotted
- * projection past today, a vs-prev-period delta, CSV/JSON export, and a
- * tokens/cost toggle. Every token figure on it — bars, projection, delta, export —
- * is effective tokens; the cache-read-inclusive total is only in the tooltip.
- */
+// Every token figure here is effective tokens; the cache-read-inclusive total is tooltip-only.
 export function DailyTrendChart({
   data,
   loading,

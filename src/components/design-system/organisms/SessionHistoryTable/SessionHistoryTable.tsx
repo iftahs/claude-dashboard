@@ -36,8 +36,7 @@ export function SessionHistoryTable({
     return filteredSessions.slice(start, start + ITEMS_PER_PAGE);
   }, [filteredSessions, currentPage]);
 
-  // Jump to a session from the search strip: open its modal directly. The strip is
-  // scoped to the same platform as this list, so the id is always here.
+  // The search strip is scoped to the same platform as this list, so the id is always found here.
   const jumpToSession = (sessionId: string) => {
     const s = sessions.find((x) => x.session_id === sessionId);
     if (s) setModalSession(s);

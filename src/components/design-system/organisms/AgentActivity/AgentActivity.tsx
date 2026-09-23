@@ -23,9 +23,7 @@ import { useFlashOnIncrease } from '@/hooks/useFlashOnIncrease';
 // literal so framer-motion's Transition type accepts it under strict TS.
 const spring = { type: 'spring', stiffness: 500, damping: 40 } as const;
 
-// Default copy is the Claude Code wording (CLAUDE_* in utils). The Agents tab
-// renders this same organism for Codex threads too — one section per platform —
-// and overrides the wording via `title` / `help` / `labels`.
+// Also renders Codex threads (Agents tab reuses this organism) via `title`/`help`/`labels` overrides.
 
 // ── Ticking elapsed label ──────────────────────────────────────────────────
 
@@ -216,9 +214,7 @@ function MainAgentCard({
   yourTurn: boolean;
   traffic: AgentTrafficStatus;
 }) {
-  // Five states: waiting on the user (red), working on its own transcript,
-  // delegating to running subagents, finished and idle on the user ("your turn",
-  // soft — never red), or idle.
+  // "your turn" (idle after a finished turn) is soft — never rendered red like waiting.
   const waiting = traffic === 'waiting';
   const working = active || delegating;
   const idleOnUser = !waiting && !working && yourTurn;
