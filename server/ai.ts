@@ -7,10 +7,12 @@
  * runs in Docker, where the CLI is absent, so the API paths are the common case.
  *
  * Prompts are passed to the CLI via stdin (no shell, injection-safe, no temp
- * file — works with the read-only ~/.claude Docker mount).
+ * file — works with the read-only ~/.claude Docker mount), and the CLI runs with
+ * no tools, MCP servers, hooks or project context (see printArgs).
  */
 
 import { execFile, spawn } from 'node:child_process';
+import { tmpdir } from 'node:os';
 import { readCredentials, oauthHeaders, expiredTokenMessage } from './scan.ts';
 
 export type AiProvider = 'claude' | 'openai' | 'gemini';
@@ -40,7 +42,7 @@ export class AiUnavailableError extends Error {}
 export class AiTokenRejectedError extends Error {}
 export class AiCallError extends Error {}
 
-const DEFAULT_MODEL = process.env.AI_MODEL || 'claude-opus-5';
+const DEFAULT_MODEL = process.env.AI_MODEL || 'claude-opus-5-5';
 const CALL_TIMEOUT_MS = Number(process.env.AI_TIMEOUT_MS || 60_000);
 const MAX_OUTPUT_TOKENS = 1024;
 const CLI_PROBE_TTL = 5 * 60_000;
@@ -78,16 +80,23 @@ function cliInvocation(args: string[]): { file: string; args: string[] } {
   return { file: 'claude', args };
 }
 
+/** cmd.exe checks the current directory before PATH; disabled since print calls run in os.tmpdir(), where a download could leave a file named `claude`. */
+function cliEnv(): NodeJS.ProcessEnv {
+  return process.platform === 'win32' ? { ...process.env, NoDefaultCurrentDirectoryInExePath: '1' } : process.env;
+}
+
 /**
  * `claude --version` succeeds within a few seconds. Cached 5 min. Works on the
  * host and inside Docker when the image was built with WITH_CLAUDE_CLI=1; when
- * the CLI is absent the probe just fails fast (ENOENT) and caches false.
+ * the CLI is absent the probe just fails fast (ENOENT) and caches false. A CLI
+ * that rejected a tool-disabling flag stays unavailable until a restart.
  */
 export async function claudeCliAvailable(): Promise<boolean> {
+  if (cliCannotDisableTools) return false;
   if (cliProbe && Date.now() - cliProbe.at < CLI_PROBE_TTL) return cliProbe.ok;
   const { file, args } = cliInvocation(['--version']);
   const ok = await new Promise<boolean>((resolve) => {
-    execFile(file, args, { timeout: 4000, windowsHide: true }, (err) => resolve(!err));
+    execFile(file, args, { timeout: 4000, windowsHide: true, env: cliEnv() }, (err) => resolve(!err));
   });
   cliProbe = { ok, at: Date.now() };
   return ok;
@@ -132,21 +141,52 @@ function callProvider(creds: AiCreds, input: AiCallInput): Promise<string> {
 
 // ── CLI ──────────────────────────────────────────────────────────────────────
 
+// Runs as a plain completion (--tools '', --strict-mcp-config, --safe-mode, cwd=tmpdir) since the prompt carries
+// repo-derived strings; a CLI that rejects a required flag fails closed instead of running with tools.
+const NO_PERSIST = '--no-session-persistence';
+const SAFE_MODE = '--safe-mode';
+const REQUIRED_FLAGS = ['--tools', '--strict-mcp-config'];
+const optionalFlags = new Set([NO_PERSIST, SAFE_MODE]);
+let cliCannotDisableTools = false;
+
+function printArgs(model: string): string[] {
+  return ['--print', ...optionalFlags, '--tools', '', '--strict-mcp-config', '--model', model, '--output-format', 'text'];
+}
+
+/** 'retry': an optional flag was rejected (now dropped for good); AiUnavailableError: a required one was; null: any other failure. */
+function unknownOption(args: string[], stderr: string): 'retry' | AiUnavailableError | null {
+  const flag = /unknown option '?(--[\w-]+)/i.exec(stderr)?.[1];
+  if (!flag || !args.includes(flag)) return null;
+  if (optionalFlags.delete(flag)) return 'retry';
+  if (!REQUIRED_FLAGS.includes(flag)) return null;
+  cliCannotDisableTools = true;
+  return new AiUnavailableError(
+    `The installed claude CLI does not support ${flag}, so AI Insights cannot run it without tools. ` +
+      'Update Claude Code, or set ANTHROPIC_API_KEY.',
+  );
+}
+
 function runViaCli(input: AiCallInput, model: string): Promise<string> {
   return new Promise((resolve, reject) => {
-    const { file, args } = cliInvocation(['--print', '--model', model, '--output-format', 'text']);
+    const { file, args } = cliInvocation(printArgs(model));
     const child = execFile(
       file,
       args,
-      { timeout: CALL_TIMEOUT_MS, maxBuffer: 8 * 1024 * 1024, windowsHide: true },
+      { timeout: CALL_TIMEOUT_MS, maxBuffer: 8 * 1024 * 1024, windowsHide: true, cwd: tmpdir(), env: cliEnv() },
       (err, stdout, stderr) => {
-        if (err) return reject(new AiCallError(`claude CLI failed: ${stderr || err.message}`));
+        if (err) {
+          const bad = unknownOption(args, String(stderr));
+          if (bad === 'retry') return resolve(runViaCli(input, model));
+          return reject(bad ?? new AiCallError(`claude CLI failed: ${stderr || err.message}`));
+        }
         const out = String(stdout).trim();
         out ? resolve(out) : reject(new AiCallError('Empty CLI response'));
       },
     );
     // Prompt via stdin — never interpolated into a shell, so transcript-derived
     // text can't break out, and there's no arg-length cap or temp file.
+    // A CLI that rejects a flag exits without reading stdin; unhandled, the resulting EPIPE would crash the server.
+    child.stdin?.on('error', () => {});
     child.stdin?.end(`${input.system}\n\n${input.user}`);
   });
 }
@@ -157,8 +197,8 @@ function runViaCli(input: AiCallInput, model: string): Promise<string> {
  * Models that think by default when `thinking` is omitted. They share `max_tokens`
  * between the thinking and the visible answer, so at our small budget the reply
  * would truncate — we turn thinking off instead, which is legal at effort ≤ high
- * (the default). Fable and Mythos (5 and 5.1) are deliberately absent: they reject
- * `thinking:{type:'disabled'}` with a 400 — see ALWAYS_THINKS below.
+ * (the default). Fable and Mythos (5 and 5.1) and Opus 5.5 are deliberately absent:
+ * they reject `thinking:{type:'disabled'}` with a 400 — see ALWAYS_THINKS below.
  */
 const THINKS_BY_DEFAULT = new Set(['claude-opus-5', 'claude-sonnet-5']);
 
@@ -167,7 +207,14 @@ const THINKS_BY_DEFAULT = new Set(['claude-opus-5', 'claude-sonnet-5']);
  * 400. The only lever that keeps the visible answer from being crowded out of our
  * small `max_tokens` is effort, so these get `output_config.effort: 'low'`.
  */
-const ALWAYS_THINKS = new Set(['claude-fable-5', 'claude-fable-5-1', 'claude-mythos-5', 'claude-mythos-5-1']);
+const ALWAYS_THINKS = new Set([
+  'claude-fable-5',
+  'claude-fable-5-1',
+  'claude-mythos-5',
+  'claude-mythos-5-1',
+  // Opus 5.5 rejects `thinking:{type:'disabled'}` at every effort level.
+  'claude-opus-5-5',
+]);
 
 /**
  * Exact alias, not a substring test. Gateway and provider prefixes are stripped
@@ -196,11 +243,15 @@ function alwaysThinks(model: string): boolean {
  * text; the system suffix is the documented mitigation — note it names XML tags
  * generically and never tells the model not to think, which makes leakage worse.
  */
+/** Extra `max_tokens` for always-thinking models — thinking and the answer share one budget, so a short answer still needs room after it. */
+const THINKING_HEADROOM = 2048;
+
 function messagesBody(input: AiCallInput, model: string, extra?: Record<string, unknown>) {
   const thinkingOff = thinksByDefault(model);
+  const budget = input.maxTokens ?? MAX_OUTPUT_TOKENS;
   return {
     model,
-    max_tokens: input.maxTokens ?? MAX_OUTPUT_TOKENS,
+    max_tokens: alwaysThinks(model) ? budget + THINKING_HEADROOM : budget,
     system: thinkingOff
       ? `${input.system}\n\nDo not include internal or system XML tags in your response.`
       : input.system,
@@ -235,6 +286,8 @@ async function callMessages(headers: Record<string, string>, input: AiCallInput,
   const text = Array.isArray(data?.content)
     ? data.content.filter((b: any) => b?.type === 'text').map((b: any) => b.text).join('').trim()
     : '';
+  if (!text && data?.stop_reason === 'max_tokens')
+    throw new AiCallError('Model used its whole token budget before answering (max_tokens).');
   if (!text) throw new AiCallError('Empty response from model');
   return text;
 }
@@ -269,12 +322,17 @@ async function callOpenAI(apiKey: string, input: AiCallInput, model: string): Pr
 }
 
 // ── Google Gemini ────────────────────────────────────────────────────────────
+// The key goes in the x-goog-api-key header, never a ?key= query param — URLs end up in proxy logs and stack traces.
+
+function geminiHeaders(apiKey: string): Record<string, string> {
+  return { 'x-goog-api-key': apiKey, 'content-type': 'application/json' };
+}
 
 async function callGemini(apiKey: string, input: AiCallInput, model: string): Promise<string> {
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`;
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`;
   const res = await fetch(url, {
     method: 'POST',
-    headers: { 'content-type': 'application/json' },
+    headers: geminiHeaders(apiKey),
     body: JSON.stringify({
       systemInstruction: { parts: [{ text: input.system }] },
       contents: [{ role: 'user', parts: [{ text: input.user }] }],
@@ -389,10 +447,10 @@ async function callOpenAIStream(apiKey: string, input: AiCallInput, model: strin
 }
 
 async function callGeminiStream(apiKey: string, input: AiCallInput, model: string, onDelta: (t: string) => void): Promise<void> {
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:streamGenerateContent?alt=sse&key=${encodeURIComponent(apiKey)}`;
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:streamGenerateContent?alt=sse`;
   const res = await fetch(url, {
     method: 'POST',
-    headers: { 'content-type': 'application/json' },
+    headers: geminiHeaders(apiKey),
     body: JSON.stringify({
       systemInstruction: { parts: [{ text: input.system }] },
       contents: [{ role: 'user', parts: [{ text: input.user }] }],
@@ -414,8 +472,8 @@ async function callGeminiStream(apiKey: string, input: AiCallInput, model: strin
 
 function runViaCliStream(input: AiCallInput, model: string, onDelta: (t: string) => void): Promise<void> {
   return new Promise((resolve, reject) => {
-    const { file, args } = cliInvocation(['--print', '--model', model, '--output-format', 'text']);
-    const child = spawn(file, args, { windowsHide: true });
+    const { file, args } = cliInvocation(printArgs(model));
+    const child = spawn(file, args, { windowsHide: true, cwd: tmpdir(), env: cliEnv() });
     let any = false;
     let err = '';
     let settled = false;
@@ -447,10 +505,13 @@ function runViaCliStream(input: AiCallInput, model: string, onDelta: (t: string)
     child.on('error', (e) => settle(() => reject(new AiCallError(`claude CLI failed: ${e.message}`))));
     child.on('close', (code) =>
       settle(() => {
-        if (code !== 0 && !any) reject(new AiCallError(`claude CLI failed: ${err || `exit ${code}`}`));
-        else resolve();
+        if (code === 0 || any) return resolve();
+        const bad = unknownOption(args, err);
+        if (bad === 'retry') runViaCliStream(input, model, onDelta).then(resolve, reject);
+        else reject(bad ?? new AiCallError(`claude CLI failed: ${err || `exit ${code}`}`));
       }),
     );
+    child.stdin.on('error', () => {}); // EPIPE from a CLI that exited early — see runViaCli
     child.stdin.end(`${input.system}\n\n${input.user}`);
   });
 }

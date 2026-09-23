@@ -39,7 +39,8 @@ export default defineConfig({
   server: {
     port: 5180,
     proxy: {
-      '/api': `http://localhost:${SERVER_PORT}`,
+      // 127.0.0.1, not localhost (avoids Node resolving to ::1); changeOrigin: false keeps the browser's Host header so the backend's Host check enforces it — the string shorthand would set changeOrigin: true and defeat that check.
+      '/api': { target: `http://127.0.0.1:${SERVER_PORT}`, changeOrigin: false },
     },
   },
 });

@@ -1,4 +1,4 @@
-import { dayLabel } from '@/lib/format';
+import { localYmd } from '@/lib/week';
 import type { WeeklyData } from '@/types';
 import type { DailyMetric } from './types';
 
@@ -10,13 +10,16 @@ export function trendDelta(data: WeeklyData | null, metric: DailyMetric): number
   return prevVal > 0 ? Math.round(((currentVal - prevVal) / prevVal) * 100) : null;
 }
 
-/** Per-day CSV/JSON payload for the export button. */
+// Every row carries every model column (0 when idle) — CSV headers come from the first row, often an empty day on a long window.
 export function trendExport(data: WeeklyData, weekDays: number) {
+  const perModel = (b: WeeklyData['buckets'][number]) => b.byModelEffective ?? b.byModel;
+  const models = [...new Set(data.buckets.flatMap((b) => Object.keys(perModel(b))))];
   const csv = data.buckets.map((b) => ({
-    date: dayLabel(b.start),
+    date: localYmd(b.start),
     effectiveTokens: b.effectiveTokens,
+    totalTokens: b.totalTokens,
     cost: b.cost.toFixed(4),
-    ...b.byModel,
+    ...Object.fromEntries(models.map((m) => [m, perModel(b)[m] ?? 0])),
   }));
   return { csv, json: data.buckets, filename: `trends-${weekDays}d` };
 }

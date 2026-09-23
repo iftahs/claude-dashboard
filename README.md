@@ -45,7 +45,7 @@ Live and recent **dynamic-workflow runs** (Claude Code's multi-agent orchestrati
 ![Workflows · live & recent runs with all-time stats](.github/screenshots/workflows.png)
 
 ### 4. 📈 Trends
-* **Tokens vs. Cost toggle**: Switch the daily stacked bar chart between **Tokens** and **Cost (USD)**, over a 1–4 week window.
+* **Tokens vs. Cost toggle**: Switch the daily stacked bar chart between **Tokens** and **Cost (USD)**, over a 1-week to 1-year window (presets 1w · 2w · 1m · 2m · 3m · 6m · 1y).
 * **Projection**: A dotted projection past today, plus projected month-end cost.
 * **Cache Efficiency**: Daily cache hit-rate line (cache reads / total tokens).
 * **Peak Hours Heatmap** (7×24) and an 18-week **Activity Grid**.
@@ -159,7 +159,16 @@ Want the dashboard always available without running `npm` each time? Run it as a
 
 3. Open <http://localhost:8787>.
 
-The container uses `restart: unless-stopped`, so it comes back automatically after a crash or reboot (as long as Docker Desktop is set to start on login). Stop it with `npm run docker:down`. To change the host port, edit the `ports` mapping in `docker-compose.yml` (e.g. `"9000:8787"`).
+**It only answers on this machine.** The port is published on `127.0.0.1`, and that is what keeps it local. The server also rejects requests whose `Host` isn't `localhost`, `127.0.0.1` or `::1`, and any cross-site or non-JSON `POST`, so web pages you visit can't reach it through DNS rebinding or a forged form. Those checks protect your browser; they are not access control. The API serves your transcripts and can spend your Claude quota through AI Insights, so it is not exposed to your network by default. To open it from another device on your LAN, set both in `.env` and rerun `npm run docker:up`:
+
+```
+DASHBOARD_BIND=0.0.0.0
+ALLOWED_HOSTS=192.168.1.20,my-desktop.local
+```
+
+Anyone who can reach that address can then read everything the dashboard shows. `ALLOWED_HOSTS` does not change that: any client other than a browser can simply send `Host: localhost`. `npm run docker:up` also writes your host's timezone into `.env` (`TZ`, only if absent) so day buckets match your local days.
+
+The container uses `restart: unless-stopped`, so it comes back automatically after a crash or reboot (as long as Docker Desktop is set to start on login). Stop it with `npm run docker:down`. To change the host port, edit the `ports` mapping in `docker-compose.yml` and change only the first port number (e.g. `"${DASHBOARD_BIND:-127.0.0.1}:9000:8787"`). Dropping the address part (plain `"9000:8787"`) publishes the port on every interface.
 
 > **Docker has no hot reload.** After any code change, run `npm run docker:up` again to rebuild and restart.
 
@@ -243,7 +252,7 @@ The AI Insights tab and the per-section "✨ AI" buttons call a model **only whe
 
 - **What's *never* sent:** transcripts or message contents, full file/project paths, session IDs, or your OAuth token.
 - **Which backend serves the call** (first available wins): an API key you set in **⚙ Settings → AI Insights** (Claude / OpenAI / Gemini, stored only in your browser) → a server-side `ANTHROPIC_API_KEY` → the local `claude` CLI (`claude -p`, uses your subscription) → your Claude.ai OAuth token → otherwise the feature shows setup instructions and does nothing.
-- **Server-side defaults** for Docker/self-host live in [`.env.example`](.env.example): `WITH_CLAUDE_CLI=1`, `ANTHROPIC_API_KEY`, and `AI_MODEL` (default `claude-opus-5`).
+- **Server-side defaults** for Docker/self-host live in [`.env.example`](.env.example): `WITH_CLAUDE_CLI=1`, `ANTHROPIC_API_KEY`, and `AI_MODEL` (default `claude-opus-5-5`).
 - If you never open the AI tab or click "✨ AI", **no aggregates are ever sent.**
 
 ## Contributing

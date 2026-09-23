@@ -17,7 +17,15 @@ services:
     image: claude-dashboard
     container_name: claude-dashboard
     ports:
-      - "8787:8787"
+      # Loopback only by default: the dashboard has no login and serves your
+      # transcripts. For LAN access set DASHBOARD_BIND=0.0.0.0 in .env AND list
+      # the name/IP you'll browse to in ALLOWED_HOSTS (e.g. 192.168.1.20) — the
+      # server rejects any Host header that isn't localhost or on that list.
+      # That Host check only defends browsers against DNS rebinding; it is not
+      # access control: once the port is reachable, any client can send
+      # `Host: localhost`. To use another host port, change only the first
+      # number and keep the address prefix ("${DASHBOARD_BIND:-127.0.0.1}:9000:8787").
+      - "${DASHBOARD_BIND:-127.0.0.1}:8787:8787"
     volumes:
       # Mount your real ~/.claude into the container, read-only.
       # Set CLAUDE_DIR_HOST in a .env file (see .env.example).
@@ -31,13 +39,21 @@ services:
       # Optional: `npm run docker:up` writes CODEX_DIR_HOST=~/.codex into .env when
       # that folder exists; blank it to opt out. Unset, it falls back to .claude,
       # which holds no rollout-*.jsonl files → zero codex events, container still
-      # boots. Only sessions/**/rollout-*.jsonl, session_index.jsonl and auth.json
-      # (for the live limits call) are ever read.
+      # boots. What is ever read:
+      #   - sessions/**/rollout-*.jsonl and session_index.jsonl (usage, threads);
+      #   - auth.json (only for the live limits call — the token never leaves the server);
+      #   - config.toml, allowlisted keys only (model, reasoning effort, approval /
+      #     sandbox / personality / service tier, plugin enabled flags, marketplace
+      #     and MCP server NAMES plus the MCP command's program name, trusted-project
+      #     COUNTS) — never MCP env vars, args, headers or tokens, nor project paths;
+      #   - skills/*/SKILL.md and skills/.system/*/SKILL.md (folder names only);
+      #   - plans/**/*.md (first heading, size, age);
+      #   - automations/*/automation.toml (name, status, schedule — never the prompt).
       - "${CODEX_DIR_HOST:-${CLAUDE_DIR_HOST}}:/data/.codex:ro"
-      # ~/.claude.json (bypassPermissionsModeAccepted etc.), read-only. Optional:
-      # CLAUDE_JSON_HOST is written to .env automatically by `npm run docker:up`;
-      # when unset this falls back to mounting the .claude DIR here, which the
-      # backend detects (not a file) and treats as "can't determine".
+      # ~/.claude.json, read-only — the Workspace tab lists the MCP servers
+      # configured in it. Optional: CLAUDE_JSON_HOST is written to .env
+      # automatically by `npm run docker:up`; when unset this falls back to
+      # mounting the .claude DIR here, which the backend reads as "no MCP servers".
       - "${CLAUDE_JSON_HOST:-${CLAUDE_DIR_HOST}}:/data/claude-json:ro"
       # Parsed-scan cache. MUST be a named volume, not a bind or an anonymous one:
       # `npm run docker:up` runs `up -d --build`, which replaces the container, and
@@ -52,14 +68,21 @@ services:
       - CODEX_DIR=/data/.codex
       - SERVER_PORT=8787
       - APP_RUNTIME=docker
+      # Extra hostnames/IPs (comma-separated) the server answers to besides
+      # localhost — only needed with DASHBOARD_BIND above. See .env.example.
+      - ALLOWED_HOSTS=${ALLOWED_HOSTS:-}
+      # Opt-in history archive: set DASHBOARD_RETAIN_HISTORY=1 in .env to keep the
+      # usage history of transcripts Claude Code's ~30-day cleanup deletes (kept in
+      # the claude-dashboard-cache volume — deleting the volume then deletes it too).
+      - DASHBOARD_RETAIN_HISTORY=${DASHBOARD_RETAIN_HISTORY:-}
       # AI Insights (chat + per-section buttons). In Docker there's no `claude`
       # CLI, so set ANTHROPIC_API_KEY in .env for a dedicated, un-throttled
       # backend. Unset → falls back to the Claude.ai OAuth token (works, but is
-      # rate-limited → may 429). AI_MODEL is optional (default claude-opus-5).
+      # rate-limited → may 429). AI_MODEL is optional (default claude-opus-5-5).
       # To route through a corporate LLM proxy (LiteLLM / gateway) instead, set
       # ANTHROPIC_BASE_URL + ANTHROPIC_AUTH_TOKEN in .env (the token is sent as a
       # bearer Authorization header). Host shell vars are NOT auto-passed, so they
-      # must be listed here. Set AI_MODEL if the proxy doesn't serve claude-opus-5.
+      # must be listed here. Set AI_MODEL if the proxy doesn't serve claude-opus-5-5.
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
       - ANTHROPIC_BASE_URL=${ANTHROPIC_BASE_URL:-}
       - ANTHROPIC_AUTH_TOKEN=${ANTHROPIC_AUTH_TOKEN:-}
@@ -69,11 +92,14 @@ services:
       # ANTHROPIC_AUTH_TOKEN; set these only if the spend-read key/url differs.
       - LITELLM_BASE_URL=${LITELLM_BASE_URL:-}
       - LITELLM_API_KEY=${LITELLM_API_KEY:-}
-      # Container path of the ~/.claude.json mount above (bypass detection).
+      # Container path of the ~/.claude.json mount above (Workspace MCP inventory).
       - CLAUDE_JSON=/data/claude-json
-      # Day buckets follow the container clock — pin it to your local timezone
-      # (override TZ in .env if you are not in Asia/Jerusalem).
+      # Day buckets follow the container clock. `npm run docker:up` writes your
+      # host's zone into .env as TZ (only if absent); the default below applies
+      # when it is unset or blank.
       - TZ=${TZ:-Asia/Jerusalem}
+      # Host OS (written by `npm run docker:up`), so the "token expired" advice fits it.
+      - HOST_OS=${HOST_OS:-}
     # Always available: restarts on crash and on machine reboot
     # (as long as Docker Desktop is set to start at login).
     restart: unless-stopped

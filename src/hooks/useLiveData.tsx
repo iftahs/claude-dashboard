@@ -20,6 +20,11 @@ import type {
 
 const POLL = 5000;
 
+/** Poll interval for a `days`-long weekly aggregate (Trends window). */
+export function weeklyPollMs(days: number): number {
+  return days > 28 ? 60_000 : POLL;
+}
+
 interface LiveDataCtx {
   // Window state shared across Live + Trends (Live's cost/day uses the Trends window).
   recentHours: number;
@@ -29,6 +34,8 @@ interface LiveDataCtx {
   // Cross-tab polls (feed multiple tabs and/or the header/sidebar).
   recent: PollState<RecentData>;
   weekly: PollState<WeeklyData>;
+  /** Always the last 7 days at the fast rate — Live, budget rows, alerts. */
+  liveWeekly: PollState<WeeklyData>;
   models: PollState<ModelsData>;
   litellm: PollState<LiteLlmSpendData>;
   liveUsage: PollState<LiveUsageData>;
@@ -50,31 +57,38 @@ const LiveDataContext = createContext<LiveDataCtx | null>(null);
  * window state shared between Live and Trends. Source-aware polls run through
  * `withSrc`; the LiteLLM poll is gated on gateway detection so Code-only /
  * direct-Anthropic users poll nothing; the Codex polls are gated the same way on
- * `codexAvailable` (they feed the Codex tab, the sidebar badge and the header
- * agent traffic signal).
+ * `codexAvailable` (they feed the Codex panels, the sidebar badge and the header agent traffic signal); the 2.5s
+ * agent polls are further gated on showClaude/showCodex, and workflow polls on showClaude (a Claude-only tab).
  */
 export function LiveDataProvider({ children }: { children: ReactNode }) {
-  const { withSrc, codexAvailable } = useSource();
+  const { withSrc, codexAvailable, showClaude, showCodex } = useSource();
   const { litellmAvailable } = useConfigMode();
   const [recentHours, setRecentHours] = useState(12);
   const [weekDays, setWeekDays] = useState(7);
 
   const recent = usePolling<RecentData>(withSrc(`/api/usage/recent?hours=${recentHours}`), POLL);
-  const weekly = usePolling<WeeklyData>(withSrc(`/api/usage/weekly?days=${weekDays}`), POLL);
+  // Long windows move slowly and have a large payload (up to 365 buckets), so they poll once a minute instead of every 5 s.
+  const weekly = usePolling<WeeklyData>(withSrc(`/api/usage/weekly?days=${weekDays}`), weeklyPollMs(weekDays));
+  // Live, budget rows and alerts always need the last 7 days at the fast rate; when weekDays=7 the URLs match and the in-flight map collapses both polls into one.
+  const liveWeekly = usePolling<WeeklyData>(withSrc('/api/usage/weekly?days=7'), POLL);
   const models = usePolling<ModelsData>(withSrc('/api/usage/models?days=7'), POLL);
   const litellm = usePolling<LiteLlmSpendData>(
     litellmAvailable ? `/api/usage/litellm?days=${weekDays}` : '',
-    POLL,
+    // The server caches gateway spend for 5 minutes; polling faster only re-slices it.
+    60_000,
   );
+  // Live limits stay app-wide (badge/title/notifications read them); the fast agent + workflow polls run only while their platform is on screen.
+  const workflowsOn = showClaude;
   const liveUsage = usePolling<LiveUsageData>('/api/usage/live', 15000);
-  const liveSubagents = usePolling<LiveSubagents>('/api/subagents/live', 2500);
-  const workflows = usePolling<WorkflowsData>('/api/workflows', 4000);
-  const workflowStats = usePolling<WorkflowStats>('/api/workflows/stats', 30000);
+  const liveSubagents = usePolling<LiveSubagents>(showClaude ? '/api/subagents/live' : '', 2500);
+  const workflows = usePolling<WorkflowsData>(workflowsOn ? '/api/workflows' : '', 4000);
+  const workflowStats = usePolling<WorkflowStats>(workflowsOn ? '/api/workflows/stats' : '', 30000);
   const version = usePolling<VersionInfo>('/api/version', 1_800_000);
   // Codex: live limits mirror the Claude live cadence, agents the Claude agents
   // cadence; the profile endpoint is server-cached for 30 min so poll it that often.
+  // showCodex implies codexAvailable (the platform is pinned to Claude otherwise).
   const codexLive = usePolling<CodexLiveData>(codexAvailable ? '/api/codex/live' : '', 15000);
-  const codexAgents = usePolling<LiveSubagents>(codexAvailable ? '/api/codex/agents/live' : '', 2500);
+  const codexAgents = usePolling<LiveSubagents>(showCodex ? '/api/codex/agents/live' : '', 2500);
   const codexProfile = usePolling<CodexProfileStats>(codexAvailable ? '/api/codex/profile' : '', 1_800_000);
 
   const value = useMemo<LiveDataCtx>(
@@ -85,6 +99,7 @@ export function LiveDataProvider({ children }: { children: ReactNode }) {
       setWeekDays,
       recent,
       weekly,
+      liveWeekly,
       models,
       litellm,
       liveUsage,
@@ -97,7 +112,7 @@ export function LiveDataProvider({ children }: { children: ReactNode }) {
       codexProfile,
     }),
     [
-      recentHours, weekDays, recent, weekly, models, litellm, liveUsage, liveSubagents,
+      recentHours, weekDays, recent, weekly, liveWeekly, models, litellm, liveUsage, liveSubagents,
       workflows, workflowStats, version, codexLive, codexAgents, codexProfile,
     ],
   );

@@ -2,33 +2,24 @@ import { Section } from '@/components/design-system/molecules/Section/Section';
 import { LegendDot } from '@/components/design-system/atoms/LegendDot/LegendDot';
 import { compact, usd } from '@/lib/format';
 import type { SourcesSplitChartProps } from './types';
-import { SOURCE_COLOR, SOURCE_LABEL, computeSourceSplit } from './utils';
 
-/**
- * Split of effective tokens (and equivalent cost) between the surfaces with data
- * in the window — Claude Code, Cowork and Codex. Caller gates this on the All
- * filter, where the split is meaningful (a single-surface filter zeroes the rest).
- */
-export function SourcesSplitChart({ bySource, weekDays }: SourcesSplitChartProps) {
-  const segments = computeSourceSplit(bySource);
-
+// One component, one slot for every platform; a $0 segment (the unpriced guardian model) shows tokens only.
+export function SourcesSplitChart({ segments, weekDays, help, scope = '' }: SourcesSplitChartProps) {
   return (
-    <Section
-      title={`Sources · effective tokens · ${weekDays}d`}
-      help="Split of effective tokens (and equivalent cost) between Claude Code (CLI), Cowork (desktop local-agent mode) and Codex (ChatGPT desktop) over the selected window."
-    >
-      <div className="flex items-center gap-4">
-        <div className="flex flex-1 h-3 overflow-hidden rounded-full bg-ink-800 ring-1 ring-white/10">
+    <Section title={`Sources${scope} · effective tokens · ${weekDays}d`} help={help}>
+      <div className="flex flex-wrap items-center gap-4">
+        {/* 2px surface gap between fills (gap-0.5 on the track colour). */}
+        <div className="flex h-3 min-w-[8rem] flex-1 gap-0.5 overflow-hidden rounded-full bg-ink-800 ring-1 ring-white/10">
           {segments.map((s) => (
-            <div key={s.source} style={{ width: `${s.pct}%`, backgroundColor: SOURCE_COLOR[s.source] }} />
+            <div key={s.key} style={{ width: `${s.pct}%`, backgroundColor: s.color }} title={`${s.label} · ${s.pct.toFixed(0)}%`} />
           ))}
         </div>
-        <div className="flex items-center gap-4">
+        <div className="flex flex-wrap items-center gap-4">
           {segments.map((s) => (
             <LegendDot
-              key={s.source}
-              color={SOURCE_COLOR[s.source]}
-              label={`${SOURCE_LABEL[s.source]} · ${compact(s.effectiveTokens)} · ${usd(s.cost)}`}
+              key={s.key}
+              color={s.color}
+              label={`${s.label} · ${compact(s.effectiveTokens)}${s.cost > 0 ? ` · ${usd(s.cost)}` : ''} · ${s.pct.toFixed(0)}%`}
             />
           ))}
         </div>

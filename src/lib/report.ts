@@ -1,6 +1,7 @@
 import type { WeeklyData } from '@/types';
 import { localYmd } from './week';
 import { shortModel } from './format';
+import { coverageDays } from './coverage';
 
 /** Shape ExportButton consumes: a flat CSV table, a structured JSON doc, a slug. */
 export interface SpendReport {
@@ -45,7 +46,7 @@ export function buildSpendReport(weekly: WeeklyData, weekDays: number, source: s
     source,
     costBasis: 'estimated-equivalent-api',
     totalCostUSD: round2(weekly.totals.cost),
-    avgCostPerDayUSD: round2(weekly.totals.cost / weekDays),
+    avgCostPerDayUSD: round2(weekly.totals.cost / coverageDays(weekly, weekDays)),
     effectiveTokens: weekly.totals.effectiveTokens,
     totalTokens: weekly.totals.totalTokens,
   };

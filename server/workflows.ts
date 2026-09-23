@@ -20,6 +20,7 @@ import { readdir, stat, readFile } from 'node:fs/promises';
 import { basename, join } from 'node:path';
 import { createInterface } from 'node:readline';
 import { claudeDir } from './scan.ts';
+import { projectNameOf, projectPathForFile } from './project-path.ts';
 import { blendedRatePerMillion } from './pricing.ts';
 import { readScriptInfo, matchCall, commonPrefixLen, stripBoilerplate } from './workflow-script.ts';
 
@@ -159,27 +160,9 @@ function num(v: unknown): number {
   return typeof v === 'number' && Number.isFinite(v) ? v : 0;
 }
 
-function projectPathFromFile(file: string): string {
-  try {
-    const parts = file.replace(/\\/g, '/').split('/');
-    const projIdx = parts.lastIndexOf('projects');
-    if (projIdx !== -1 && parts[projIdx + 1]) {
-      const encoded = decodeURIComponent(parts[projIdx + 1]);
-      if (/^[A-Za-z]--/.test(encoded)) {
-        const letter = encoded[0].toLowerCase();
-        const rest = encoded.slice(3).replace(/--/g, '\\');
-        return `${letter}:\\${rest}`;
-      }
-      return '/' + encoded.replace(/--/g, '/');
-    }
-  } catch {
-    /* keep empty */
-  }
-  return '';
-}
-
-function projectNameFromPath(projectPath: string): string {
-  return projectPath.split(/[\\/]/).filter(Boolean).pop() ?? projectPath;
+/** The project a run belongs to: the session transcript's real cwd (project-path.ts), same as merge.ts uses — the lossy folder decode is only the fallback. */
+async function projectOfFile(file: string): Promise<string> {
+  return projectNameOf(await projectPathForFile(file));
 }
 
 function agentIdFromFileName(name: string): string | undefined {
@@ -450,7 +433,7 @@ async function readAgentMeta(dir: string, agentId: string): Promise<{ agentType:
 
 async function buildLiveRun(d: DiscoveredDir, probe: DirProbe): Promise<WorkflowRun> {
   const newest = Math.max(probe.dirMtime, probe.journalMtime, probe.newestAgentMtime);
-  const project = projectNameFromPath(projectPathFromFile(d.dir));
+  const project = await projectOfFile(d.dir);
 
   // Parse only the newest few agent transcripts to bound cost on 100-agent runs.
   const sorted = [...probe.agentFiles].sort((a, b) => b.mtime - a.mtime);
@@ -558,7 +541,7 @@ async function parseFinalJournal(j: DiscoveredJournal): Promise<WorkflowRun | nu
 }
 
 async function parseFinalJournalUncached(j: DiscoveredJournal): Promise<WorkflowRun | null> {
-  const project = projectNameFromPath(projectPathFromFile(j.path));
+  const project = await projectOfFile(j.path);
   if (j.size > MAX_JOURNAL) {
     return {
       runId: j.runId,
@@ -717,7 +700,7 @@ const summaryCache = new Map<string, { mtime: number; summary: JournalSummary }>
 async function peekSummary(j: DiscoveredJournal): Promise<JournalSummary> {
   const cached = summaryCache.get(j.path);
   if (cached && cached.mtime === j.mtime) return cached.summary;
-  const project = projectNameFromPath(projectPathFromFile(j.path));
+  const project = await projectOfFile(j.path);
   let summary: JournalSummary = {
     name: j.runId,
     project,

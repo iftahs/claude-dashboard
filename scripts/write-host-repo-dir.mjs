@@ -2,14 +2,20 @@
 /**
  * write-host-repo-dir.mjs — predocker:up hook.
  *
- * Records host-only paths into .env for the Docker container (which cannot
- * discover host paths itself):
- *   CLAUDE_JSON_HOST — ~/.claude.json (when present), so the container can
- *                      detect whether bypassPermissions is enabled.
+ * Records host-only facts into .env for the Docker container (which cannot
+ * discover them itself):
+ *   CLAUDE_JSON_HOST — ~/.claude.json (when present), mounted so the Workspace
+ *                      tab can list the MCP servers configured there.
  *   CODEX_DIR_HOST   — ~/.codex (or $CODEX_HOME) when it holds a sessions/
  *                      folder, so the container can mount the OpenAI Codex
  *                      data. SET ONLY IF ABSENT: a user-pinned path, or a blank
  *                      value that opts out, must survive every docker:up.
+ *   TZ               — the host's IANA time zone, so the container's day
+ *                      buckets start at the user's midnight. SET ONLY IF
+ *                      ABSENT, like CODEX_DIR_HOST.
+ *   HOST_OS          — the host's process.platform, so the container's
+ *                      "token expired" advice fits the host (the Keychain
+ *                      sync is macOS-only).
  *
  * Runs on the host from the repo root (npm lifecycle guarantees cwd). Upserts
  * only these lines; never touches anything else in .env.
@@ -45,5 +51,9 @@ const claudeJson = join(os.homedir(), '.claude.json');
 if (existsSync(claudeJson)) upsert('CLAUDE_JSON_HOST', claudeJson);
 const codexHome = process.env.CODEX_HOME || join(os.homedir(), '.codex');
 if (existsSync(join(codexHome, 'sessions'))) setIfAbsent('CODEX_DIR_HOST', codexHome);
+// IANA name on every OS (ICU maps Windows zones); skip it when unresolvable.
+const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+if (tz && tz !== 'Etc/Unknown') setIfAbsent('TZ', tz);
+upsert('HOST_OS', process.platform);
 
 writeFileSync(envPath, content);

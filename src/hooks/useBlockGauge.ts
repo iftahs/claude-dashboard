@@ -1,20 +1,26 @@
 import { useEffect, useState } from 'react';
 import { compact, usd } from '../lib/format';
-import { useBlockAlerts } from './useBlockAlerts';
+import { limitColor, liveWindowEta, resolveLimitAlerts } from '../lib/limits';
+import { useConfigMode } from './useConfigMode';
 import {
   BLOCK_MS,
+  CLAUDE_GAUGE_LABELS,
   DEFAULT_BLOCK_LIMIT,
+  formatMins,
   formatRemaining,
 } from '@/components/design-system/organisms/BlockGauge/utils';
-import type { BlockGaugeProps } from '@/components/design-system/organisms/BlockGauge/types';
+import type { BlockGaugeLabels, BlockGaugeProps } from '@/components/design-system/organisms/BlockGauge/types';
 
 export interface BlockGaugeView {
+  labels: BlockGaugeLabels;
   effective: number;
   prevEffective: number;
+  cacheReads: number;
   cost: number;
   prevCost: number;
   capPct: number | null;
-  tokPct: number;
+  /** % shown in the ring; null when there is neither a live reading nor a known block limit. */
+  tokPct: number | null;
   /** SVG ring geometry. */
   r: number;
   c: number;
@@ -25,72 +31,88 @@ export interface BlockGaugeView {
   limitEtaStr: string | null;
   burnColor: string;
   hasLive: boolean;
+  /** Show the "allow notifications" hint (limit alerts are on and not yet permitted). */
+  showPermissionHint: boolean;
   permission: NotificationPermission;
 }
+
+const NEUTRAL = '#71717a';
 
 /**
  * All of BlockGauge's derived view-model: ring geometry/color, reset countdown,
  * burn rate + ETA, and the live-vs-estimate selection. Ticks every second so the
- * countdown stays live, and wires the subscription budget alerts.
+ * countdown stays live. Limit alerts are app-level (useLimitAlerts), not here, so they fire on every tab and platform.
  */
 export function useBlockGauge({
   block,
-  liveUsage,
+  live = null,
   isApi = false,
   costPerDay = 0,
   dailyLimit = null,
   todayActualCost = null,
+  blockLimit = DEFAULT_BLOCK_LIMIT,
+  windowMs = BLOCK_MS,
+  labels: labelOverrides,
 }: BlockGaugeProps): BlockGaugeView {
   const [, force] = useState(0);
   useEffect(() => {
     const id = setInterval(() => force((n) => n + 1), 1000);
     return () => clearInterval(id);
   }, []);
+  const { settings } = useConfigMode();
 
+  const labels = { ...CLAUDE_GAUGE_LABELS, ...labelOverrides };
   const now = Date.now();
-  const effective = block?.totals.effectiveTokens ?? 0;
-  const prevEffective = block?.prevTotals.effectiveTokens ?? 0;
+  const hasLive = !isApi && !!live;
 
-  const blockLimit = DEFAULT_BLOCK_LIMIT;
-
-  const hasLive = !isApi && !!liveUsage && !liveUsage.error;
+  // An expired local block must read as ended (live or not), not as the last session's tokens; the client-clock check catches a block memoised before it expired.
+  const blockEnded = !!block && (!block.isActive || block.resetsAt <= now);
+  const current = blockEnded ? null : block?.totals;
+  const previous = blockEnded ? block?.totals : block?.prevTotals;
+  const effective = current?.effectiveTokens ?? 0;
+  const prevEffective = previous?.effectiveTokens ?? 0;
+  const cacheReads = current?.cacheReadTokens ?? 0;
 
   // ── API / pay-as-you-go: cost-based ring ──────────────────────────────────
-  const cost = block?.totals.cost ?? 0;
-  const prevCost = block?.prevTotals.cost ?? 0;
+  const cost = current?.cost ?? 0;
+  const prevCost = previous?.cost ?? 0;
   // Daily-cap ring: prefer real billed spend so far today (gateway) over the
   // estimated average $/day, so the cap warning reflects actual money spent.
   const dailySpend = todayActualCost ?? costPerDay;
   const capPct = isApi && dailyLimit ? Math.min(100, (dailySpend / dailyLimit) * 100) : null;
 
   const tokPct = hasLive
-    ? liveUsage!.five_hour.utilization
-    : Math.min(100, (effective / blockLimit) * 100);
+    ? live!.pct
+    : blockLimit
+    ? Math.min(100, (effective / blockLimit) * 100)
+    : null;
 
   // Ring fraction & color depend on mode.
-  const ringFrac = isApi ? (capPct ?? 0) / 100 : tokPct / 100;
-  const ringPct = isApi ? capPct ?? 0 : tokPct;
-
+  const ringPct = isApi ? capPct ?? 0 : tokPct ?? 0;
   const r = 78;
   const c = 2 * Math.PI * r;
-  const dash = c * Math.max(0, Math.min(1, ringFrac));
-  const ringColor = ringPct > 90 ? '#ef4444' : ringPct > 70 ? '#f59e0b' : '#d97757';
+  const dash = c * Math.max(0, Math.min(1, ringPct / 100));
+  const ringColor = !isApi && tokPct === null ? NEUTRAL : limitColor(ringPct);
 
-  // Resets in — when live API has no active block (resets_at=null), show helpful hint
-  const liveResetsAt = hasLive ? Date.parse(liveUsage!.five_hour.resets_at) : null;
-  const noActiveBlock = hasLive && liveUsage!.five_hour.resets_at == null;
-  const blockResetsAt = liveResetsAt && !isNaN(liveResetsAt) ? liveResetsAt : (block?.resetsAt ?? (now + BLOCK_MS));
+  // Resets in — when there is no active block (live resets_at=null, or the local block has ended), show a helpful hint.
+  const liveResetsAt = hasLive && live!.resetsAt ? Date.parse(live!.resetsAt) : NaN;
+  const noActiveBlock = hasLive ? live!.resetsAt == null : blockEnded;
+  const blockResetsAt = !isNaN(liveResetsAt) ? liveResetsAt : (block?.resetsAt ?? (now + windowMs));
   const remainingMs = Math.max(0, blockResetsAt - now);
   const resetStr = noActiveBlock ? 'on next message' : formatRemaining(remainingMs);
 
-  // ── Burn rate calculation ────────────────────────────────────────────────
   const blockStart = block?.start ?? now;
   const elapsedMs = Math.max(60_000, now - blockStart); // floor at 1 min to avoid div-by-zero
   const burnRatePerHour = effective > 0 ? Math.round((effective / elapsedMs) * 3600_000) : 0;
   const burnCostPerHour = cost > 0 ? (cost / elapsedMs) * 3600_000 : 0;
-  const remainingCapacity = Math.max(0, blockLimit - effective);
-  const minsUntilLimit =
-    burnRatePerHour > 0 ? Math.round((remainingCapacity / burnRatePerHour) * 60) : null;
+
+  let minsUntilLimit: number | null = null;
+  let projectedPct: number | null = null;
+  if (hasLive && !isNaN(liveResetsAt)) {
+    ({ minsUntilLimit, projectedPct } = liveWindowEta(live!.pct, liveResetsAt, windowMs, now));
+  } else if (!hasLive && blockLimit && burnRatePerHour > 0) {
+    minsUntilLimit = Math.round((Math.max(0, blockLimit - effective) / burnRatePerHour) * 60);
+  }
 
   const burnRateStr = isApi
     ? burnCostPerHour > 0
@@ -100,26 +122,31 @@ export function useBlockGauge({
     ? `${compact(burnRatePerHour)} / hr`
     : null;
   const limitEtaStr =
-    !isApi && minsUntilLimit !== null && tokPct < 100
-      ? minsUntilLimit < 60
-        ? `limit in ~${minsUntilLimit}m`
-        : `limit in ~${Math.round(minsUntilLimit / 60)}h ${minsUntilLimit % 60}m`
+    isApi || (tokPct ?? 0) >= 100
+      ? null
+      : minsUntilLimit !== null
+      ? `limit in ${formatMins(minsUntilLimit)}`
+      : projectedPct !== null && hasLive
+      ? `~${Math.round(projectedPct)}% at reset`
       : null;
 
   const burnColor = isApi
-    ? '#71717a'
+    ? NEUTRAL
     : minsUntilLimit !== null && minsUntilLimit < 30
     ? '#ef4444'
     : minsUntilLimit !== null && minsUntilLimit < 60
     ? '#f59e0b'
-    : '#71717a';
+    : NEUTRAL;
 
-  // ── Budget alerts (subscription token % only) ─────────────────────────────
-  const { permission } = useBlockAlerts(Math.round(isApi ? 0 : tokPct));
+  const permission: NotificationPermission =
+    typeof window !== 'undefined' && 'Notification' in window ? Notification.permission : 'denied';
+  const alertsOn = resolveLimitAlerts((settings as { limitAlerts?: unknown }).limitAlerts).mode !== 'off';
 
   return {
+    labels,
     effective,
     prevEffective,
+    cacheReads,
     cost,
     prevCost,
     capPct,
@@ -133,6 +160,7 @@ export function useBlockGauge({
     limitEtaStr,
     burnColor,
     hasLive,
+    showPermissionHint: !isApi && alertsOn && permission !== 'granted',
     permission,
   };
 }

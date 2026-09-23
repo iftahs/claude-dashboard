@@ -2,7 +2,24 @@ import { Skeleton } from '@/components/design-system/atoms/Skeleton/Skeleton';
 import { compact, usd } from '@/lib/format';
 import type { RetryPanelProps } from './types';
 
-export function RetryPanel({ data }: RetryPanelProps) {
+export function RetryPanel({ data, naText, note }: RetryPanelProps) {
+  if (naText) {
+    return (
+      <div className="space-y-5">
+        <div>
+          <div className="text-xs uppercase tracking-wider text-zinc-500">One-shot rate</div>
+          <div className="mt-1 text-4xl font-bold tabular-nums text-zinc-600">n/a</div>
+          <div className="mt-1 text-sm text-zinc-500">{naText}</div>
+        </div>
+        {data && data.codexEdits > 0 && (
+          <div className="text-[10px] text-zinc-600">
+            {compact(data.codexEdits)} edits in this window, none of them retryable.
+          </div>
+        )}
+      </div>
+    );
+  }
+
   if (!data) {
     return (
       <div className="space-y-4">
@@ -14,6 +31,14 @@ export function RetryPanel({ data }: RetryPanelProps) {
   }
 
   const { oneShotRate, totalEdits, retried, wastedTokens, wastedCost } = data;
+
+  if (totalEdits === 0 || oneShotRate === null) {
+    return (
+      <div className="text-sm text-zinc-500">
+        No Edit/Write calls ran in this window.{note && <span className="text-zinc-600"> {note}</span>}
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-5">
@@ -51,6 +76,7 @@ export function RetryPanel({ data }: RetryPanelProps) {
 
       <div className="text-[10px] text-zinc-600">
         Wasted tokens are approximated from avg tokens/turn &times; errored edit calls.
+        {note && <> {note}</>}
       </div>
     </div>
   );

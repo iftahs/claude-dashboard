@@ -4,23 +4,12 @@ import { ToggleGroup } from '@/components/design-system/atoms/ToggleGroup/Toggle
 import { ProgressBar } from '@/components/design-system/atoms/ProgressBar/ProgressBar';
 import { usePolling } from '@/hooks/usePolling';
 import { useSource } from '@/hooks/useSource';
-import type { ContribRow, ContribWindow, ContributorsData } from '@/types';
+import { PLATFORM_NOUN, titleScope } from '@/lib/platform';
+import type { ContributorsData } from '@/types';
+import type { BreakdownTableProps, ContribWindowKey, LimitsContributorsProps } from './types';
+import { BREAKDOWNS, CLAUDE_HELP, CODEX_HELP, RANGE_OPTIONS, agentName } from './utils';
 
-type WindowKey = 'day' | 'week';
-
-const RANGE_OPTIONS: { value: WindowKey; label: string }[] = [
-  { value: 'day', label: 'Day' },
-  { value: 'week', label: 'Week' },
-];
-
-const BREAKDOWNS: { key: keyof Pick<ContribWindow, 'skills' | 'subagents' | 'plugins' | 'mcpServers'>; label: string; color: string }[] = [
-  { key: 'skills', label: 'Skills', color: '#f59e0b' },
-  { key: 'subagents', label: 'Subagents', color: '#a78bfa' },
-  { key: 'plugins', label: 'Plugins', color: '#22d3ee' },
-  { key: 'mcpServers', label: 'MCP servers', color: '#10b981' },
-];
-
-function BreakdownTable({ label, rows, color }: { label: string; rows: ContribRow[]; color: string }) {
+function BreakdownTable({ label, rows, color, nameOf = (n) => n }: BreakdownTableProps) {
   if (!rows.length) return null;
   return (
     <div className="space-y-2">
@@ -32,7 +21,7 @@ function BreakdownTable({ label, rows, color }: { label: string; rows: ContribRo
         {rows.map((r) => (
           <div key={r.name} className="space-y-1">
             <div className="flex items-center justify-between text-xs">
-              <span className="truncate pr-2 text-zinc-300">{r.name}</span>
+              <span className="truncate pr-2 text-zinc-300">{nameOf(r.name)}</span>
               <span className="font-mono tabular-nums text-zinc-400">{r.pct}%</span>
             </div>
             <ProgressBar pct={r.pct} color={color} />
@@ -43,28 +32,36 @@ function BreakdownTable({ label, rows, color }: { label: string; rows: ContribRo
   );
 }
 
-export function LimitsContributors() {
-  const { withSrc } = useSource();
-  const { data } = usePolling<ContributorsData>(withSrc('/api/usage/contributors'), 60000);
-  const [range, setRange] = useState<WindowKey>('day');
+// Cost-weighted (Claude Code CLI wording) or effective-token-weighted (Codex) — the server picks based on scope.
+export function LimitsContributors({ source, showEmpty = false }: LimitsContributorsProps) {
+  const { withSrc, platform } = useSource();
+  const url = source ? `/api/usage/contributors?source=${source}` : withSrc('/api/usage/contributors');
+  const { data } = usePolling<ContributorsData>(url, 60000);
+  const [range, setRange] = useState<ContribWindowKey>('day');
 
   if (!data) return null;
   const win = data[range];
+  const codex = source ? source === 'codex' : platform === 'codex';
 
   const hasBreakdowns = BREAKDOWNS.some(({ key }) => win[key].length > 0);
-  // Nothing worth showing in either window → hide the whole panel.
+  // Nothing worth showing → hide the panel, unless a side-by-side pair needs the card to hold its place.
   const dayEmpty = !data.day.behaviors.length && !BREAKDOWNS.some(({ key }) => data.day[key].length);
   const weekEmpty = !data.week.behaviors.length && !BREAKDOWNS.some(({ key }) => data.week[key].length);
-  if (dayEmpty && weekEmpty) return null;
+  if (dayEmpty && weekEmpty && !showEmpty) return null;
+
+  // An explicit scope always names its platform (Both shows the two side by side).
+  const scope = source ? ` · ${PLATFORM_NOUN[source]}` : titleScope(platform);
+  const where = codex ? 'local rollouts on this machine' : 'local sessions on this machine';
 
   return (
     <Section
-      title="What's contributing to your limits usage?"
-      help="Approximate, cost-weighted breakdown computed from local sessions on this machine — does not include other devices or claude.ai. These are independent characteristics of your usage, not a breakdown. Mirrors the Claude Code CLI usage view."
+      title={`What's contributing to your limits usage?${scope}`}
+      help={codex ? CODEX_HELP : CLAUDE_HELP}
       right={<ToggleGroup options={RANGE_OPTIONS} value={range} onChange={setRange} />}
     >
       <p className="mb-4 text-[11px] text-zinc-500">
-        {range === 'day' ? 'Last 24h' : 'Last 7d'} · approximate, based on local sessions on this machine
+        {range === 'day' ? 'Last 24h' : 'Last 7d'} · approximate, based on {where}
+        {data.weight === 'effectiveTokens' ? ' · weighted by effective tokens' : ''}
       </p>
 
       {/* Headline behaviors */}
@@ -88,7 +85,13 @@ export function LimitsContributors() {
       {hasBreakdowns && (
         <div className="mt-5 grid grid-cols-1 gap-5 border-t border-white/5 pt-5 sm:grid-cols-2">
           {BREAKDOWNS.map(({ key, label, color }) => (
-            <BreakdownTable key={key} label={label} rows={win[key]} color={color} />
+            <BreakdownTable
+              key={key}
+              label={codex && key === 'subagents' ? 'Auto-reviews & subagents' : label}
+              rows={win[key]}
+              color={color}
+              nameOf={key === 'subagents' ? agentName : undefined}
+            />
           ))}
         </div>
       )}

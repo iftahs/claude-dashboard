@@ -1,9 +1,11 @@
 import { ProgressBar } from '@/components/design-system/atoms/ProgressBar/ProgressBar';
 import { Skeleton } from '@/components/design-system/atoms/Skeleton/Skeleton';
 import { compact } from '@/lib/format';
+import { declineNoun, emptyRejections, rejectionToolLabel } from './utils';
 import type { RejectionsPanelProps } from './types';
 
-export function RejectionsPanel({ data }: RejectionsPanelProps) {
+// Rejection RATE is the KPI row's; this splits WHO said no — a person declining, or Codex's guardian denying.
+export function RejectionsPanel({ data, platform }: RejectionsPanelProps) {
   if (!data) {
     return (
       <div className="space-y-3">
@@ -19,25 +21,30 @@ export function RejectionsPanel({ data }: RejectionsPanelProps) {
   }
 
   if (data.perTool.length === 0) {
-    return (
-      <div className="text-sm text-zinc-500">
-        No permission rejections in this window.
-      </div>
-    );
+    return <div className="text-sm text-zinc-500">{emptyRejections(platform)}</div>;
   }
 
   const maxRejections = Math.max(1, ...data.perTool.map((t) => t.rejections));
+  // Only Codex has a second decider; with one kind the split would just repeat the KPI.
+  const showSplit = platform !== 'claude' || data.guardianDenials > 0;
 
   return (
     <div className="space-y-3">
-      <div className="text-xs text-zinc-500">
-        <span className="font-semibold text-amber-400">{compact(data.total)}</span> permission rejections
-      </div>
+      {showSplit && (
+        <div className="flex flex-wrap gap-x-3 text-xs text-zinc-500">
+          <span>
+            <span className="font-semibold text-amber-400">{compact(data.userDeclines)}</span> {declineNoun(platform)}
+          </span>
+          <span>
+            <span className="font-semibold text-amber-400">{compact(data.guardianDenials)}</span> guardian denials
+          </span>
+        </div>
+      )}
       <div className="space-y-2.5">
         {data.perTool.map((t) => (
           <div key={t.name} className="flex items-center gap-3">
             <span className="w-28 shrink-0 truncate text-xs text-zinc-400" title={t.name}>
-              {t.name}
+              {rejectionToolLabel(t.name)}
             </span>
             <ProgressBar pct={(t.rejections / maxRejections) * 100} variant="default" />
             <span className="w-8 shrink-0 text-right text-xs tabular-nums text-amber-400">

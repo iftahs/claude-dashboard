@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { useSource } from './useSource';
 import type { SearchResult } from '../types';
 
 interface SearchState {
@@ -8,10 +9,16 @@ interface SearchState {
 }
 
 const DEBOUNCE_MS = 450;
+/** The server clamps `days` to 1–90. */
+const MAX_DAYS = 90;
 
+// Scoped to the selected platform/surface like the session table it feeds — under Codex a Claude transcript hit could not be opened.
 export function useSearch(query: string, days = 50): SearchState {
+  const { withSrc } = useSource();
   const [state, setState] = useState<SearchState>({ results: null, loading: false, error: null });
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const span = Math.max(1, Math.min(MAX_DAYS, Math.round(days) || 1));
+  const url = withSrc(`/api/search?q=${encodeURIComponent(query)}&days=${span}`);
 
   useEffect(() => {
     if (query.length < 3) {
@@ -20,28 +27,28 @@ export function useSearch(query: string, days = 50): SearchState {
     }
 
     setState((s) => ({ ...s, loading: true }));
-
     if (timerRef.current) clearTimeout(timerRef.current);
 
+    let cancelled = false;
     timerRef.current = setTimeout(() => {
-      const url = `/api/search?q=${encodeURIComponent(query)}&days=${days}`;
       fetch(url)
         .then((res) => {
           if (!res.ok) throw new Error(`HTTP ${res.status}`);
           return res.json();
         })
         .then((env: { data: SearchResult[] }) => {
-          setState({ results: env.data, loading: false, error: null });
+          if (!cancelled) setState({ results: env.data, loading: false, error: null });
         })
         .catch((e: unknown) => {
-          setState({ results: null, loading: false, error: String(e) });
+          if (!cancelled) setState({ results: null, loading: false, error: String(e) });
         });
     }, DEBOUNCE_MS);
 
     return () => {
+      cancelled = true;
       if (timerRef.current) clearTimeout(timerRef.current);
     };
-  }, [query, days]);
+  }, [query, url]);
 
   return state;
 }

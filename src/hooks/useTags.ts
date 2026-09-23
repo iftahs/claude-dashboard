@@ -24,6 +24,43 @@ export interface TagsApi {
   setTagsFor: (path: string, tags: string[]) => void;
   /** Every distinct tag in use, sorted. */
   allTags: () => string[];
+  /** Move tags from an old project path onto its current one (merged, de-duplicated); idempotent since a moved key leaves nothing behind to move again. */
+  migrate: (moves: TagMove[]) => void;
+}
+
+/** An old project path whose tags belong to `to` now. */
+export interface TagMove {
+  from: string;
+  to: string;
+}
+
+/** Trim, drop empties, cap length, dedupe case-insensitively (first spelling wins). */
+function cleanTags(list: string[]): string[] {
+  const seen = new Set<string>();
+  const clean: string[] = [];
+  for (const raw of list) {
+    const t = raw.trim().slice(0, MAX_TAG_LEN);
+    if (!t) continue;
+    const k = t.toLowerCase();
+    if (seen.has(k)) continue;
+    seen.add(k);
+    clean.push(t);
+  }
+  return clean;
+}
+
+// Old project paths were decoded lossily from folder names (e.g. iftah.dev → dev-projects-iftah-dev); they now come from the transcript cwd, and /api/projects lists each project's old paths so no tag is orphaned.
+export function migrateTagMap(tags: TagMap, moves: TagMove[]): TagMap | null {
+  let next: TagMap | null = null;
+  for (const { from, to } of moves) {
+    if (!from || !to || from === to) continue;
+    const src = (next ?? tags)[from];
+    if (!src) continue;
+    next = next ?? { ...tags };
+    next[to] = cleanTags([...(next[to] ?? []), ...src]);
+    delete next[from];
+  }
+  return next;
 }
 
 /**
@@ -47,17 +84,7 @@ export function useTags(): TagsApi {
 
   const setTagsFor = useCallback(
     (path: string, list: string[]) => {
-      // Trim, drop empties, cap length, dedupe case-insensitively.
-      const seen = new Set<string>();
-      const clean: string[] = [];
-      for (const raw of list) {
-        const t = raw.trim().slice(0, MAX_TAG_LEN);
-        if (!t) continue;
-        const k = t.toLowerCase();
-        if (seen.has(k)) continue;
-        seen.add(k);
-        clean.push(t);
-      }
+      const clean = cleanTags(list);
       const next = { ...tags };
       if (clean.length) next[path] = clean;
       else delete next[path];
@@ -72,5 +99,13 @@ export function useTags(): TagsApi {
     return [...set].sort((a, b) => a.localeCompare(b));
   }, [tags]);
 
-  return { tags, tagsFor, setTagsFor, allTags };
+  const migrate = useCallback(
+    (moves: TagMove[]) => {
+      const next = migrateTagMap(tags, moves);
+      if (next) persist(next);
+    },
+    [tags, persist],
+  );
+
+  return { tags, tagsFor, setTagsFor, allTags, migrate };
 }

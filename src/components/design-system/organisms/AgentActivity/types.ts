@@ -1,5 +1,16 @@
 import type { ReactNode } from 'react';
-import type { LiveSubagents } from '@/types';
+import type { LiveSubagents, MainAgent } from '@/types';
+
+/** Optional fields, so an older backend still type-checks and simply never shows "your turn". */
+export interface LiveMainAgent extends MainAgent {
+  /** The last turn finished and the session is idle on the user — soft, never red, never an alert. */
+  yourTurn?: boolean;
+}
+
+export interface LiveAgentsData extends Omit<LiveSubagents, 'mainAgents' | 'counts'> {
+  mainAgents: LiveMainAgent[];
+  counts: LiveSubagents['counts'] & { yourTurn?: number };
+}
 
 /** Group/chip strings. Defaults are the Claude Code wording used by the Agents tab. */
 export interface AgentActivityLabels {
@@ -15,10 +26,12 @@ export interface AgentActivityLabels {
   mainUnit?: [string, string];
   /** Empty-state line. Default: "No agents running right now". */
   empty?: string;
+  waitingHelp?: ReactNode;
+  yourTurnHelp?: ReactNode;
 }
 
 export interface AgentActivityProps {
-  data: LiveSubagents | null;
+  data: LiveAgentsData | null;
   loading?: boolean;
   /** Section title. Default: "Agents · live activity". */
   title?: string;

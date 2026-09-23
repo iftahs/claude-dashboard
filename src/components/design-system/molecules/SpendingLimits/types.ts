@@ -7,4 +7,6 @@ export interface SpendingLimitsProps {
   note: string;
   /** Always render rows even without a cap (API mode — the spend IS the bill). */
   alwaysShow?: boolean;
+  /** Appended to the title, e.g. titleScope(platform) → " · Codex". */
+  titleSuffix?: string;
 }

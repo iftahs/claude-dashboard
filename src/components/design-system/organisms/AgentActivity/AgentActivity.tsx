@@ -7,7 +7,15 @@ import { compact } from '@/lib/format';
 import { modelColor } from '@/lib/palette';
 import type { AgentTrafficStatus } from '@/types';
 import type { AgentActivityProps } from './types';
-import { elapsedSec, formatElapsed, displayModel } from './utils';
+import {
+  AGENT_TITLE,
+  CLAUDE_AGENTS_HELP,
+  CLAUDE_AGENT_LABELS,
+  elapsedSec,
+  formatElapsed,
+  displayModel,
+  isYourTurn,
+} from './utils';
 import { useCountUp } from '@/hooks/useCountUp';
 import { useFlashOnIncrease } from '@/hooks/useFlashOnIncrease';
 
@@ -15,19 +23,7 @@ import { useFlashOnIncrease } from '@/hooks/useFlashOnIncrease';
 // literal so framer-motion's Transition type accepts it under strict TS.
 const spring = { type: 'spring', stiffness: 500, damping: 40 } as const;
 
-// Default copy — the Claude Code wording. The Codex tab feeds this same organism
-// its own thread/guardian data and overrides these via `title` / `help` / `labels`.
-const DEFAULT_TITLE = 'Agents · live activity';
-const DEFAULT_HELP =
-  'Live view of agents working right now: main agents, their running subagents (Task/Agent spawns), and recently finished ones — refreshed every few seconds from active session logs. Empty when nothing is running.';
-const DEFAULT_LABELS = {
-  mains: 'Main sessions',
-  subagents: 'Subagents',
-  otherSubagents: 'Other subagents',
-  subagentUnit: ['subagent', 'subagents'] as [string, string],
-  mainUnit: ['main', 'mains'] as [string, string],
-  empty: 'No agents running right now',
-};
+// Also renders Codex threads (Agents tab reuses this organism) via `title`/`help`/`labels` overrides.
 
 // ── Ticking elapsed label ──────────────────────────────────────────────────
 
@@ -204,6 +200,7 @@ function MainAgentCard({
   effectiveTokens,
   active,
   delegating,
+  yourTurn,
   traffic,
 }: {
   title: string;
@@ -214,12 +211,13 @@ function MainAgentCard({
   effectiveTokens: number;
   active: boolean;
   delegating: boolean;
+  yourTurn: boolean;
   traffic: AgentTrafficStatus;
 }) {
-  // Four states: waiting on the user (red), working on its own transcript,
-  // delegating to running subagents, or idle.
+  // "your turn" (idle after a finished turn) is soft — never rendered red like waiting.
   const waiting = traffic === 'waiting';
   const working = active || delegating;
+  const idleOnUser = !waiting && !working && yourTurn;
   const tokens = useCountUp(effectiveTokens);
   // Both hooks must run every render — `||` would short-circuit the second
   // (conditional hook call → React error #300). Call, then combine.
@@ -230,6 +228,8 @@ function MainAgentCard({
     ? 'border-red-500/40 ring-1 ring-red-500/20'
     : working
     ? 'border-clay-500/15'
+    : idleOnUser
+    ? 'border-sky-500/20'
     : 'border-white/10 opacity-60 saturate-50';
   return (
     <div
@@ -238,8 +238,8 @@ function MainAgentCard({
       }`}
     >
       <div className="flex items-center gap-2 min-w-0">
-        {waiting || working ? (
-          <TrafficLight status={traffic} />
+        {waiting || working || idleOnUser ? (
+          <TrafficLight status={idleOnUser ? 'finished' : traffic} />
         ) : (
           <span className="h-1.5 w-1.5 rounded-full bg-zinc-600 flex-none" />
         )}
@@ -257,7 +257,12 @@ function MainAgentCard({
             Delegating
           </span>
         )}
-        {!waiting && !working && (
+        {idleOnUser && (
+          <span className="flex-none rounded-full bg-sky-500/10 text-sky-300 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider">
+            Your turn
+          </span>
+        )}
+        {!waiting && !working && !idleOnUser && (
           <span className="flex-none rounded-full bg-zinc-700/40 text-zinc-400 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider">
             Not Active
           </span>
@@ -302,7 +307,7 @@ function CountChip({ count, label, pulse }: { count: number; label: string; puls
 }
 
 export function AgentActivity({ data, loading, title, help, labels }: AgentActivityProps) {
-  const L = { ...DEFAULT_LABELS, ...labels };
+  const L = { ...CLAUDE_AGENT_LABELS, ...labels };
   const running = data?.running ?? [];
   const completed = data?.recentlyCompleted ?? [];
   const mains = data?.mainAgents ?? [];
@@ -317,19 +322,26 @@ export function AgentActivity({ data, loading, title, help, labels }: AgentActiv
   const runningSubagents = running.length;
   const activeMains = mains.filter((m) => m.active || m.delegating).length;
   const waitingCount = data?.counts.waiting ?? mains.filter((m) => m.traffic === 'waiting').length;
+  const yourTurnCount = mains.filter(isYourTurn).length;
 
   return (
     <Section
-      title={title ?? DEFAULT_TITLE}
-      help={help ?? DEFAULT_HELP}
+      title={title ?? AGENT_TITLE}
+      help={help ?? CLAUDE_AGENTS_HELP}
       right={
-        runningSubagents > 0 || activeMains > 0 || waitingCount > 0 ? (
-          <div className="flex items-center gap-2">
+        runningSubagents > 0 || activeMains > 0 || waitingCount > 0 || yourTurnCount > 0 ? (
+          <div className="flex flex-wrap items-center justify-end gap-2">
             {waitingCount > 0 && (
               <span className="inline-flex items-center gap-1.5 rounded-full bg-red-500/15 px-2.5 py-1 text-xs font-semibold tabular-nums text-red-300 ring-1 ring-red-500/30">
                 <TrafficLight status="waiting" />
                 {waitingCount} waiting
-                <InfoTip text="An agent paused with an unresolved tool call (likely an awaiting-permission prompt) or hit an error/rejection. This is inferred — the logs have no explicit 'waiting for confirmation' marker — so it may occasionally over- or under-count." />
+                <InfoTip text={L.waitingHelp} align="right" />
+              </span>
+            )}
+            {yourTurnCount > 0 && (
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-sky-500/10 px-2.5 py-1 text-xs font-semibold tabular-nums text-sky-300 ring-1 ring-sky-500/25">
+                {yourTurnCount} your turn
+                <InfoTip text={L.yourTurnHelp} align="right" />
               </span>
             )}
             {runningSubagents > 0 && (
@@ -351,7 +363,7 @@ export function AgentActivity({ data, loading, title, help, labels }: AgentActiv
       ) : hasActivity ? (
         <MotionConfig reducedMotion="user">
           <div className="flex flex-col gap-4">
-            {/* Main Claude Code sessions, each with its subagents nested beneath */}
+            {/* Main sessions (Claude Code sessions / Codex threads), each with its subagents nested beneath */}
             {mains.length > 0 && <GroupLabel>{L.mains}</GroupLabel>}
             <AnimatePresence initial={false}>
               {mains.map((m) => {
@@ -376,6 +388,7 @@ export function AgentActivity({ data, loading, title, help, labels }: AgentActiv
                       effectiveTokens={m.effectiveTokens}
                       active={m.active}
                       delegating={m.delegating}
+                      yourTurn={isYourTurn(m)}
                       traffic={m.traffic}
                     />
                     {(kids.length > 0 || done.length > 0) && (

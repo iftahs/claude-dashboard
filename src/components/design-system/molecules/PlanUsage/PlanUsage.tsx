@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import { ProgressBar } from '@/components/design-system/atoms/ProgressBar/ProgressBar';
 import { InfoTip } from '@/components/design-system/atoms/InfoTip/InfoTip';
-import { blockBarColor } from './utils';
+import { LegendDot } from '@/components/design-system/atoms/LegendDot/LegendDot';
+import { GATE_TONE_CLASS, LEGACY_MODEL_COLORS, blockBarColor, modelBarColor, surfaceSegments } from './utils';
 import { untilFull, dateTimeLabel } from '@/lib/format';
 import { nextWeekReset, startOfWeek } from '@/lib/week';
 import { buildWeeklyForecast } from '@/lib/forecast';
@@ -14,22 +15,6 @@ const DEFAULT_WEEKLY_LIMIT = 35000000; // 35M effective tokens
 
 // Per-model weekly bar (normalized across the new limits[] array and legacy keys).
 type WeeklyModelBar = { label: string; pct: number; resetsAt: string | null; color: string };
-const MODEL_COLORS: Record<string, string> = {
-  Opus: '#a78bfa',
-  Sonnet: '#10b981',
-  Haiku: '#f472b6',
-  Fable: '#f59e0b',
-};
-const DEFAULT_MODEL_COLOR = '#22d3ee';
-
-// Anthropic's display_name is a plain family word today ("Opus"), but a generation
-// may get appended ("Opus 5") — match the family out of it rather than keying on the
-// whole string, which would silently drop every bar to DEFAULT_MODEL_COLOR.
-function modelBarColor(displayName: string): string {
-  const family = displayName.match(/fable|mythos|opus|sonnet|haiku/i)?.[0].toLowerCase();
-  const key = family && family[0].toUpperCase() + family.slice(1);
-  return (key && MODEL_COLORS[key]) || DEFAULT_MODEL_COLOR;
-}
 
 // Default copy — the Claude.ai wording. Callers for another plan system (the
 // Codex tab) override these via `help` / `labels` without touching this file.
@@ -48,6 +33,7 @@ export function PlanUsage({
   active,
   help,
   labels,
+  gates,
   note,
 }: PlanUsageProps) {
   const [, forceUpdate] = useState(0);
@@ -58,34 +44,40 @@ export function PlanUsage({
   }, []);
 
   const tierLabel = tier ? tier.replace(/_/g, ' ').toUpperCase() : null;
-  const cardClass = `card p-5 flex flex-col justify-between flex-none${active ? ' ring-1 ring-clay-500/40' : ''}`;
+  const cardClass = `card p-5 flex flex-col justify-start flex-none${active ? ' ring-1 ring-clay-500/40' : ''}`;
   const title = accountLabel ?? 'Plan usage';
   const titleSpanClass = accountLabel ? 'truncate normal-case' : 'uppercase';
 
   const now = Date.now();
 
   const hasLive = liveUsage && !liveUsage.error;
+  // Codex's 'go' plan has no 5-hour window — hide the row instead of faking 0%.
+  const showBlock = !hasLive || liveUsage.five_hour != null;
+  const showWeekly = !hasLive || liveUsage.seven_day != null;
 
-  // 5-Hour Limit calculations
+  // Offline, an expired local block (resetsAt <= now) reads as no active block, not stale tokens.
+  const blockEnded = !hasLive && !!block && (!block.isActive || block.resetsAt <= now);
   const blockLimit = DEFAULT_BLOCK_LIMIT;
   const blockPct = hasLive
-    ? Math.round(liveUsage.five_hour.utilization)
+    ? Math.round(liveUsage.five_hour?.utilization ?? 0)
+    : blockEnded
+    ? 0
     : Math.min(100, Math.round(((block?.totals.effectiveTokens ?? 0) / blockLimit) * 100));
 
-  const liveResetsAt = hasLive ? Date.parse(liveUsage.five_hour.resets_at) : null;
-  const noActiveBlock = hasLive && liveUsage.five_hour.resets_at == null;
+  const liveResetsAt = hasLive ? Date.parse(liveUsage.five_hour?.resets_at ?? '') : null;
+  const noActiveBlock = hasLive ? liveUsage.five_hour?.resets_at == null : blockEnded;
   const blockResetsAt = liveResetsAt && !isNaN(liveResetsAt) ? liveResetsAt : (block?.resetsAt ?? (now + 5 * 3600_000));
   const blockResetStr = noActiveBlock ? 'on next msg' : untilFull(blockResetsAt);
 
   // Weekly calculations
   const weeklyLimit = DEFAULT_WEEKLY_LIMIT;
   const weeklyPctRaw = hasLive
-    ? liveUsage.seven_day.utilization
+    ? (liveUsage.seven_day?.utilization ?? 0)
     : Math.min(100, ((weekly?.totals.effectiveTokens ?? 0) / weeklyLimit) * 100);
   const weeklyPct = Math.round(weeklyPctRaw);
 
-  const liveWeeklyResetsAt = hasLive ? Date.parse(liveUsage.seven_day.resets_at) : null;
-  const noActiveWeekly = hasLive && liveUsage.seven_day.resets_at == null;
+  const liveWeeklyResetsAt = hasLive ? Date.parse(liveUsage.seven_day?.resets_at ?? '') : null;
+  const noActiveWeekly = hasLive && liveUsage.seven_day?.resets_at == null;
   // Live Anthropic reset wins; otherwise fall back to the user's configured week start.
   const weeklyResetsAt = liveWeeklyResetsAt && !isNaN(liveWeeklyResetsAt)
     ? liveWeeklyResetsAt
@@ -118,15 +110,18 @@ export function PlanUsage({
 
   const legacyModelLimits: WeeklyModelBar[] = hasLive
     ? ([
-        { label: 'Weekly · Sonnet', info: liveUsage.seven_day_sonnet, color: MODEL_COLORS.Sonnet },
-        { label: 'Weekly · Opus', info: liveUsage.seven_day_opus, color: MODEL_COLORS.Opus },
-        { label: 'Weekly · Cowork', info: liveUsage.seven_day_cowork, color: DEFAULT_MODEL_COLOR },
+        { label: 'Weekly · Sonnet', info: liveUsage.seven_day_sonnet, color: LEGACY_MODEL_COLORS.sonnet },
+        { label: 'Weekly · Opus', info: liveUsage.seven_day_opus, color: LEGACY_MODEL_COLORS.opus },
+        { label: 'Weekly · Cowork', info: liveUsage.seven_day_cowork, color: LEGACY_MODEL_COLORS.cowork },
       ] as const)
         .filter((l) => l.info != null)
         .map((l) => ({ label: l.label, pct: Math.round(l.info!.utilization), resetsAt: l.info!.resets_at, color: l.color }))
     : [];
 
   const modelLimits: WeeklyModelBar[] = scopedFromLimits.length ? scopedFromLimits : legacyModelLimits;
+
+  // Where this week's usage went, by Claude surface (Claude.ai only — Codex has no split).
+  const surfaces = hasLive ? surfaceSegments(liveUsage.seven_day_breakdown) : [];
 
   return (
     <div className={cardClass}>
@@ -146,34 +141,56 @@ export function PlanUsage({
 
       <div className="space-y-4">
         {/* 5-hour limit row */}
-        <div className="space-y-1.5">
-          <div className="flex justify-between items-center text-xs">
-            <span className="font-semibold text-zinc-200">{labels?.block ?? DEFAULT_BLOCK_LABEL}</span>
-            <span className="text-zinc-400 font-mono">
-              {blockPct}% <span className="text-zinc-600 font-sans">·</span> resets {blockResetStr}
-              {!noActiveBlock && <span className="text-zinc-600"> · {dateTimeLabel(blockResetsAt)}</span>}
-            </span>
+        {showBlock && (
+          <div className="space-y-1.5">
+            <div className="flex justify-between items-center text-xs">
+              <span className="font-semibold text-zinc-200">{labels?.block ?? DEFAULT_BLOCK_LABEL}</span>
+              <span className="text-zinc-400 font-mono">
+                {blockPct}% <span className="text-zinc-600 font-sans">·</span> resets {blockResetStr}
+                {!noActiveBlock && <span className="text-zinc-600"> · {dateTimeLabel(blockResetsAt)}</span>}
+              </span>
+            </div>
+            <ProgressBar pct={blockPct} color={blockBarColor(blockPct)} />
           </div>
-          <ProgressBar pct={blockPct} color={blockBarColor(blockPct)} />
-        </div>
+        )}
 
         {/* Weekly limit row */}
-        <div className="space-y-1.5">
-          <div className="flex justify-between items-center text-xs">
-            <span className="font-semibold text-zinc-200">{labels?.weekly ?? DEFAULT_WEEKLY_LABEL}</span>
-            <span className="text-zinc-400 font-mono">
-              {weeklyPct}% <span className="text-zinc-600 font-sans">·</span> resets {weeklyResetStr}
-              {!noActiveWeekly && <span className="text-zinc-600"> · {dateTimeLabel(weeklyResetsAt)}</span>}
-            </span>
-          </div>
-          <ProgressBar pct={weeklyPct} variant="blue" />
-          {weeklyForecast && (
-            <div className="flex items-center gap-1 text-[11px]" style={{ color: weeklyForecast.color }}>
-              <span>{weeklyForecast.willExceed ? '⚠' : '↗'}</span>
-              <span>{weeklyForecast.label}</span>
+        {showWeekly && (
+          <div className="space-y-1.5">
+            <div className="flex justify-between items-center text-xs">
+              <span className="font-semibold text-zinc-200">{labels?.weekly ?? DEFAULT_WEEKLY_LABEL}</span>
+              <span className="text-zinc-400 font-mono">
+                {weeklyPct}% <span className="text-zinc-600 font-sans">·</span> resets {weeklyResetStr}
+                {!noActiveWeekly && <span className="text-zinc-600"> · {dateTimeLabel(weeklyResetsAt)}</span>}
+              </span>
             </div>
-          )}
-        </div>
+            <ProgressBar pct={weeklyPct} variant="blue" />
+            {weeklyForecast && (
+              <div className="flex items-center gap-1 text-[11px]" style={{ color: weeklyForecast.color }}>
+                <span>{weeklyForecast.willExceed ? '⚠' : '↗'}</span>
+                <span>{weeklyForecast.label}</span>
+              </div>
+            )}
+            {surfaces.length > 1 && (
+              <div className="space-y-1 pt-0.5">
+                <div className="flex h-1 w-full overflow-hidden rounded-full bg-ink-600" aria-hidden>
+                  {surfaces.map((s) => (
+                    <div key={s.key} style={{ width: `${s.pct}%`, background: s.color }} />
+                  ))}
+                </div>
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] text-zinc-500">
+                  <span className="flex items-center gap-1">
+                    Share of this week&apos;s usage
+                    <InfoTip text="Where the weekly usage so far came from, by surface. The shares add up to 100% of what you have used this week — not of the weekly limit." />
+                  </span>
+                  {surfaces.map((s) => (
+                    <LegendDot key={s.key} color={s.color} label={`${s.label} ${Math.round(s.pct)}%`} />
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Per-model weekly limits (shown only when the live API reports them) */}
         {modelLimits.map(({ label, pct, resetsAt, color }) => {
@@ -195,6 +212,13 @@ export function PlanUsage({
             </div>
           );
         })}
+
+        {gates?.map((g) => (
+          <div key={g.label} className="flex items-center justify-between text-xs">
+            <span className="font-semibold text-zinc-200">{g.label}</span>
+            <span className={GATE_TONE_CLASS[g.tone]}>{g.status}</span>
+          </div>
+        ))}
       </div>
       {note && <p className="mt-3 text-[11px] text-zinc-500">{note}</p>}
     </div>

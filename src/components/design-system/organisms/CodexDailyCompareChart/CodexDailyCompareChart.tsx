@@ -13,7 +13,7 @@ function CompareTooltip({ active, payload }: CompareTooltipProps) {
   const row = payload[0].payload;
   const delta = row.server > 0 ? Math.round(((row.local - row.server) / row.server) * 100) : null;
   return (
-    <ChartTooltip label={row.date} minWidth={170}>
+    <ChartTooltip label={`${row.date} (UTC)`} minWidth={170}>
       <div className="space-y-1.5">
         <div className="flex items-center justify-between gap-4">
           <span className="flex items-center gap-1.5">
@@ -40,11 +40,7 @@ function CompareTooltip({ active, payload }: CompareTooltipProps) {
   );
 }
 
-/**
- * OpenAI's per-day Codex token count (authoritative, every device) next to what
- * the local rollouts add up to for the same day. The gap is expected: the server
- * counts mobile/web usage this machine never sees, and its days are UTC.
- */
+// Both series are UTC days in all-tokens, so directly comparable; the remaining gap is real (mobile/web usage this machine never sees).
 export function CodexDailyCompareChart({ server, local, loading, days }: CodexDailyCompareChartProps) {
   const rows = useMemo(() => mergeDaily(server, local, days), [server, local, days]);
   const totals = useMemo(() => compareTotals(rows), [rows]);
@@ -52,8 +48,8 @@ export function CodexDailyCompareChart({ server, local, loading, days }: CodexDa
 
   return (
     <Section
-      title={`Server vs local · daily tokens · ${days}d`}
-      help="OpenAI's own per-day token count for your account (UTC days, includes mobile and web Codex) beside the sum of the local rollouts on this machine (local-calendar days). Both are joined by date, so a day near midnight can land on different sides of the UTC boundary — expect small day-to-day shifts, and a local total a little below the server figure."
+      title={`Server vs local · Codex · daily tokens · ${days}d`}
+      help="OpenAI's own per-day token count for your account (includes mobile and web Codex) beside the sum of the local rollouts on this machine. Both series are UTC days and count every token, cached input included, so each pair of bars measures the same thing; expect the local bar at or a little below the server one (other devices), and the newest server day to lag while OpenAI catches up."
       right={
         hasData ? (
           <span className="text-xs tabular-nums text-zinc-500">
@@ -86,8 +82,9 @@ export function CodexDailyCompareChart({ server, local, loading, days }: CodexDa
                   width={44}
                 />
                 <Tooltip cursor={{ fill: 'rgba(255,255,255,0.05)' }} content={<CompareTooltip />} />
-                <Bar dataKey="server" fill={SERVER_COLOR} radius={[3, 3, 0, 0]} maxBarSize={12} />
-                <Bar dataKey="local" fill={LOCAL_COLOR} radius={[3, 3, 0, 0]} maxBarSize={12} />
+                {/* Long windows re-animate hundreds of bars on every poll. */}
+                <Bar dataKey="server" fill={SERVER_COLOR} radius={[3, 3, 0, 0]} maxBarSize={12} isAnimationActive={rows.length <= 60} />
+                <Bar dataKey="local" fill={LOCAL_COLOR} radius={[3, 3, 0, 0]} maxBarSize={12} isAnimationActive={rows.length <= 60} />
               </BarChart>
             </ResponsiveContainer>
           </div>

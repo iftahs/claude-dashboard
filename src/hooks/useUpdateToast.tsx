@@ -80,7 +80,12 @@ export function useUpdateToast(data: VersionInfo | null | undefined) {
     async function runUpdate() {
       setPull('running');
       try {
-        const res = await fetch('/api/update/pull', { method: 'POST' });
+        // JSON content-type required: the server rejects form-encodable writes so a cross-site page can't trigger the pull.
+        const res = await fetch('/api/update/pull', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: '{}',
+        });
         const body = await res.json();
         setPull(body.ok ? 'done' : 'error');
       } catch {

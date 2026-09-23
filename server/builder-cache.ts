@@ -6,11 +6,8 @@
  *
  * Correctness rests on two invariants:
  *  - the builders are pure functions of (events|insights, now, params);
- *  - the key bundles every param AND a validity token (the data fingerprint).
- * Callers pin `now` to the scan's `computedAt`, so a given token fully determines
- * the output. When the fingerprint flips (files changed → rescan), every prior
- * entry for that key is overwritten in place, so the map stays bounded to
- * builders × params × sources.
+ *  - the key bundles every param AND a validity token (data fingerprint + the current minute, so windows still slide while idle).
+ * Keys are builders × params × sources — bounded by intParam()'s clamps, but a full range sweep can still reach thousands, so the map also evicts LRU past MEMO_MAX.
  */
 
 interface Entry {
@@ -18,7 +15,14 @@ interface Entry {
   value: unknown;
 }
 
+/** Far above what the UI polls at once (a few dozen keys), far below a key sweep. */
+export const MEMO_MAX = 256;
+
 const store = new Map<string, Entry>();
+
+export function memoSize(): number {
+  return store.size;
+}
 
 /**
  * Return the cached builder output for (name, keyParts) when it was computed
@@ -34,6 +38,11 @@ export function memoBuilder<T>(
   const hit = store.get(key);
   if (hit && hit.token === token) return hit.value as T;
   const value = compute();
+  store.delete(key); // re-insert at the back: recently rebuilt = recently used
+  if (store.size >= MEMO_MAX) {
+    const oldest = store.keys().next().value;
+    if (oldest !== undefined) store.delete(oldest);
+  }
   store.set(key, { token, value });
   return value;
 }

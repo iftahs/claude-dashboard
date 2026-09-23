@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import type { LimitAlertConfig } from '../lib/limits';
 
 /** UI-only preferences persisted client-side (never sent to the backend). */
 export interface Settings {
@@ -11,6 +12,8 @@ export interface Settings {
   // How to alert when spend crosses a budget cap threshold (70/90/100%):
   // off, a browser notification, or notification + an audible chime.
   budgetAlert: 'off' | 'notification' | 'sound';
+  // Read via resolveLimitAlerts (lib/limits), which also accepts older string/boolean shapes. Unset = notifications at 70 / 90 %.
+  limitAlerts?: LimitAlertConfig;
   // First day of the week for weekly windows/reset. 'auto' resolves from the
   // browser locale (see useConfigMode → weekStart).
   weekStartDay: 'auto' | 'sunday' | 'monday';
@@ -37,7 +40,11 @@ export function useSettings(): [Settings, (s: Settings) => void] {
   const [settings, setSettingsState] = useState<Settings>(load);
   function setSettings(s: Settings) {
     setSettingsState(s);
-    localStorage.setItem(KEY, JSON.stringify(s));
+    try {
+      localStorage.setItem(KEY, JSON.stringify(s));
+    } catch {
+      /* private mode / quota — the in-memory settings still apply this session */
+    }
   }
   return [settings, setSettings];
 }

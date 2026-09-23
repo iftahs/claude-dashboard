@@ -25,7 +25,7 @@ export function TagBreakdown({ sessions, projectCosts, tags }: TagBreakdownProps
     <div>
       <h3 className="flex items-center gap-1.5 text-sm font-bold uppercase tracking-wider text-zinc-300">
         Spend by Tag
-        <InfoTip text="Estimated cost grouped by the custom tags you assign to projects on the left. A project with multiple tags counts toward each. Tags live only in your browser — nothing is sent anywhere." />
+        <InfoTip text="Estimated cost grouped by the custom tags you assign in the Projects card. A project with multiple tags counts toward each. Tags live only in your browser — nothing is sent anywhere." />
       </h3>
       <p className="text-xs text-zinc-500 mt-0.5">Cost attribution across your tags</p>
     </div>
@@ -33,19 +33,19 @@ export function TagBreakdown({ sessions, projectCosts, tags }: TagBreakdownProps
 
   if (!hasTags) {
     return (
-      <div className="card p-5 flex min-h-[200px] flex-col">
+      <div className="card p-5 flex h-full min-h-[200px] flex-col">
         {header}
         <div className="flex flex-1 items-center justify-center py-10 text-center text-xs italic text-zinc-500">
-          Add a tag to any project above to group its cost here.
+          Add a tag to any project in the Projects card to group its cost here.
         </div>
       </div>
     );
   }
 
   return (
-    <div className="card p-5">
+    <div className="card p-5 h-full">
       {header}
-      <div className="mt-5 flex flex-col items-center gap-4 sm:flex-row">
+      <div className="mt-5 flex flex-col items-center gap-4">
         {data.length > 0 && (
           <div className="h-[180px] w-[180px] shrink-0">
             <ResponsiveContainer width="100%" height="100%">

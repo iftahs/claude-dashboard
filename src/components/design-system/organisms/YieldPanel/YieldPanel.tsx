@@ -1,17 +1,18 @@
-import { ProgressBar } from '@/components/design-system/atoms/ProgressBar/ProgressBar';
 import { Skeleton } from '@/components/design-system/atoms/Skeleton/Skeleton';
 import { compact } from '@/lib/format';
+import { funnelStages } from './utils';
 import type { YieldPanelProps } from './types';
 
+// Sessions outside a git repo could never commit, so they sit apart instead of counting as misses.
 export function YieldPanel({ data }: YieldPanelProps) {
   if (!data) {
     return (
       <div className="space-y-4">
-        <div className="grid grid-cols-2 gap-4">
-          <Skeleton className="h-16 w-full rounded" />
-          <Skeleton className="h-16 w-full rounded" />
+        <div className="space-y-2">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <Skeleton key={i} className="h-5 w-full rounded" />
+          ))}
         </div>
-        <Skeleton className="h-3 w-full rounded-full" />
         <div className="space-y-2">
           {Array.from({ length: 4 }).map((_, i) => (
             <Skeleton key={i} className="h-4 w-full rounded" />
@@ -21,41 +22,54 @@ export function YieldPanel({ data }: YieldPanelProps) {
     );
   }
 
-  const { committed, tokensCommitted, uncommitted, tokensUncommitted, rate, topUncommitted } = data;
+  if (data.sessions === 0) {
+    return <div className="text-sm text-zinc-500">No sessions in this window.</div>;
+  }
+
+  const stages = funnelStages(data);
+  const top = Math.max(1, stages[0].count);
 
   return (
     <div className="space-y-5">
-      {/* Two big numbers */}
-      <div className="grid grid-cols-2 gap-4">
-        <div className="rounded-xl bg-emerald-500/5 p-3 ring-1 ring-emerald-500/10">
-          <div className="text-xs text-zinc-500">Committed sessions</div>
-          <div className="mt-1 text-2xl font-bold tabular-nums text-emerald-400">{committed}</div>
-          <div className="text-xs text-zinc-500">{compact(tokensCommitted)} tokens</div>
+      <div className="space-y-2">
+        {stages.map((s) => (
+          <div key={s.key} className="flex items-center gap-3" title={s.hint}>
+            <span className="w-24 shrink-0 text-xs text-zinc-400">{s.label}</span>
+            <div className="h-3 flex-1 overflow-hidden rounded-full bg-ink-600">
+              <div
+                className={`h-full rounded-full transition-all duration-700 ${s.barClass}`}
+                style={{ width: `${(s.count / top) * 100}%` }}
+              />
+            </div>
+            <span className="w-10 shrink-0 text-right text-xs font-semibold tabular-nums text-zinc-200">
+              {s.count}
+            </span>
+          </div>
+        ))}
+      </div>
+
+      <div className="grid grid-cols-3 gap-2 text-xs">
+        <div className="rounded-lg bg-emerald-500/5 p-2 ring-1 ring-emerald-500/10">
+          <div className="text-zinc-500">Committed</div>
+          <div className="font-semibold tabular-nums text-emerald-400">{compact(data.tokensCommitted)}</div>
         </div>
-        <div className="rounded-xl bg-zinc-800/40 p-3 ring-1 ring-white/10">
-          <div className="text-xs text-zinc-500">Uncommitted sessions</div>
-          <div className="mt-1 text-2xl font-bold tabular-nums text-zinc-400">{uncommitted}</div>
-          <div className="text-xs text-zinc-500">{compact(tokensUncommitted)} tokens</div>
+        <div className="rounded-lg bg-zinc-800/40 p-2 ring-1 ring-white/10">
+          <div className="text-zinc-500">Uncommitted</div>
+          <div className="font-semibold tabular-nums text-zinc-300">{compact(data.tokensUncommitted)}</div>
+        </div>
+        <div className="rounded-lg bg-zinc-800/20 p-2 ring-1 ring-white/5" title="Sessions outside a git repo — excluded from the commit rate.">
+          <div className="text-zinc-600">No repo · {data.noRepo}</div>
+          <div className="font-semibold tabular-nums text-zinc-500">{compact(data.tokensNoRepo)}</div>
         </div>
       </div>
 
-      {/* Ratio bar */}
-      <div>
-        <div className="mb-1.5 flex justify-between text-xs text-zinc-500">
-          <span>Commit rate</span>
-          <span className="font-semibold text-zinc-300">{(rate * 100).toFixed(0)}%</span>
-        </div>
-        <ProgressBar pct={rate * 100} variant="emerald" />
-      </div>
-
-      {/* Top uncommitted sessions */}
-      {topUncommitted.length > 0 && (
+      {data.topUncommitted.length > 0 && (
         <div>
           <div className="mb-2 text-xs font-semibold uppercase tracking-wider text-zinc-500">
             Top uncommitted sessions
           </div>
           <div className="space-y-1.5">
-            {topUncommitted.slice(0, 5).map((s, i) => (
+            {data.topUncommitted.slice(0, 5).map((s, i) => (
               <div key={i} className="flex items-center justify-between gap-2 text-xs">
                 <span className="flex-1 truncate text-zinc-400" title={s.project}>
                   {s.project}
@@ -69,7 +83,8 @@ export function YieldPanel({ data }: YieldPanelProps) {
       )}
 
       <div className="text-[10px] text-zinc-600">
-        Sessions that ran a git commit — a proxy for productive sessions.
+        Token figures are effective tokens. A session counts as in a repo when a git branch or remote
+        was recorded, or it ran git itself.
       </div>
     </div>
   );

@@ -20,6 +20,10 @@ FROM node:24-alpine AS runtime
 WORKDIR /app
 ENV NODE_ENV=production
 ENV SERVER_PORT=8787
+# Listen on every interface inside the container so Docker's port mapping can
+# reach it. What is exposed on the host is decided by docker-compose's port
+# binding (127.0.0.1 by default), and the server's Host check still applies.
+ENV BIND_HOST=0.0.0.0
 ENV CLAUDE_DIR=/data/.claude
 ENV APP_RUNTIME=docker
 # Parsed-scan cache (SQLite via the built-in node:sqlite, hence node 24). Backed by
@@ -32,9 +36,12 @@ ENV NODE_NO_WARNINGS=1
 # tzdata so the TZ env var (day bucketing) works on alpine.
 RUN apk add --no-cache tzdata
 
-# Install prod deps + tsx (server runs TypeScript directly).
+# Install prod deps + tsx (server runs TypeScript directly). tsx is a devDependency,
+# so with NODE_ENV=production a local `npm install tsx` only rewrites package.json
+# and installs nothing — then `npx tsx` fetched it from the registry on every start.
+# Install it globally at build time instead, pinned to the lockfile's major.
 COPY package*.json ./
-RUN npm ci --omit=dev && npm install tsx@^4 && npm cache clean --force
+RUN npm ci --omit=dev && npm install -g tsx@^4 && npm cache clean --force
 
 # App code + built frontend.
 COPY server ./server
@@ -63,4 +70,4 @@ EXPOSE 8787
 CMD if command -v claude >/dev/null 2>&1 && [ -n "$CLAUDE_CONFIG_DIR" ]; then \
       node scripts/seed-cli-credentials.mjs; \
     fi; \
-    exec npx tsx server/index.ts
+    exec tsx server/index.ts

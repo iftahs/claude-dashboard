@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import { Bar, BarChart, CartesianGrid, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { ChartTooltip } from '@/components/design-system/molecules/ChartTooltip/ChartTooltip';
 import { LegendDot } from '@/components/design-system/atoms/LegendDot/LegendDot';
@@ -8,6 +9,7 @@ import type { CustomTooltipProps, UsageBarChartProps } from './types';
 function CustomTooltip({ active, payload, label, metric = 'tokens' }: CustomTooltipProps) {
   if (active && payload && payload.length) {
     const bucketCost = payload[0].payload.cost;
+    const bucketTotal = payload[0].payload.total;
     const isProjected = payload[0].payload.isProjected;
     const sortedPayload = [...payload]
       .filter((item) => item.value > 0)
@@ -35,15 +37,26 @@ function CustomTooltip({ active, payload, label, metric = 'tokens' }: CustomTool
                 <span className="text-zinc-300">{shortModel(item.name)}</span>
               </span>
               <span className="font-semibold text-zinc-100">
-                {metric === 'cost' || item.name === '__projected__' ? usd(item.value) : compact(item.value)}
+                {metric === 'cost' ? usd(item.value) : compact(item.value)}
               </span>
             </div>
           ))}
         </div>
-        {metric !== 'cost' && bucketCost !== undefined && (
-          <div className="mt-2 border-t border-white/10 pt-2 flex items-center justify-between text-xs">
-            <span className="text-zinc-500 font-medium">Est. Cost</span>
-            <span className="font-bold text-clay-400">{usd(bucketCost)}</span>
+        {metric !== 'cost' && (bucketCost !== undefined || typeof bucketTotal === 'number') && (
+          <div className="mt-2 space-y-1 border-t border-white/10 pt-2 text-xs">
+            {/* Bars are effective tokens; the all-tokens (cache reads included) figure lives only here. */}
+            {typeof bucketTotal === 'number' && !isProjected && (
+              <div className="flex items-center justify-between gap-4">
+                <span className="text-zinc-500 font-medium">All tokens incl. cache reads</span>
+                <span className="font-semibold text-zinc-300">{compact(bucketTotal)}</span>
+              </div>
+            )}
+            {bucketCost !== undefined && (
+              <div className="flex items-center justify-between gap-4">
+                <span className="text-zinc-500 font-medium">Est. Cost</span>
+                <span className="font-bold text-clay-400">{usd(bucketCost)}</span>
+              </div>
+            )}
           </div>
         )}
       </ChartTooltip>
@@ -52,10 +65,11 @@ function CustomTooltip({ active, payload, label, metric = 'tokens' }: CustomTool
   return null;
 }
 
-export function UsageBarChart({
+function UsageBarChartImpl({
   buckets,
   labelFor,
   projectionCostPerDay,
+  projectionTokensPerDay,
   metric = 'tokens',
 }: UsageBarChartProps) {
   const models = new Set<string>();
@@ -66,10 +80,16 @@ export function UsageBarChart({
   const now = Date.now();
   const DAY = 86_400_000;
 
+  // `byModel` is the fallback for a payload from an older server without byModelEffective.
   const data = buckets.map((b) => {
-    const row: Record<string, number | string | boolean> = { label: labelFor(b.start), cost: b.cost };
+    const row: Record<string, number | string | boolean> = {
+      label: labelFor(b.start),
+      cost: b.cost,
+      total: b.totalTokens,
+    };
+    const perModel = b.byModelEffective ?? b.byModel;
     for (const m of modelList) {
-      row[m] = metric === 'cost' ? (b.byModelCost?.[m] ?? 0) : (b.byModel[m] ?? 0);
+      row[m] = metric === 'cost' ? (b.byModelCost?.[m] ?? 0) : (perModel[m] ?? 0);
     }
     // Mark future buckets for the tooltip
     if (b.start > now) row.isProjected = true;
@@ -88,8 +108,8 @@ export function UsageBarChart({
     if (Math.abs(lastBucket.start - now) < 2 * DAY) {
       let t = lastBucket.start + DAY;
 
-      // Compute tokens projection based on average daily effective tokens
-      const avgTokensPerDay = buckets.reduce((acc, curr) => acc + curr.effectiveTokens, 0) / buckets.length;
+      const avgTokensPerDay =
+        projectionTokensPerDay ?? buckets.reduce((acc, curr) => acc + curr.effectiveTokens, 0) / buckets.length;
 
       while (t <= lastBucket.start + 3 * DAY && t < endOfMonthMs) {
         const projRow: Record<string, number | string | boolean> = {
@@ -145,6 +165,8 @@ export function UsageBarChart({
                 stackId="t"
                 fill={m === '__projected__' ? 'rgba(113,113,122,0.25)' : modelColor(m)}
                 radius={i === allModelList.length - 1 ? [4, 4, 0, 0] : [0, 0, 0, 0]}
+                // Long windows re-animate hundreds of bars on every poll.
+                isAnimationActive={data.length <= 60}
               />
             ))}
           </BarChart>
@@ -163,3 +185,6 @@ export function UsageBarChart({
     </div>
   );
 }
+
+// Memoised — parent re-renders ~1/s from the live context; a long window can have hundreds of categories x every model series.
+export const UsageBarChart = memo(UsageBarChartImpl);

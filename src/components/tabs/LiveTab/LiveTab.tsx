@@ -1,28 +1,35 @@
+import { Fragment } from 'react';
 import { BlockGauge } from '@/components/design-system/organisms/BlockGauge/BlockGauge';
 import { UsageBarChart } from '@/components/design-system/organisms/UsageBarChart/UsageBarChart';
 import { Section } from '@/components/design-system/molecules/Section/Section';
 import { PlanUsage } from '@/components/design-system/molecules/PlanUsage/PlanUsage';
 import { AccountsLivePanel } from '@/components/design-system/organisms/AccountsLivePanel/AccountsLivePanel';
 import { ExtraUsageCard } from '@/components/design-system/molecules/ExtraUsageCard/ExtraUsageCard';
+import { claudeExtraUsageView, codexCreditsView } from '@/components/design-system/molecules/ExtraUsageCard/utils';
 import { LimitsContributors } from '@/components/design-system/organisms/LimitsContributors/LimitsContributors';
+import { LimitHits } from '@/components/design-system/organisms/LimitHits/LimitHits';
 import { SpendingLimits } from '@/components/design-system/molecules/SpendingLimits/SpendingLimits';
-import { CodexPlanCard, CodexPlanStats } from '@/components/design-system/organisms/CodexPlanPanel/CodexPlanPanel';
-import { CodexDailyCompareChart } from '@/components/design-system/organisms/CodexDailyCompareChart/CodexDailyCompareChart';
-import { PlatformComparison } from '@/components/design-system/organisms/PlatformComparison/PlatformComparison';
+import { CodexPlanCard } from '@/components/design-system/organisms/CodexPlanPanel/CodexPlanPanel';
+import {
+  codexGaugeLabels,
+  codexGaugeLive,
+  codexGaugeWindow,
+} from '@/components/design-system/organisms/CodexPlanPanel/utils';
 import { GaugeSkeleton, ChartSkeleton } from '@/components/design-system/atoms/Skeleton/Skeleton';
 import { hourLabel } from '@/lib/format';
 import { buildBudgetRows } from '@/lib/budget';
+import { titleScope } from '@/lib/platform';
 import { useLiveData } from '@/hooks/useLiveData';
 import { useConfigMode } from '@/hooks/useConfigMode';
 import { useCostMetrics } from '@/hooks/useCostMetrics';
 import { useLiteLlmActual } from '@/hooks/useLiteLlmActual';
 import { usePolling } from '@/hooks/usePolling';
 import { useSource } from '@/hooks/useSource';
-import type { AccountsLiveData, ActivityData } from '@/types';
-import type { LiveTabProps } from './types';
+import { usePlatformLimits } from '@/hooks/useLimits';
+import type { AccountsLiveData, CodexBlock } from '@/types';
+import type { ClaudeGaugeProps, CodexGaugeProps, LiveTabProps, SideBySideProps } from './types';
 
-/** Window of the Codex server-vs-local comparison chart. */
-const COMPARE_DAYS = 30;
+const FIVE_HOUR_SEC = 5 * 3600;
 
 /**
  * Hourly tokens by model for the recent window. Identical on every platform —
@@ -63,188 +70,185 @@ function HourlyChart() {
   );
 }
 
+/** Claude's block: the live Claude.ai 5-hour % in the ring, the latest session's block in the rows. */
+function ClaudeGauge({ costPerDay, dailyLimit, todayActualCost }: ClaudeGaugeProps) {
+  const { recent, liveUsage } = useLiveData();
+  const { isApi } = useConfigMode();
+  if (recent.loading) return <GaugeSkeleton />;
+  const lu = liveUsage.data;
+  const live = lu && !lu.error && lu.five_hour ? { pct: lu.five_hour.utilization, resetsAt: lu.five_hour.resets_at } : null;
+  return (
+    <BlockGauge
+      block={recent.data?.activeBlock ?? null}
+      live={live}
+      liveError={lu?.error ?? null}
+      isApi={isApi}
+      costPerDay={costPerDay}
+      dailyLimit={dailyLimit}
+      todayActualCost={todayActualCost}
+    />
+  );
+}
+
+// No block-limit guess — Codex publishes no token ceiling, so offline the ring shows tokens, not an invented %.
+function CodexGauge({ block, costPerDay, dailyLimit }: CodexGaugeProps) {
+  const { codexLive } = useLiveData();
+  if (!block.data && block.loading) return <GaugeSkeleton />;
+  const windowSec = block.data?.windowSec ?? codexGaugeWindow(codexLive.data)?.windowSec ?? FIVE_HOUR_SEC;
+  return (
+    <BlockGauge
+      block={block.data}
+      live={codexGaugeLive(codexLive.data)}
+      liveError={codexLive.data?.error ?? codexLive.error ?? null}
+      isApi={!!block.data?.apiKey}
+      costPerDay={costPerDay}
+      dailyLimit={dailyLimit}
+      blockLimit={null}
+      windowMs={windowSec * 1000}
+      labels={codexGaugeLabels(codexLive.data, windowSec)}
+    />
+  );
+}
+
+/** One node per platform in a row (Both); a single node takes the full width. */
+function SideBySide({ items }: SideBySideProps) {
+  // Keyed by slot (Claude first, Codex second), so a card never remounts because the other one came or went.
+  const shown = items.flatMap((node, slot) => (node ? [<Fragment key={slot}>{node}</Fragment>] : []));
+  if (shown.length === 0) return null;
+  if (shown.length === 1) return shown[0];
+  return <div className="grid grid-cols-1 items-stretch gap-6 lg:grid-cols-2">{shown}</div>;
+}
+
+// Under Both, the two gauges sit side by side but share one hourly chart (it already mixes both model families).
 export function LiveTab({ limits }: LiveTabProps) {
-  const { platform, codexAvailable } = useSource();
-  const { recent, weekly, weekDays, liveUsage, codexLive, codexProfile } = useLiveData();
+  const { platform, showClaude, showCodex } = useSource();
+  const { recent, weekly, liveWeekly, liveUsage, codexLive } = useLiveData();
   const { configData, isApi, weekStart } = useConfigMode();
-  const { costPerDay } = useCostMetrics();
+  const { costPerDay, coverageDays } = useCostMetrics();
   const { litellmActual } = useLiteLlmActual();
+  const [platformCaps] = usePlatformLimits();
 
   // Live plan/limits per logged-in account (only polled while the Live tab is
-  // mounted). >1 account swaps the single card for the side-by-side panel; with
-  // one account this stays empty and the dashboard is byte-identical to before.
-  const accountsLive = usePolling<AccountsLiveData>('/api/accounts/live', 15000);
+  // mounted, not under Codex). >1 account swaps the single card for the side-by-side panel; one account stays byte-identical to before.
+  const accountsLive = usePolling<AccountsLiveData>(showClaude ? '/api/accounts/live' : '', 15000);
   const accounts = accountsLive.data?.accounts ?? [];
   const multiAccount = accounts.length > 1;
 
-  // Local per-day Codex totals for the server-vs-local comparison. Scoped to
-  // source=codex explicitly (not via withSrc) — that panel is Codex-only whatever
-  // the header shows. Disabled (no request) unless a Codex panel is on screen.
-  const codexActivity = usePolling<ActivityData>(
-    codexAvailable && platform !== 'claude' ? `/api/activity?days=${COMPARE_DAYS}&source=codex` : '',
-    60000,
-  );
+  // Computed per request from the live window (not memoised) — only this tab polls it.
+  const codexBlock = usePolling<CodexBlock>(showCodex ? '/api/codex/block' : '', 5000);
+  const codexApiKey = !!codexBlock.data?.apiKey;
 
-  const block = recent.data?.activeBlock ?? null;
   const hasSpendingLimits =
     limits.dailyLimit != null || limits.weeklyLimit != null || limits.monthlyLimit != null;
 
+  // Under Both the Trends window mixes both platforms, so split $/day by source for the API-mode cap rings.
+  const split = platform === 'both' ? weekly.data?.bySource : undefined;
+  const claudeCostPerDay = split ? (split.code.cost + split.cowork.cost) / coverageDays : costPerDay;
+  const codexCostPerDay = split ? split.codex.cost / coverageDays : costPerDay;
+
+  // The gateway's real bill is Anthropic spend — it replaces the estimate only when the rows cover Claude alone.
+  const budgetActual = platform === 'claude' ? litellmActual ?? null : null;
   const budgetRows = buildBudgetRows({
     limits,
-    buckets: weekly.data?.buckets,
+    buckets: liveWeekly.data?.buckets,
     costPerDay,
     weekStart,
-    actual: litellmActual ?? null,
+    actual: budgetActual,
     now: Date.now(),
   });
 
-  // The Claude rate-limit card — the same node under Claude and under Both.
-  const claudePlanCard =
-    configData && !isApi ? (
+  // Each gauge compares its own platform's spend, so it takes that platform's cap, not Both's sum.
+  const claudeGauge = showClaude && (
+    <ClaudeGauge
+      costPerDay={claudeCostPerDay}
+      dailyLimit={platformCaps.claude.dailyLimit}
+      todayActualCost={litellmActual?.today ?? null}
+    />
+  );
+  const codexGauge = showCodex && (
+    <CodexGauge block={codexBlock} costPerDay={codexCostPerDay} dailyLimit={platformCaps.codex?.dailyLimit ?? null} />
+  );
+
+  // Under Both liveWeekly also counts Codex; the Claude card's offline weekly % must not.
+  const bs = liveWeekly.data?.bySource;
+  const claudeWeekly =
+    platform === 'both' && liveWeekly.data && bs
+      ? {
+          ...liveWeekly.data,
+          totals: { ...liveWeekly.data.totals, effectiveTokens: bs.code.effectiveTokens + bs.cowork.effectiveTokens },
+        }
+      : liveWeekly.data;
+
+  // Meaningful only with a plan; >1 account shows each account's limits side-by-side.
+  const claudePlan =
+    showClaude && configData && !isApi ? (
       multiAccount ? (
         <AccountsLivePanel accounts={accounts} weekStart={weekStart} />
       ) : (
         <PlanUsage
-          block={block}
-          weekly={weekly.data}
+          block={recent.data?.activeBlock ?? null}
+          weekly={claudeWeekly}
           liveUsage={liveUsage.data}
           weekStart={weekStart}
           tier={configData.subscriptionType ?? configData.rateLimitTier ?? null}
         />
       )
     ) : null;
+  const codexPlan = showCodex && !codexApiKey ? <CodexPlanCard live={codexLive} weekStart={weekStart} /> : null;
 
-  const codexCompareChart = (
-    <CodexDailyCompareChart
-      server={codexProfile.data?.dailyUsage ?? []}
-      local={codexActivity.data?.dailyActivity ?? []}
-      loading={codexProfile.loading || codexActivity.loading}
-      days={COMPARE_DAYS}
-    />
-  );
+  // Paying beyond the plan: Anthropic's extra usage / ChatGPT credits.
+  const extra = showClaude && configData && !isApi ? liveUsage.data?.extra_usage : null;
+  const claudeExtra = extra ? (
+    <ExtraUsageCard view={claudeExtraUsageView(extra, liveUsage.data?.spend, !!configData?.hasExtraUsageEnabled)} />
+  ) : null;
+  const credits = showCodex && !codexApiKey && codexLive.data && !codexLive.data.error ? codexCreditsView(codexLive.data) : null;
+  const codexCredits = credits ? <ExtraUsageCard view={credits} /> : null;
 
-  // ── Codex only ────────────────────────────────────────────────────────────
-  // BlockGauge is Anthropic-specific (its alerts talk about the Claude block), so
-  // the Codex rate-limit card takes its slot; everything Claude-only below it —
-  // extra usage, limit contributors, accounts — is dropped.
-  if (platform === 'codex') {
-    return (
-      <>
-        {/* items-start, not items-stretch: the Codex card carries two bars where
-            BlockGauge carries a donut, so stretching it to the chart's height
-            would open a gap between its title and its bars. */}
-        <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-3">
-          <CodexPlanCard live={codexLive} weekStart={weekStart} />
+  // What's driving each platform's limit usage (limits are per provider, so never mixed).
+  const contributors =
+    platform === 'both' ? (
+      <SideBySide
+        items={[
+          configData && !isApi && <LimitsContributors source="claude" showEmpty />,
+          !codexApiKey && <LimitsContributors source="codex" showEmpty />,
+        ]}
+      />
+    ) : (platform === 'codex' ? !codexApiKey : configData && !isApi) ? (
+      <LimitsContributors />
+    ) : null;
+
+  // Spend vs caps: always shown in API mode (cost IS the bill); in subscription mode only with configured caps.
+  const apiMode = (showClaude && isApi) || (showCodex && codexApiKey);
+  const spendNote =
+    budgetActual?.note ?? (platform === 'codex' ? 'estimated from local logs · OpenAI list prices' : 'estimated from local logs');
+
+  return (
+    <>
+      {platform === 'both' ? (
+        <>
+          <SideBySide items={[claudeGauge, codexGauge]} />
+          <HourlyChart />
+        </>
+      ) : (
+        <div className="grid grid-cols-1 items-stretch gap-6 lg:grid-cols-3">
+          {claudeGauge || codexGauge}
           <div className="flex flex-col lg:col-span-2">
             <HourlyChart />
           </div>
         </div>
-
-        <CodexPlanStats live={codexLive} profile={codexProfile} />
-
-        {codexCompareChart}
-
-        {hasSpendingLimits && (
-          <SpendingLimits rows={budgetRows} note={litellmActual?.note ?? 'estimated from local logs'} />
-        )}
-
-        <p className="text-xs leading-relaxed text-zinc-500">
-          <span className="font-semibold text-zinc-400">What this covers:</span> the Codex rollouts the ChatGPT
-          desktop app writes under <code className="font-mono text-zinc-400">~/.codex</code> — every thread run on
-          this machine, with each turn&apos;s Guardian auto-review folded into its parent thread. Costs elsewhere in
-          the dashboard are estimates at OpenAI&apos;s list API prices (a subscription has no per-token bill). Codex
-          usage from the mobile and web apps never reaches this machine, so it appears only in the server series
-          above.
-        </p>
-      </>
-    );
-  }
-
-  // ── Both platforms ────────────────────────────────────────────────────────
-  if (platform === 'both') {
-    return (
-      <>
-        <PlatformComparison
-          claudePlan={claudePlanCard}
-          codexLive={codexLive}
-          codexProfile={codexProfile}
-          weekStart={weekStart}
-          bySource={weekly.data?.bySource ?? null}
-          byModel={weekly.data?.byModel ?? []}
-          weekDays={weekDays}
-          loading={weekly.loading}
-        />
-
-        <HourlyChart />
-
-        {/* Claude-side panels — each self-hides when it has nothing to say. */}
-        {configData && !isApi && liveUsage.data?.extra_usage && (
-          <ExtraUsageCard
-            extraUsage={liveUsage.data.extra_usage}
-            spend={liveUsage.data.spend}
-            orgEnabled={configData.hasExtraUsageEnabled}
-          />
-        )}
-        {configData && !isApi && <LimitsContributors />}
-
-        {codexCompareChart}
-
-        {(isApi || hasSpendingLimits) && (
-          <SpendingLimits
-            rows={budgetRows}
-            note={litellmActual?.note ?? 'estimated from local logs'}
-            alwaysShow={isApi}
-          />
-        )}
-      </>
-    );
-  }
-
-  // ── Claude only — the original layout, unchanged ──────────────────────────
-  return (
-    <>
-      {/* Block gauge + hourly chart */}
-      <div className="grid grid-cols-1 items-stretch gap-6 lg:grid-cols-3">
-        {recent.loading ? (
-          <GaugeSkeleton />
-        ) : (
-          <BlockGauge
-            block={block}
-            liveUsage={liveUsage.data}
-            isApi={isApi}
-            costPerDay={costPerDay}
-            dailyLimit={limits.dailyLimit}
-            todayActualCost={litellmActual?.today ?? null}
-          />
-        )}
-        <div className="flex flex-col lg:col-span-2">
-          <HourlyChart />
-        </div>
-      </div>
-
-      {/* Subscription rate-limit bars — only meaningful with a plan. With more
-          than one logged-in account, show each account's limits side-by-side. */}
-      {claudePlanCard}
-
-      {/* Extra usage — Anthropic's "pay once you hit your plan limit" overage/credit pool. */}
-      {configData && !isApi && liveUsage.data?.extra_usage && (
-        <ExtraUsageCard
-          extraUsage={liveUsage.data.extra_usage}
-          spend={liveUsage.data.spend}
-          orgEnabled={configData.hasExtraUsageEnabled}
-        />
       )}
 
-      {/* What's contributing to your limits usage? — cost-weighted Day/Week breakdown. */}
-      {configData && !isApi && <LimitsContributors />}
+      <SideBySide items={[claudePlan, codexPlan]} />
+      <SideBySide items={[claudeExtra, codexCredits]} />
+      {contributors}
+      <LimitHits />
 
-      {/* Spend vs caps — always shown in API mode (the cost IS the bill);
-          in subscription mode only when the user has configured caps. */}
-      {(isApi || hasSpendingLimits) && (
+      {(apiMode || hasSpendingLimits) && (
         <SpendingLimits
           rows={budgetRows}
-          note={litellmActual?.note ?? 'estimated from local logs'}
-          alwaysShow={isApi}
+          note={spendNote}
+          alwaysShow={apiMode}
+          titleSuffix={titleScope(platform)}
         />
       )}
     </>

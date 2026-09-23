@@ -37,6 +37,8 @@ export interface CodexLiveData {
   modelAvailability: Record<string, boolean>;
   origin: 'live' | 'passive';
   snapshotAt: string | null;
+  /** Passive only: why live failed. Non-fatal — the payload is still usable data. */
+  warning?: string;
   error?: string;
 }
 
@@ -283,9 +285,8 @@ let usageCache: { data: CodexLiveData; fetchedAt: number } | null = null;
 
 /**
  * Current Codex plan limits. Live from ChatGPT when the stored token works;
- * otherwise the newest local `token_count` snapshot (origin 'passive', with an
- * `error` describing why live failed). Auth problems (no login, expired,
- * 401/403) throw — those need the user, not a stale snapshot.
+ * otherwise the newest local snapshot (origin 'passive', with a `warning` — never
+ * `error`, which the UI reads as "nothing to show"); auth problems (expired, 401/403) throw.
  */
 export async function fetchCodexUsage(): Promise<CodexLiveData> {
   if (usageCache && Date.now() - usageCache.fetchedAt < USAGE_TTL_MS) return usageCache.data;
@@ -311,7 +312,7 @@ export async function fetchCodexUsage(): Promise<CodexLiveData> {
   const data: CodexLiveData = {
     ...passive,
     planType: passive.planType ?? auth?.planType ?? null,
-    error: `Live usage unavailable (${liveError}) — showing the newest local snapshot.`,
+    warning: `live usage unavailable: ${liveError.replace(/\.$/, '')}`,
   };
   usageCache = { data, fetchedAt: Date.now() };
   return data;
@@ -393,13 +394,19 @@ export async function lastRecordTs(path: string): Promise<number | null> {
   return null;
 }
 
+/** The snapshot can be days old — true when this window's reset has already passed. */
+function hasLapsed(w: any, now: number): boolean {
+  const resetsMs = num(w?.resets_at) * 1000;
+  return resetsMs > 0 && now >= resetsMs;
+}
+
+/** null only when the plan has no such window; a lapsed one reads 0% with no reset time instead of its stale percentage. */
 function passiveWindow(w: any, now: number): CodexWindow | null {
   if (!w || typeof w !== 'object') return null;
   const windowSec = num(w.window_minutes) * 60;
   if (windowSec <= 0) return null;
+  if (hasLapsed(w, now)) return { usedPct: 0, windowSec, resetsAt: null };
   const resetsMs = num(w.resets_at) * 1000;
-  // The snapshot can be days old — a window whose reset already passed says nothing about now.
-  if (resetsMs > 0 && now >= resetsMs) return null;
   return {
     usedPct: clampPct(w.used_percent),
     windowSec,
@@ -407,37 +414,63 @@ function passiveWindow(w: any, now: number): CodexWindow | null {
   };
 }
 
-/** Last `token_count` record with `rate_limits` in the file's tail → CodexLiveData, or null. */
-async function snapshotFromTail(path: string, now: number): Promise<CodexLiveData | null> {
-  let lines: string[];
-  try {
-    lines = (await readTail(path, PASSIVE_TAIL_BYTES)).split('\n');
-  } catch {
-    return null;
-  }
+/** Only a JSON key/value pair spells it with bare quotes; inside message text they are escaped. */
+const USAGE_LIMIT_MARK = '"codex_error_info":"usage_limit_exceeded"';
+
+/** True for the task_complete/error event Codex writes on a usage-limit refusal; parsed in full since the string gate alone can false-match. */
+function isUsageLimitError(line: string): boolean {
+  let o: any;
+  try { o = JSON.parse(line); } catch { return false; }
+  const p = o?.payload;
+  if (o?.type !== 'event_msg' || (p?.type !== 'task_complete' && p?.type !== 'error')) return false;
+  return p.error?.codex_error_info === 'usage_limit_exceeded' || p.codex_error_info === 'usage_limit_exceeded';
+}
+
+/** Newest Codex-bucket rate_limits snapshot; a usage-limit error found after it means treat its fullest window as exhausted (real snapshots read 98-99%, never 100). */
+export function snapshotFromLines(lines: string[], now: number): CodexLiveData | null {
+  // Walking backwards, every line visited before the chosen snapshot is newer than it.
+  let limitHitAfter = false;
   for (let i = lines.length - 1; i >= 0; i--) {
     const line = lines[i];
-    // Cheap string gates before the JSON.parse: it's an event_msg, a token_count, and carries rate_limits.
-    if (!line.startsWith('{"timestamp":"') || !line.includes('"type":"token_count"') || !line.includes('"rate_limits":{')) continue;
+    if (!line.startsWith('{"timestamp":"')) continue;
+    if (!limitHitAfter && line.includes(USAGE_LIMIT_MARK) && isUsageLimitError(line)) {
+      limitHitAfter = true;
+      continue;
+    }
+    // Cheap string gates before the JSON.parse: a token_count that carries rate_limits.
+    if (!line.includes('"type":"token_count"') || !line.includes('"rate_limits":{')) continue;
     let obj: any;
     try { obj = JSON.parse(line); } catch { continue; }
     if (obj?.type !== 'event_msg' || obj.payload?.type !== 'token_count') continue;
     const rl = obj.payload.rate_limits;
     if (!rl || typeof rl !== 'object') continue;
+    if (typeof rl.limit_id === 'string' && rl.limit_id !== 'codex') continue;
+
+    const raw = [rl.primary, rl.secondary];
+    // The window a later usage-limit error refers to: the fullest one — once it has reset, the error says nothing about now.
+    const binding = raw
+      .filter((w) => passiveWindow(w, now) !== null)
+      .sort((a, b) => num(b.used_percent) - num(a.used_percent))[0];
+    const hitSince = limitHitAfter && !!binding && !hasLapsed(binding, now);
 
     const windows: CodexWindow[] = [];
-    for (const w of [passiveWindow(rl.primary, now), passiveWindow(rl.secondary, now)]) {
-      if (w) windows.push(w);
+    for (const w of raw) {
+      // The snapshot predates the refusal by up to a percent or two; show the window that refused as full.
+      const pw = passiveWindow(hitSince && w === binding ? { ...w, used_percent: 100 } : w, now);
+      if (pw) windows.push(pw);
     }
     const { fiveHour, weekly } = assignWindows(windows);
+    // A "reached" flag only holds while its window hasn't lapsed; rate_limit_reached_type is always null in practice, so an open window at 100% counts too.
+    const open = raw.filter((w) => passiveWindow(w, now) !== null && !hasLapsed(w, now));
     const c = rl.credits;
     const snapshotTs = Date.parse(obj.timestamp ?? '');
     return {
       planType: typeof rl.plan_type === 'string' ? rl.plan_type : null,
       fiveHour,
       weekly,
-      // A "reached" flag only means something while the window it refers to hasn't lapsed.
-      limitReached: rl.rate_limit_reached_type != null && (fiveHour !== null || weekly !== null),
+      limitReached:
+        hitSince ||
+        (open.length > 0 && (rl.rate_limit_reached_type != null || open.some((w) => clampPct(w.used_percent) >= 100))),
       credits: c && typeof c === 'object'
         ? { hasCredits: !!c.has_credits, unlimited: !!c.unlimited, balance: c.balance != null ? String(c.balance) : null, overageLimitReached: false }
         : null,
@@ -450,10 +483,18 @@ async function snapshotFromTail(path: string, now: number): Promise<CodexLiveDat
   return null;
 }
 
+async function snapshotFromTail(path: string, now: number): Promise<CodexLiveData | null> {
+  try {
+    return snapshotFromLines((await readTail(path, PASSIVE_TAIL_BYTES)).split('\n'), now);
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Offline fallback: the newest rollout — by LAST RECORD TIMESTAMP, since guardian
- * files never update their mtime — and its last `token_count.rate_limits`. Tries
- * the next-newest few files when the newest tail has none. Null when nothing usable.
+ * files never update their mtime — and its last Codex-bucket `token_count.rate_limits`.
+ * Tries the next-newest few files when the newest tail has none. Null when nothing usable.
  */
 export async function readPassiveRateLimits(): Promise<CodexLiveData | null> {
   const now = Date.now();

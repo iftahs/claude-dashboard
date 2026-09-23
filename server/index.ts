@@ -1,46 +1,87 @@
 import { existsSync } from 'node:fs';
-import { createReadStream } from 'node:fs';
 import { join } from 'node:path';
-import { createInterface } from 'node:readline';
 import { exec } from 'node:child_process';
 import { promisify } from 'node:util';
 import express from 'express';
 import { getEvents, eventsFingerprint } from './cache.ts';
-import { buildRecent, buildWeekly, buildModels, buildActivity, buildTools, buildHourlyHeatmap, buildProjectStats, filterSource, sourceMatches, type SourceFilter } from './aggregate.ts';
-import { claudeDir, readConfig, readCredentials, readStatsSummary, readSessionMetas, fetchLiveUsage, fetchLiveProfile, fetchLiveUsageFor, fetchLiveProfileFor, readAccountCredentials, expiredTokenMessage, detectLitellm, fetchLiteLlmSpend } from './scan.ts';
+import { buildRecent, buildWeekly, buildModels, buildActivity, buildHourlyHeatmap, buildProjectStats, buildUsageSummary, buildEffort, filterSource, statsCacheApplies, type SourceFilter, type UsageSummaryData } from './aggregate.ts';
+import { claudeDir, readConfig, readCredentials, readStatsSummary, readSessionMetas, fetchLiveUsage, fetchLiveProfile, fetchLiveUsageFor, fetchLiveProfileFor, readAccountCredentials, expiredTokenMessage, detectLitellm, fetchLiteLlmSpend, MAX_WINDOW_DAYS } from './scan.ts';
 import { getInsights, insightsFingerprint } from './insights-scan.ts';
-import { primeData } from './data.ts';
+import { archiveSummary, forgetArchivedHistory, hash53, primeData } from './data.ts';
 import { memoBuilder } from './builder-cache.ts';
 import {
   buildErrors, buildRetries, buildLanguages, buildBranches, buildMcp,
   buildComplexity, buildYield, buildRejections, buildSubagentStats, buildFileChurn, scopeInsights,
+  buildTurnLatency, buildInsightsSummary, buildToolUsage, knownProjectRoots,
 } from './insights.ts';
 import { buildContributors } from './contributors.ts';
 import { getCommandUsage } from './history.ts';
-import { getWorkspaceTasks, getInventory } from './workspace.ts';
+import { getWorkspaceTasks, getInventory, workspaceScope, type WorkspaceScope } from './workspace.ts';
+import { readCodexConfig } from './codex-config.ts';
 import { getLiveSubagents } from './subagents-live.ts';
 import { fetchCodexUsage, fetchCodexProfile } from './codex-live.ts';
 import { getLiveCodexAgents } from './codex-agents-live.ts';
+import { readFile } from 'node:fs/promises';
+import { computeCodexBlock, buildLimitHits } from './aggregate.ts';
+import { codexDir, scanRoots } from './scan.ts';
+import { hasCodexEvents, summarizeSources } from './sources.ts';
+import type { CodexLiveData } from './codex-live.ts';
 import { getWorkflows, getWorkflowStats } from './workflows.ts';
+import { readCodexTitles } from './codex-titles.ts';
+import { buildSessionRows, buildSessionSummary, legacyProjectPaths, searchSessions } from './sessions.ts';
+import { readTranscript } from './transcript.ts';
 import { getAgentDetail } from './workflow-agent-detail.ts';
 import { runAi, runAiStream, resolveBackend, AiUnavailableError, AiTokenRejectedError, AiCallError, type AiCreds } from './ai.ts';
-import { buildAiPayload, buildChatUserMessage, CHAT_SYSTEM, buildSectionUserMessage, SECTION_SYSTEM, SUGGEST_SYSTEM, buildSuggestMessage, type AiScope, type ChatTurn } from './ai-context.ts';
+import { buildAiPayload, buildChatUserMessage, chatSystem, buildSectionUserMessage, sectionSystem, suggestSystem, buildSuggestMessage, type AiScope, type ChatTurn } from './ai-context.ts';
 import { routeDatasets } from './ai-router.ts';
+import { aiSource } from './ai-datasets.ts';
 import { getVersionInfo, isDocker } from './version.ts';
+import { allowedHosts, checkRequest, publicSettings } from './http-guard.ts';
 
 const execAsync = promisify(exec);
 
 const app = express();
-app.use(express.json({ limit: '1mb' }));
 const PORT = Number(process.env.SERVER_PORT ?? 8787);
+// Loopback on the host; the container listens on every interface so Docker's port mapping can reach it (compose republishes on 127.0.0.1 unless DASHBOARD_BIND opts into LAN).
+const BIND_HOST = process.env.BIND_HOST?.trim() || (isDocker() ? '0.0.0.0' : '127.0.0.1');
+const ALLOWED_HOSTS = allowedHosts(process.env.ALLOWED_HOSTS);
+
+// Host (DNS-rebinding) and write (CSRF) checks run before anything else — body parsing, static files, every route. See http-guard.ts.
+app.use((req, res, next) => {
+  const rejected = checkRequest(
+    {
+      method: req.method,
+      host: req.headers.host,
+      origin: req.headers.origin,
+      contentType: req.headers['content-type'],
+    },
+    ALLOWED_HOSTS,
+  );
+  if (rejected) return void res.status(rejected.status).json({ error: rejected.error });
+  next();
+});
+app.use(express.json({ limit: '1mb' }));
 
 function wrap(data: unknown, computedAt: number) {
   return { data, computedAt, claudeDir: claudeDir() };
 }
 
+/** /api/sources' codex.available — what gates every Codex read and the "both" scope. */
+async function codexHasData(): Promise<boolean> {
+  return hasCodexEvents((await getEvents()).events);
+}
+
 /** Parse the optional ?source=all|claude|code|cowork|codex filter (default 'all'). */
 function parseSource(raw: unknown): SourceFilter {
   return raw === 'code' || raw === 'cowork' || raw === 'codex' || raw === 'claude' ? raw : 'all';
+}
+
+/** Integer in [lo,hi], `def` if absent/NaN — guards NaN loops, qs's repeated-key arrays (first wins), and unbounded builder-cache memo keys from fractional days. */
+function intParam(raw: unknown, def: number, lo: number, hi: number): number {
+  const v = Array.isArray(raw) ? raw[0] : raw;
+  if (v === undefined || v === null || v === '') return def;
+  const n = Math.round(Number(v));
+  return Number.isFinite(n) ? Math.max(lo, Math.min(hi, n)) : def;
 }
 
 app.get('/api/health', (_req, res) => {
@@ -57,6 +98,7 @@ app.get('/api/version', async (_req, res) => {
 
 // Dev-only self-update: pull latest code (tsx watch + Vite HMR then reload).
 // Docker users can't do this from inside the container — they get instructions.
+// Runs a shell command — the JSON + Origin write check above is what stops a cross-site form from triggering it.
 app.post('/api/update/pull', async (_req, res) => {
   if (isDocker()) {
     res.status(400).json({ ok: false, error: 'Running in Docker — run `git pull && npm run docker:up` on the host.' });
@@ -147,8 +189,9 @@ app.get('/api/config', async (_req, res) => {
     // LiteLLM gateway detection (pure env read) — gates the "Actual billed" cost UI.
     const litellm = detectLitellm();
 
+    // Allowlisted settings.json fields only — never the whole file (env keys, apiKeyHelper and hook commands live there).
     const merged = {
-      ...config,
+      ...publicSettings(config),
       subscriptionType: sub.subscriptionType,
       rateLimitTier: sub.rateLimitTier,
       seatTier: sub.seatTier,
@@ -172,169 +215,67 @@ app.get('/api/stats/summary', async (_req, res) => {
 });
 
 // Session history is derived live from the JSONL transcripts (insights scan)
-// joined with token stats from the main event scan. The legacy
-// `usage-data/session-meta/*.json` sidecar is used only as optional enrichment
-// for fields the transcript can't reconstruct (lines added/removed, languages),
-// because Claude Code stopped writing those sidecars — relying on them froze
-// this list. See readSessionMetas() / scan.ts.
-const WRITE_TOOLS = new Set(['Edit', 'Write', 'MultiEdit', 'NotebookEdit']);
+// joined with token stats from the main event scan (sessions.ts); the legacy
+// usage-data sidecar only adds languages and keeps sessions whose transcripts are gone listed.
+async function sessionRowsFor(source: SourceFilter) {
+  const [{ events }, { insights }, sidecar, codexTitles] = await Promise.all([
+    getEvents(), getInsights(), readSessionMetas(), readCodexTitles(),
+  ]);
+  // Sidecars and titles are small and rarely change; the events fingerprint carries the rest.
+  const token = hash53(`${eventsFingerprint()}|${JSON.stringify(sidecar)}|${[...codexTitles].join('\0')}`);
+  const rows = memoBuilder('sessions', [source], token, () =>
+    buildSessionRows(events, insights, sidecar, source, codexTitles),
+  );
+  return { rows, insights };
+}
 
 app.get('/api/sessions', async (req, res) => {
   try {
-    const source = parseSource(req.query.source);
-    const { events } = await getEvents();
-    const { insights } = await getInsights();
-    const sidecar = await readSessionMetas();
-
-    // Token splits per session from the main event scan.
-    const eventStats = new Map<string, {
-      inputTokens: number;
-      outputTokens: number;
-      cacheCreateTokens: number;
-      cacheReadTokens: number;
-      totalTokens: number;
-      effectiveTokens: number;
-    }>();
-
-    for (const e of events) {
-      if (!e.sessionId) continue;
-      let stats = eventStats.get(e.sessionId);
-      if (!stats) {
-        stats = {
-          inputTokens: 0,
-          outputTokens: 0,
-          cacheCreateTokens: 0,
-          cacheReadTokens: 0,
-          totalTokens: 0,
-          effectiveTokens: 0,
-        };
-        eventStats.set(e.sessionId, stats);
-      }
-      stats.inputTokens += e.inputTokens;
-      stats.outputTokens += e.outputTokens;
-      stats.cacheCreateTokens += e.cacheCreateTokens;
-      stats.cacheReadTokens += e.cacheReadTokens;
-      stats.totalTokens += e.inputTokens + e.outputTokens + e.cacheCreateTokens + e.cacheReadTokens;
-      stats.effectiveTokens += e.inputTokens + e.outputTokens + e.cacheCreateTokens;
-    }
-
-    // Per-session tool counts + distinct modified files from main-thread tool calls.
-    const toolAgg = new Map<string, { counts: Record<string, number>; files: Set<string> }>();
-    for (const tc of insights.toolCalls) {
-      if (tc.isSidechain || !tc.sessionId) continue; // count main thread only
-      let a = toolAgg.get(tc.sessionId);
-      if (!a) { a = { counts: {}, files: new Set() }; toolAgg.set(tc.sessionId, a); }
-      a.counts[tc.name] = (a.counts[tc.name] ?? 0) + 1;
-      if (WRITE_TOOLS.has(tc.name) && tc.filePath) a.files.add(tc.filePath);
-    }
-
-    const sidecarById = new Map(sidecar.map((s) => [s.session_id, s]));
-
-    const result = [];
-    for (const sm of insights.sessionsMeta.values()) {
-      if (sm.isSidechain || !sm.sessionId) continue; // skip subagent-only sessions
-      if (sm.assistantMsgs === 0) continue;           // skip empty/aborted shells
-      if (!sourceMatches(sm.source, source)) continue; // surface / platform filter
-
-      const stats = eventStats.get(sm.sessionId);
-      const agg = toolAgg.get(sm.sessionId);
-      const side = sidecarById.get(sm.sessionId);
-
-      const input = stats?.inputTokens ?? 0;
-      const output = stats?.outputTokens ?? 0;
-      const cacheCreate = stats?.cacheCreateTokens ?? 0;
-      const cacheRead = stats?.cacheReadTokens ?? 0;
-      const effective = stats?.effectiveTokens ?? sm.effectiveTokens;
-      const total = stats?.totalTokens ?? sm.effectiveTokens;
-
-      result.push({
-        session_id: sm.sessionId,
-        source: sm.source,
-        project_path: sm.projectPath,
-        start_time: new Date(sm.firstTs).toISOString(),
-        duration_minutes: Math.max(0, Math.round((sm.lastTs - sm.firstTs) / 60000)),
-        user_message_count: sm.turns,
-        assistant_message_count: sm.assistantMsgs,
-        tool_counts: agg?.counts ?? {},
-        languages: side?.languages ?? {},
-        git_commits: sm.gitCommits,
-        git_pushes: sm.gitPushes,
-        input_tokens: input,
-        output_tokens: output,
-        cache_create_tokens: cacheCreate,
-        cache_read_tokens: cacheRead,
-        effective_tokens: effective,
-        total_tokens: total,
-        first_prompt: (side?.first_prompt as string) || sm.firstPrompt || '',
-        user_interruption_count: side?.user_interruptions,
-        tool_errors: sm.errorCount,
-        files_modified: agg?.files.size ?? side?.files_modified ?? 0,
-        lines_added: side?.lines_added ?? 0,
-        lines_removed: side?.lines_removed ?? 0,
-      });
-    }
-
-    // Preserve older sessions whose transcripts are gone from disk but whose
-    // sidecar metadata survives — append them so the list never regresses.
-    // Sidecars are Claude Code only, so skip them when scoped to another surface.
-    const liveIds = new Set(result.map((r) => r.session_id));
-    for (const s of sidecar) {
-      if (source !== 'all' && source !== 'code' && source !== 'claude') break;
-      if (liveIds.has(s.session_id)) continue;
-      const stats = eventStats.get(s.session_id);
-      const in_tok = s.input_tokens ?? 0;
-      const out_tok = s.output_tokens ?? 0;
-      result.push({
-        session_id: s.session_id,
-        source: 'code' as const,
-        project_path: s.project_path,
-        start_time: s.start_time,
-        duration_minutes: s.duration_minutes ?? 0,
-        user_message_count: s.user_message_count ?? 0,
-        assistant_message_count: s.assistant_message_count ?? 0,
-        tool_counts: s.tool_counts ?? {},
-        languages: s.languages ?? {},
-        git_commits: s.git_commits ?? 0,
-        git_pushes: s.git_pushes ?? 0,
-        input_tokens: stats?.inputTokens ?? in_tok,
-        output_tokens: stats?.outputTokens ?? out_tok,
-        cache_create_tokens: stats?.cacheCreateTokens ?? 0,
-        cache_read_tokens: stats?.cacheReadTokens ?? 0,
-        effective_tokens: stats?.effectiveTokens ?? in_tok + out_tok,
-        total_tokens: stats?.totalTokens ?? in_tok + out_tok,
-        first_prompt: (s.first_prompt as string) ?? '',
-        user_interruption_count: s.user_interruptions,
-        tool_errors: s.tool_errors,
-        files_modified: s.files_modified ?? 0,
-        lines_added: s.lines_added ?? 0,
-        lines_removed: s.lines_removed ?? 0,
-      });
-    }
-
-    result.sort((a, b) => Date.parse(b.start_time) - Date.parse(a.start_time));
-    res.json(wrap(result, Date.now()));
+    const { rows } = await sessionRowsFor(parseSource(req.query.source));
+    res.json(wrap(rows, Date.now()));
   } catch (e) {
     res.status(500).json({ error: String(e) });
   }
 });
 
-// Reports which usage surfaces have local data. The frontend gates all Cowork
-// UI (source toggle, Sources card, ?source= params) on cowork.available so that
-// Code-only users see exactly the original dashboard.
+// The Sessions tab's StatCard row, over exactly the rows /api/sessions lists for the same ?source=, split by platform under Both.
+app.get('/api/sessions/summary', async (req, res) => {
+  try {
+    const { rows, insights } = await sessionRowsFor(parseSource(req.query.source));
+    res.json(wrap(buildSessionSummary(rows, insights.turns), Date.now()));
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+// Reports which surfaces have local data and their folders. Gates Cowork UI on
+// cowork.available and the platform switcher on codex.available; also drives
+// the empty state and a Codex-only user's default platform.
 app.get('/api/sources', async (_req, res) => {
   try {
     const { events, computedAt } = await getEvents();
-    let codeN = 0, coworkN = 0, codexN = 0, codeLast = 0, coworkLast = 0, codexLast = 0;
-    for (const e of events) {
-      if (e.source === 'cowork') { coworkN++; if (e.ts > coworkLast) coworkLast = e.ts; }
-      else if (e.source === 'codex') { codexN++; if (e.ts > codexLast) codexLast = e.ts; }
-      else { codeN++; if (e.ts > codeLast) codeLast = e.ts; }
-    }
-    res.json(wrap({
-      code: { events: codeN, lastTs: codeLast },
-      cowork: { available: coworkN > 0, events: coworkN, lastTs: coworkLast },
-      codex: { available: codexN > 0, events: codexN, lastTs: codexLast },
-    }, computedAt));
+    const coworkRoot = scanRoots().find((r) => r.source === 'cowork')?.dir ?? null;
+    res.json(wrap(summarizeSources(events, { claudeDir: claudeDir(), codexDir: codexDir(), coworkDir: coworkRoot }), computedAt));
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+// Opt-in history archive (DASHBOARD_RETAIN_HISTORY=1) of slim rows from deleted transcripts — see event-store.ts.
+app.get('/api/archive', async (_req, res) => {
+  try {
+    res.json(wrap(await archiveSummary(), Date.now()));
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+// Deletes the archive. A POST with a JSON body, so the CSRF guard above applies.
+app.post('/api/archive/forget', async (_req, res) => {
+  try {
+    const ok = await forgetArchivedHistory();
+    if (!ok) return void res.status(503).json({ error: 'The history archive could not be deleted (store unavailable).' });
+    res.json(wrap(await archiveSummary(), Date.now()));
   } catch (e) {
     res.status(500).json({ error: String(e) });
   }
@@ -469,13 +410,64 @@ app.get('/api/codex/agents/live', async (_req, res) => {
   }
 });
 
+/** 'chatgpt' (plan token), 'apikey' (pay-as-you-go, no plan windows) or null (no login) — reads key NAMES only, never the token/key itself. */
+async function readCodexAuthMode(): Promise<'chatgpt' | 'apikey' | null> {
+  try {
+    const json = JSON.parse(await readFile(join(codexDir(), 'auth.json'), 'utf8'));
+    const mode = typeof json?.auth_mode === 'string' ? json.auth_mode.toLowerCase().replace(/[^a-z]/g, '') : '';
+    const hasToken = typeof json?.tokens?.access_token === 'string' && !!json.tokens.access_token;
+    const hasKey = typeof json?.OPENAI_API_KEY === 'string' && !!json.OPENAI_API_KEY;
+    if (mode === 'apikey') return 'apikey';
+    if (mode === 'chatgpt' || hasToken) return 'chatgpt';
+    return hasKey ? 'apikey' : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Fetched at most every 30s, failures included — fetchCodexUsage caches only successes, and its passive fallback tail-reads every rollout, which a 5s poll must not repeat. */
+let codexWindowState: { at: number; live: CodexLiveData | null; authMode: 'chatgpt' | 'apikey' | null } | null = null;
+async function codexWindow() {
+  if (codexWindowState && Date.now() - codexWindowState.at < 30_000) return codexWindowState;
+  const [live, authMode] = await Promise.all([fetchCodexUsage().catch(() => null), readCodexAuthMode()]);
+  codexWindowState = { at: Date.now(), live, authMode };
+  return codexWindowState;
+}
+
+// Codex counterpart of activeBlock for the Live gauge; never memoised since the window moves with the live reset time, not the event fingerprint.
+app.get('/api/codex/block', async (_req, res) => {
+  try {
+    const { events, computedAt } = await getEvents();
+    const { live, authMode } = await codexWindow();
+    const block = computeCodexBlock(filterSource(events, 'codex'), live && !live.error ? live : null, computedAt);
+    res.json(wrap({ ...block, apiKey: authMode === 'apikey' }, computedAt));
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+// Usage-limit refusals grouped into episodes for the Live tab's "Limit hits" card; 7d/30d counts are always included, `days` only bounds the episode list.
+app.get('/api/insights/limits', async (req, res) => {
+  try {
+    const days = intParam(req.query.days, 30, 1, MAX_WINDOW_DAYS);
+    const { insights, computedAt } = await getInsights();
+    const source = parseSource(req.query.source);
+    const data = memoBuilder('limits', [days, source], insightsFingerprint(), () =>
+      buildLimitHits(scopeInsights(insights, source).limitHits, computedAt, days),
+    );
+    res.json(wrap(data, computedAt));
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
 // Actual billed cost from a LiteLLM gateway (when configured): month-to-date,
 // previous-month same-period total, and a per-day breakdown over the selected
 // window (days clamp matches /api/usage/weekly). Like /api/usage/live, failures
 // return wrap({ error }) at HTTP 200 so the frontend just hides the cards.
 app.get('/api/usage/litellm', async (req, res) => {
   try {
-    const days = Math.max(7, Math.min(28, Number(req.query.days ?? 7)));
+    const days = intParam(req.query.days, 7, 7, MAX_WINDOW_DAYS);
     res.json(wrap(await fetchLiteLlmSpend(days), Date.now()));
   } catch (e: any) {
     res.json(wrap({ error: e.message || String(e) }, Date.now()));
@@ -485,7 +477,7 @@ app.get('/api/usage/litellm', async (req, res) => {
 
 app.get('/api/usage/recent', async (req, res) => {
   try {
-    const hours = Math.max(1, Math.min(72, Number(req.query.hours ?? 12)));
+    const hours = intParam(req.query.hours, 12, 1, 72);
     const { events, computedAt } = await getEvents();
     const source = parseSource(req.query.source);
     const data = memoBuilder('recent', [hours, source], eventsFingerprint(), () =>
@@ -499,7 +491,7 @@ app.get('/api/usage/recent', async (req, res) => {
 
 app.get('/api/usage/weekly', async (req, res) => {
   try {
-    const days = Math.max(7, Math.min(28, Number(req.query.days ?? 7)));
+    const days = intParam(req.query.days, 7, 7, MAX_WINDOW_DAYS);
     const { events, computedAt } = await getEvents();
     const source = parseSource(req.query.source);
     const data = memoBuilder('weekly', [days, source], eventsFingerprint(), () =>
@@ -513,11 +505,48 @@ app.get('/api/usage/weekly', async (req, res) => {
 
 app.get('/api/usage/models', async (req, res) => {
   try {
-    const days = Math.max(1, Math.min(31, Number(req.query.days ?? 7)));
+    const days = intParam(req.query.days, 7, 1, 31);
     const { events, computedAt } = await getEvents();
     const source = parseSource(req.query.source);
     const data = memoBuilder('models', [days, source], eventsFingerprint(), () =>
       buildModels(filterSource(events, source), computedAt, days),
+    );
+    res.json(wrap(data, computedAt));
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+// Lifetime activity summary for Trends' "Activity summary" row, over EVERY event (no window); the unscoped (Both) request also carries the Claude/Codex split.
+app.get('/api/usage/summary', async (req, res) => {
+  try {
+    const { events, computedAt } = await getEvents();
+    const source = parseSource(req.query.source);
+    const data = memoBuilder('summary', [source], eventsFingerprint(), (): UsageSummaryData => {
+      const scoped = filterSource(events, source);
+      const summary: UsageSummaryData = buildUsageSummary(scoped, computedAt);
+      if (source === 'all') {
+        summary.byPlatform = {
+          claude: buildUsageSummary(filterSource(events, 'claude'), computedAt),
+          codex: buildUsageSummary(filterSource(events, 'codex'), computedAt),
+        };
+      }
+      return summary;
+    });
+    res.json(wrap(data, computedAt));
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+// Reasoning effort × model for the Models "Reasoning effort" card.
+app.get('/api/usage/effort', async (req, res) => {
+  try {
+    const days = intParam(req.query.days, 7, 1, MAX_WINDOW_DAYS);
+    const { events, computedAt } = await getEvents();
+    const source = parseSource(req.query.source);
+    const data = memoBuilder('effort', [days, source], eventsFingerprint(), () =>
+      buildEffort(filterSource(events, source), computedAt, days),
     );
     res.json(wrap(data, computedAt));
   } catch (e) {
@@ -541,30 +570,18 @@ app.get('/api/usage/contributors', async (req, res) => {
   }
 });
 
+// ?utc=1 buckets by UTC day (no stats-cache fallback) to line local rollouts up with OpenAI's UTC-day counts.
 app.get('/api/activity', async (req, res) => {
   try {
-    const days = Math.max(7, Math.min(180, Number(req.query.days ?? 126)));
+    const days = intParam(req.query.days, 126, 7, MAX_WINDOW_DAYS);
+    const utc = req.query.utc === '1' || req.query.utc === 'true';
     const { events, computedAt } = await getEvents();
     const source = parseSource(req.query.source);
-    const stats = await readStatsSummary();
+    const stats = !utc && statsCacheApplies(source) ? await readStatsSummary() : undefined;
     // stats-cache is only a fallback for days with no live data and is itself
     // stale, so keying on the events fingerprint is sufficient.
-    const data = memoBuilder('activity', [days, source], eventsFingerprint(), () =>
-      buildActivity(filterSource(events, source), computedAt, days, stats),
-    );
-    res.json(wrap(data, computedAt));
-  } catch (e) {
-    res.status(500).json({ error: String(e) });
-  }
-});
-
-app.get('/api/tools', async (req, res) => {
-  try {
-    const days = Math.max(1, Math.min(31, Number(req.query.days ?? 7)));
-    const { events, computedAt } = await getEvents();
-    const source = parseSource(req.query.source);
-    const data = memoBuilder('tools', [days, source], eventsFingerprint(), () =>
-      buildTools(filterSource(events, source), computedAt, days),
+    const data = memoBuilder('activity', [days, source, utc ? 'utc' : 'local'], eventsFingerprint(), () =>
+      buildActivity(filterSource(events, source), computedAt, days, stats, { utc }),
     );
     res.json(wrap(data, computedAt));
   } catch (e) {
@@ -574,7 +591,7 @@ app.get('/api/tools', async (req, res) => {
 
 app.get('/api/heatmap', async (req, res) => {
   try {
-    const days = Math.max(7, Math.min(365, Number(req.query.days ?? 90)));
+    const days = intParam(req.query.days, 90, 7, 365);
     const { events, computedAt } = await getEvents();
     const source = parseSource(req.query.source);
     const data = memoBuilder('heatmap', [days, source], eventsFingerprint(), () =>
@@ -588,14 +605,25 @@ app.get('/api/heatmap', async (req, res) => {
 
 app.get('/api/projects', async (req, res) => {
   try {
-    const days = Math.max(7, Math.min(365, Number(req.query.days ?? 30)));
-    const { events, computedAt } = await getEvents();
+    const days = intParam(req.query.days, 30, 7, 365);
+    const [{ events, computedAt }, { insights }, sidecar] = await Promise.all([
+      getEvents(), getInsights(), readSessionMetas(),
+    ]);
     // buildProjectStats already drops cowork; the source filter keeps behavior
     // consistent when the UI explicitly scopes to one surface.
     const source = parseSource(req.query.source);
-    const data = memoBuilder('projects', [days, source], eventsFingerprint(), () =>
-      buildProjectStats(filterSource(events, source), computedAt, days),
-    );
+    const data = memoBuilder('projects', [days, source], eventsFingerprint(), () => {
+      const stats = buildProjectStats(filterSource(events, source), computedAt, days);
+      // Tags stored before project paths came from the transcript cwd are keyed by the old folder-decoded path; the UI moves them over using this list.
+      const legacy = legacyProjectPaths(insights, sidecar);
+      return {
+        ...stats,
+        projects: stats.projects.map((p) => {
+          const legacyPaths = legacy.get(p.path);
+          return legacyPaths?.length ? { ...p, legacyPaths } : p;
+        }),
+      };
+    });
     res.json(wrap(data, computedAt));
   } catch (e) {
     res.status(500).json({ error: String(e) });
@@ -607,7 +635,7 @@ app.get('/api/projects', async (req, res) => {
 // ---------------------------------------------------------------------------
 
 function clampDays(raw: unknown, def = 7): number {
-  return Math.max(1, Math.min(90, Number(raw ?? def)));
+  return intParam(raw, def, 1, 90);
 }
 
 app.get('/api/insights/errors', async (req, res) => {
@@ -616,7 +644,22 @@ app.get('/api/insights/errors', async (req, res) => {
     const { insights, computedAt } = await getInsights();
     const source = parseSource(req.query.source);
     const data = memoBuilder('errors', [days, source], insightsFingerprint(), () =>
-      buildErrors(scopeInsights(insights, source), days),
+      buildErrors(scopeInsights(insights, source), days, computedAt),
+    );
+    res.json(wrap(data, computedAt));
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+// Insights rows, one per tool_use id: usage dedup keeps one line per message and drops most Claude tool calls.
+app.get('/api/insights/tools', async (req, res) => {
+  try {
+    const days = clampDays(req.query.days);
+    const { insights, computedAt } = await getInsights();
+    const source = parseSource(req.query.source);
+    const data = memoBuilder('tools', [days, source], insightsFingerprint(), () =>
+      buildToolUsage(scopeInsights(insights, source), days, computedAt),
     );
     res.json(wrap(data, computedAt));
   } catch (e) {
@@ -630,7 +673,7 @@ app.get('/api/insights/retries', async (req, res) => {
     const { insights, computedAt } = await getInsights();
     const source = parseSource(req.query.source);
     const data = memoBuilder('retries', [days, source], insightsFingerprint(), () =>
-      buildRetries(scopeInsights(insights, source), days),
+      buildRetries(scopeInsights(insights, source), days, computedAt),
     );
     res.json(wrap(data, computedAt));
   } catch (e) {
@@ -644,7 +687,7 @@ app.get('/api/insights/languages', async (req, res) => {
     const { insights, computedAt } = await getInsights();
     const source = parseSource(req.query.source);
     const data = memoBuilder('languages', [days, source], insightsFingerprint(), () =>
-      buildLanguages(scopeInsights(insights, source), days),
+      buildLanguages(scopeInsights(insights, source), days, computedAt),
     );
     res.json(wrap(data, computedAt));
   } catch (e) {
@@ -658,7 +701,7 @@ app.get('/api/insights/branches', async (req, res) => {
     const { insights, computedAt } = await getInsights();
     const source = parseSource(req.query.source);
     const data = memoBuilder('branches', [days, source], insightsFingerprint(), () =>
-      buildBranches(scopeInsights(insights, source), days),
+      buildBranches(scopeInsights(insights, source), days, computedAt),
     );
     res.json(wrap(data, computedAt));
   } catch (e) {
@@ -672,7 +715,7 @@ app.get('/api/insights/mcp', async (req, res) => {
     const { insights, computedAt } = await getInsights();
     const source = parseSource(req.query.source);
     const data = memoBuilder('mcp', [days, source], insightsFingerprint(), () =>
-      buildMcp(scopeInsights(insights, source), days),
+      buildMcp(scopeInsights(insights, source), days, computedAt),
     );
     res.json(wrap(data, computedAt));
   } catch (e) {
@@ -686,7 +729,7 @@ app.get('/api/insights/complexity', async (req, res) => {
     const { insights, computedAt } = await getInsights();
     const source = parseSource(req.query.source);
     const data = memoBuilder('complexity', [days, source], insightsFingerprint(), () =>
-      buildComplexity(scopeInsights(insights, source), days),
+      buildComplexity(scopeInsights(insights, source), days, computedAt),
     );
     res.json(wrap(data, computedAt));
   } catch (e) {
@@ -700,7 +743,7 @@ app.get('/api/insights/yield', async (req, res) => {
     const { insights, computedAt } = await getInsights();
     const source = parseSource(req.query.source);
     const data = memoBuilder('yield', [days, source], insightsFingerprint(), () =>
-      buildYield(scopeInsights(insights, source), days),
+      buildYield(scopeInsights(insights, source), days, computedAt),
     );
     res.json(wrap(data, computedAt));
   } catch (e) {
@@ -714,7 +757,7 @@ app.get('/api/insights/rejections', async (req, res) => {
     const { insights, computedAt } = await getInsights();
     const source = parseSource(req.query.source);
     const data = memoBuilder('rejections', [days, source], insightsFingerprint(), () =>
-      buildRejections(scopeInsights(insights, source), days),
+      buildRejections(scopeInsights(insights, source), days, computedAt),
     );
     res.json(wrap(data, computedAt));
   } catch (e) {
@@ -728,7 +771,7 @@ app.get('/api/insights/subagents', async (req, res) => {
     const { insights, computedAt } = await getInsights();
     const source = parseSource(req.query.source);
     const data = memoBuilder('subagents', [days, source], insightsFingerprint(), () =>
-      buildSubagentStats(scopeInsights(insights, source), days),
+      buildSubagentStats(scopeInsights(insights, source), days, computedAt),
     );
     res.json(wrap(data, computedAt));
   } catch (e) {
@@ -736,14 +779,14 @@ app.get('/api/insights/subagents', async (req, res) => {
   }
 });
 
-// File churn — most-edited files (Edit/Write/MultiEdit) over the window.
+// File churn — most-edited files over the window; the project label may come from any platform's known folders, so a Codex chat in a scratch folder still resolves to the real repo edited.
 app.get('/api/insights/churn', async (req, res) => {
   try {
     const days = clampDays(req.query.days);
     const { insights, computedAt } = await getInsights();
     const source = parseSource(req.query.source);
     const data = memoBuilder('churn', [days, source], insightsFingerprint(), () =>
-      buildFileChurn(scopeInsights(insights, source), days),
+      buildFileChurn(scopeInsights(insights, source), days, computedAt, 25, knownProjectRoots(insights)),
     );
     res.json(wrap(data, computedAt));
   } catch (e) {
@@ -751,11 +794,43 @@ app.get('/api/insights/churn', async (req, res) => {
   }
 });
 
-// Slash-command / skill usage from history.jsonl (no source filter).
+// Turn latency — median/p90 turn time and time to first token, with a histogram split per platform (Both stacks Claude/Codex instead of blending).
+app.get('/api/insights/turns', async (req, res) => {
+  try {
+    const days = clampDays(req.query.days);
+    const { insights, computedAt } = await getInsights();
+    const source = parseSource(req.query.source);
+    const data = memoBuilder('turns', [days, source], insightsFingerprint(), () =>
+      buildTurnLatency(scopeInsights(insights, source), days, computedAt),
+    );
+    res.json(wrap(data, computedAt));
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+// The Insights KPI row: failure rate (rejections excluded), rejection rate, commit rate, delegation/auto-review rate — overall and per platform.
+app.get('/api/insights/summary', async (req, res) => {
+  try {
+    const days = clampDays(req.query.days);
+    const { insights, computedAt } = await getInsights();
+    const source = parseSource(req.query.source);
+    const data = memoBuilder('insight-summary', [days, source], insightsFingerprint(), () =>
+      buildInsightsSummary(scopeInsights(insights, source), days, computedAt),
+    );
+    res.json(wrap(data, computedAt));
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+// Slash commands (history.jsonl, Claude Code only) + skills (attributionSkill, once per session), scoped by ?source=.
 app.get('/api/insights/commands', async (req, res) => {
   try {
     const days = clampDays(req.query.days);
-    res.json(wrap(await getCommandUsage(days), Date.now()));
+    const source = parseSource(req.query.source);
+    const { computedAt } = await getEvents();
+    res.json(wrap(await getCommandUsage(days, computedAt, source), computedAt));
   } catch (e) {
     res.status(500).json({ error: String(e) });
   }
@@ -859,8 +934,12 @@ function parseSuggestions(text: string): string[] {
  * is actually looking at. Every overview number then shares a window, so the model
  * can never "notice" a phantom inconsistency between two differently-scoped figures.
  */
-function parseAiScope(body: any): AiScope {
-  return { source: parseSource(body?.source), days: clampDays(body?.days, 30) };
+async function parseAiScope(body: any): Promise<AiScope> {
+  const source = parseSource(body?.source);
+  return {
+    source: source === 'all' ? aiSource(source, await codexHasData()) : source,
+    days: clampDays(body?.days, 30),
+  };
 }
 
 /**
@@ -871,6 +950,9 @@ function parseAiScope(body: any): AiScope {
 function shouldRedact(creds: AiCreds | null): boolean {
   return !!creds && creds.provider !== 'claude';
 }
+
+/** Panels whose data IS branch/file names — under shouldRedact() nothing is sent at all, since the panel has nothing left to explain without them. */
+const REDACTED_SECTIONS = new Set(['branches', 'churn']);
 
 /** Validate client-supplied AI credentials (Settings → AI Insights). */
 function parseAiCreds(raw: any): AiCreds | null {
@@ -901,8 +983,8 @@ app.post('/api/ai/chat', async (req, res) => {
     }
     const history = parseHistory(req.body?.history);
     const creds = parseAiCreds(req.body?.config);
-    const scope = parseAiScope(req.body);
-    const route = await routeDatasets(question, history, creds);
+    const scope = await parseAiScope(req.body);
+    const route = await routeDatasets(question, history, creds, scope.source);
     const payload = await buildAiPayload(scope, route.ids, { redact: shouldRedact(creds) });
     // Stream the answer as chunked text/plain. Headers flush on the first delta;
     // an error before any delta is still sent as JSON (headers not yet sent).
@@ -914,7 +996,7 @@ app.post('/api/ai/chat', async (req, res) => {
     res.setHeader('X-AI-Route', route.via);
     res.setHeader('X-AI-Datasets', route.ids.join(','));
     await runAiStream(
-      { system: CHAT_SYSTEM, user: buildChatUserMessage(payload, question, history), maxTokens: 1200 },
+      { system: chatSystem(scope.source), user: buildChatUserMessage(payload, question, history), maxTokens: 1200 },
       creds,
       {
         onStart: (backend) => res.setHeader('X-AI-Backend', backend),
@@ -941,9 +1023,17 @@ app.post('/api/ai/insight', async (req, res) => {
       return;
     }
     const creds = parseAiCreds(req.body?.config);
+    if (shouldRedact(creds) && REDACTED_SECTIONS.has(section)) {
+      res.status(403).json({
+        error: 'Branch and file names are not sent to third-party model providers. Pick Claude (or clear the key to use the local backend) in Settings → AI Insights to explain this panel.',
+      });
+      return;
+    }
+    // The platform the panel shows, when the client says; absent → platform-neutral wording.
+    const source = req.body?.source === undefined ? undefined : parseSource(req.body.source);
     const { text, backend } = await runAi(
       {
-        system: SECTION_SYSTEM,
+        system: sectionSystem(source),
         user: buildSectionUserMessage(section, data),
         maxTokens: 400,
       },
@@ -965,9 +1055,10 @@ app.post('/api/ai/suggestions', async (req, res) => {
     }
     const creds = parseAiCreds(req.body?.config);
     // Overview only: the chips just need the catalog to know what is askable.
-    const payload = await buildAiPayload(parseAiScope(req.body), [], { redact: shouldRedact(creds) });
+    const scope = await parseAiScope(req.body);
+    const payload = await buildAiPayload(scope, [], { redact: shouldRedact(creds) });
     const { text } = await runAi(
-      { system: SUGGEST_SYSTEM, user: buildSuggestMessage(payload, history), maxTokens: 200 },
+      { system: suggestSystem(scope.source), user: buildSuggestMessage(payload, history), maxTokens: 200 },
       creds,
     );
     res.json(wrap({ suggestions: parseSuggestions(text) }, Date.now()));
@@ -983,7 +1074,7 @@ app.post('/api/ai/suggestions', async (req, res) => {
  */
 app.get('/api/ai/context', async (req, res) => {
   try {
-    const payload = await buildAiPayload(parseAiScope(req.query), []);
+    const payload = await buildAiPayload(await parseAiScope(req.query), []);
     res.json(wrap(payload, Date.now()));
   } catch (e) {
     sendAiError(res, e);
@@ -991,20 +1082,39 @@ app.get('/api/ai/context', async (req, res) => {
 });
 
 // ---------------------------------------------------------------------------
-// Workspace: tasks + plans, and plugin / MCP inventory.
+// Workspace: tasks + plans, the plugin/MCP/skill inventory, and the Codex config
+// profile. ?source=claude|codex|all (Code/Cowork read as claude); absent stays Claude-only, as before Codex.
 // ---------------------------------------------------------------------------
 
-app.get('/api/workspace/tasks', async (_req, res) => {
+function parseWorkspaceScope(raw: unknown): WorkspaceScope {
+  return raw === undefined ? 'claude' : workspaceScope(parseSource(raw));
+}
+
+app.get('/api/workspace/tasks', async (req, res) => {
   try {
-    res.json(wrap(await getWorkspaceTasks(), Date.now()));
+    const scope = parseWorkspaceScope(req.query.source);
+    const codex = scope !== 'claude' && (await codexHasData());
+    res.json(wrap(await getWorkspaceTasks(scope, Date.now(), codex), Date.now()));
   } catch (e) {
     res.status(500).json({ error: String(e) });
   }
 });
 
-app.get('/api/workspace/inventory', async (_req, res) => {
+app.get('/api/workspace/inventory', async (req, res) => {
   try {
-    res.json(wrap(await getInventory(), Date.now()));
+    const scope = parseWorkspaceScope(req.query.source);
+    const codex = scope !== 'claude' && (await codexHasData());
+    res.json(wrap(await getInventory(scope, Date.now(), codex), Date.now()));
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+// Codex counterpart of /api/config: allowlisted config.toml keys (see codex-config.ts), sign-in mode, and the data dir.
+app.get('/api/codex/config', async (_req, res) => {
+  try {
+    const [config, authMode] = await Promise.all([readCodexConfig(), readCodexAuthMode()]);
+    res.json(wrap({ ...config, authMode, dir: codexDir() }, Date.now()));
   } catch (e) {
     res.status(500).json({ error: String(e) });
   }
@@ -1024,105 +1134,24 @@ app.get('/api/sessions/:id/transcript', async (req, res) => {
       return;
     }
 
-    // Parse the JSONL file on demand
-    const file = sm.file;
-    interface Turn {
-      role: 'user' | 'assistant';
-      ts: number;
-      text: string;
-      tools: { name: string; brief: string }[];
-      model?: string;
-      effectiveTokens?: number;
-    }
-    const turns: Turn[] = [];
-    let compactions = 0;
-
-    const rl = createInterface({
-      input: createReadStream(file, { encoding: 'utf8' }),
-      crlfDelay: Infinity,
-    });
-
-    for await (const line of rl) {
-      if (!line || line.length < 2) continue;
-      let obj: any;
-      try { obj = JSON.parse(line); } catch { continue; }
-      if (obj.sessionId !== sessionId && obj.session_id !== sessionId) continue;
-
-      const ts = Date.parse(obj.timestamp ?? '');
-      if (Number.isNaN(ts)) continue;
-
-      if (obj.type === 'summary') {
-        compactions++;
-        continue;
-      }
-
-      if (obj.type === 'user' && obj.message?.role === 'user') {
-        const content = obj.message.content;
-        let text = '';
-        let hasToolResultOnly = true;
-
-        if (typeof content === 'string') {
-          text = content.slice(0, 600);
-          hasToolResultOnly = false;
-          if (/continued from a previous conversation/i.test(content)) compactions++;
-        } else if (Array.isArray(content)) {
-          for (const block of content) {
-            if (block?.type === 'text' && typeof block.text === 'string') {
-              text += block.text.slice(0, 600 - text.length);
-              hasToolResultOnly = false;
-              if (/continued from a previous conversation/i.test(block.text)) compactions++;
-            }
-          }
-          const hasNonResult = content.some((b: any) => b?.type !== 'tool_result');
-          hasToolResultOnly = !hasNonResult;
-        }
-
-        // Skip user entries that are tool_result-only
-        if (hasToolResultOnly) continue;
-
-        turns.push({ role: 'user', ts, text: text.slice(0, 600), tools: [] });
-      }
-
-      if (obj.type === 'assistant' && obj.message?.role === 'assistant') {
-        const usage = obj.message?.usage;
-        const model: string | undefined = obj.message?.model;
-        const inTok = usage ? (usage.input_tokens ?? 0) : 0;
-        const outTok = usage ? (usage.output_tokens ?? 0) : 0;
-        const cacheCreate = usage ? (usage.cache_creation_input_tokens ?? 0) : 0;
-        const effectiveTokens = inTok + outTok + cacheCreate;
-
-        let text = '';
-        const tools: { name: string; brief: string }[] = [];
-        const msgContent = obj.message?.content;
-
-        if (Array.isArray(msgContent)) {
-          for (const block of msgContent) {
-            if (block?.type === 'text' && typeof block.text === 'string') {
-              text += block.text.slice(0, 600 - text.length);
-            }
-            if (block?.type === 'tool_use') {
-              const brief = block.input?.description ?? block.input?.command ?? block.input?.file_path ?? '';
-              tools.push({ name: block.name ?? '', brief: String(brief).slice(0, 80) });
-            }
-          }
-        } else if (typeof msgContent === 'string') {
-          text = msgContent.slice(0, 600);
-        }
-
-        turns.push({ role: 'assistant', ts, text: text.slice(0, 600), tools, model, effectiveTokens });
-      }
+    // File gone (cleanup, deleted rollout, or removed since last scan) — with retention its usage lives on in the archive, just nothing to show turn by turn.
+    if (!sm.file || !existsSync(sm.file)) {
+      res.json(wrap({
+        sessionId,
+        turns: [],
+        compactions: 0,
+        totalTurns: 0,
+        archived: true,
+        message: sm.source === 'codex'
+          ? "This thread's rollout file is no longer on disk; only its usage history is kept."
+          : 'This transcript was removed by Claude Code cleanup; only its usage history is kept.',
+      }, Date.now()));
+      return;
     }
 
-    const totalTurns = turns.length;
-    let finalTurns = turns;
-    let truncated = false;
-
-    if (totalTurns > 300) {
-      finalTurns = [...turns.slice(0, 50), ...turns.slice(totalTurns - 250)];
-      truncated = true;
-    }
-
-    res.json(wrap({ sessionId, turns: finalTurns, compactions, totalTurns, truncated: truncated || undefined }, Date.now()));
+    // Claude transcripts and Codex rollouts parse differently but return the same Turn shape (transcript.ts).
+    const transcript = await readTranscript(sm.file, sessionId, sm.source);
+    res.json(wrap({ sessionId, ...transcript }, Date.now()));
   } catch (e) {
     res.status(500).json({ error: String(e) });
   }
@@ -1140,45 +1169,10 @@ app.get('/api/search', async (req, res) => {
       return;
     }
     const days = clampDays(req.query.days, 30);
-    const from = Date.now() - days * 24 * 3600_000;
-
-    const { insights } = await getInsights();
-    const results: Array<{ sessionId: string; project: string; date: string; snippet: string; matches: number }> = [];
-
-    const qLower = q.toLowerCase();
-
-    for (const [sessionId, corpus] of insights.searchCorpus) {
-      const sm = insights.sessionsMeta.get(sessionId);
-      if (!sm) continue;
-      if (sm.lastTs < from) continue;
-
-      const corpusLower = corpus.toLowerCase();
-      let count = 0;
-      let idx = 0;
-      let firstIdx = -1;
-      while ((idx = corpusLower.indexOf(qLower, idx)) !== -1) {
-        count++;
-        if (firstIdx === -1) firstIdx = idx;
-        idx += qLower.length;
-      }
-      if (count === 0) continue;
-
-      // Build snippet: match ±60 chars
-      const start = Math.max(0, firstIdx - 60);
-      const end = Math.min(corpus.length, firstIdx + q.length + 60);
-      const snippet = (start > 0 ? '…' : '') + corpus.slice(start, end) + (end < corpus.length ? '…' : '');
-
-      const projectName = sm.projectPath
-        ? sm.projectPath.split(/[\\\/]/).filter(Boolean).pop() ?? sm.projectPath
-        : 'unknown';
-      const d = new Date(sm.firstTs);
-      const date = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-
-      results.push({ sessionId, project: projectName, date, snippet, matches: count });
-    }
-
-    results.sort((a, b) => b.matches - a.matches);
-    res.json(wrap(results.slice(0, 30), Date.now()));
+    const source = parseSource(req.query.source);
+    const [{ insights }, codexTitles] = await Promise.all([getInsights(), readCodexTitles()]);
+    const hits = searchSessions(insights, q, Date.now() - days * 24 * 3600_000, source, codexTitles);
+    res.json(wrap(hits, Date.now()));
   } catch (e) {
     res.status(500).json({ error: String(e) });
   }
@@ -1195,8 +1189,8 @@ if (existsSync(distDir)) {
   });
 }
 
-app.listen(PORT, () => {
-  console.log(`[server] listening on http://localhost:${PORT} (claudeDir=${claudeDir()})`);
+app.listen(PORT, BIND_HOST, () => {
+  console.log(`[server] listening on ${BIND_HOST}:${PORT} (claudeDir=${claudeDir()})`);
   // Prime the data layer in the background. This used to be two calls that each
   // kicked off a full independent scan of the same files, concurrently — they
   // fought over the disk and the libuv threadpool and doubled the cold-start cost.

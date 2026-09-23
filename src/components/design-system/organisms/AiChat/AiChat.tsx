@@ -4,13 +4,7 @@ import { PROVIDER_MODELS } from '@/hooks/useAiConfig';
 import { Markdown } from '@/components/design-system/atoms/Markdown/Markdown';
 import { ToggleGroup } from '@/components/design-system/atoms/ToggleGroup/ToggleGroup';
 import type { AiChatProps } from './types';
-
-const SUGGESTIONS = [
-  'Which workflow cost me the most?',
-  "What's my error-rate trend?",
-  'Which project costs the most?',
-  'Am I close to my weekly limit?',
-];
+import { INTRO, SUGGESTIONS } from './utils';
 
 type DayOption = '7' | '30' | '90';
 const DAY_OPTIONS: { value: DayOption; label: string }[] = [
@@ -26,8 +20,9 @@ const BACKEND_NOTE: Record<string, string> = {
   none: '',
 };
 
-export function AiChat({ status, config, source, onChangeConfig, onAsked, onOpenSettings }: AiChatProps) {
+export function AiChat({ status, config, source, platform, onChangeConfig, onAsked, onOpenSettings }: AiChatProps) {
   const { messages, loading, suggestions, send, reset } = useAiChat();
+  const starters = SUGGESTIONS[platform];
   const modelOptions = (() => {
     const list = PROVIDER_MODELS[config.provider] ?? [];
     return list.includes(config.model) ? list : [config.model, ...list];
@@ -114,11 +109,9 @@ export function AiChat({ status, config, source, onChangeConfig, onAsked, onOpen
       <div ref={scrollRef} className="flex-1 space-y-3 overflow-y-auto pr-1">
         {messages.length === 0 ? (
           <div className="flex h-full flex-col items-center justify-center gap-4 text-center">
-            <p className="max-w-md text-sm text-zinc-500">
-              Ask anything about your Claude Code usage. Answers are based on your local usage aggregates.
-            </p>
+            <p className="max-w-md text-sm text-zinc-500">{INTRO[platform]}</p>
             <div className="flex flex-wrap justify-center gap-2">
-              {SUGGESTIONS.map((s) => (
+              {starters.map((s) => (
                 <button
                   key={s}
                   onClick={() => ask(s)}
@@ -166,7 +159,7 @@ export function AiChat({ status, config, source, onChangeConfig, onAsked, onOpen
 
       {messages.length > 0 && (
         <div className="mt-3 flex flex-wrap gap-1.5">
-          {(suggestions.length > 0 ? suggestions : SUGGESTIONS).map((s) => (
+          {(suggestions.length > 0 ? suggestions : starters).map((s) => (
             <button
               key={s}
               onClick={() => ask(s)}

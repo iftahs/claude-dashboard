@@ -1,50 +1,36 @@
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useRef } from 'react';
 import { track, setUserContext } from '../lib/analytics';
-import { buildBudgetRows } from '../lib/budget';
 import { useNotifications } from './useNotifications';
 import { useUpdateToast } from './useUpdateToast';
 import { useConfigMode } from './useConfigMode';
 import { useSource } from './useSource';
 import { useLiveData } from './useLiveData';
-import { useLiteLlmActual } from './useLiteLlmActual';
-import { useCostMetrics } from './useCostMetrics';
 import { useAgentTraffic } from './useAgentTraffic';
 import { useAgentAlerts } from './useAgentAlerts';
 import { useBudgetAlerts } from './useBudgetAlerts';
-import type { Limits } from './useLimits';
+import { useLimitAlerts } from './useLimitAlerts';
+import { isTokenExpired } from '@/components/design-system/organisms/CodexPlanPanel/utils';
 
 /**
  * App-level side effects: anonymous analytics + the toast notifications that
  * replaced the old inline banners (update available, Claude.ai offline/expired,
- * pay-as-you-go note). Kept out of the render tree so App stays a thin shell.
+ * Codex token expired, pay-as-you-go note) + the alert hooks, each scoped to the platform it's about. Kept out of the render tree so App stays a thin shell.
  */
-export function useDashboardNotifications(activeTab: string, limits: Limits) {
-  const { configData, detectedMode, effectiveMode, isApi, settings, weekStart } = useConfigMode();
-  const { platform } = useSource();
-  const { liveUsage, version, weekly } = useLiveData();
-  const { litellmActual } = useLiteLlmActual();
-  const { costPerDay } = useCostMetrics();
+export function useDashboardNotifications(activeTab: string) {
+  const { configData, detectedMode, effectiveMode, isApi, settings } = useConfigMode();
+  const { showClaude, showCodex, sourcesLoaded } = useSource();
+  const { liveUsage, version, codexLive } = useLiveData();
   const { notify, dismiss } = useNotifications();
   const { waiting } = useAgentTraffic();
   useUpdateToast(version.data);
   // Alert (per Settings) when a new agent turns red / needs attention.
   useAgentAlerts(waiting, settings.agentAlert);
+  // Rate-limit alerts (Claude 5h / weekly, Codex 5h / weekly) — every tab, every platform.
+  useLimitAlerts();
 
   // Soft (non-blocking) budget alerts (LiteLLM-inspired) — fire app-wide, not
-  // just on the Live tab, the first time spend crosses a cap threshold.
-  const budgetRows = useMemo(
-    () =>
-      buildBudgetRows({
-        limits,
-        buckets: weekly.data?.buckets,
-        costPerDay,
-        weekStart,
-        actual: litellmActual ?? null,
-        now: Date.now(),
-      }),
-    [limits, weekly.data?.buckets, costPerDay, weekStart, litellmActual],
-  );
-  useBudgetAlerts(budgetRows, settings.budgetAlert);
+  // just on the Live tab, the first time spend crosses a cap threshold. Each platform is checked against its own caps.
+  useBudgetAlerts(settings.budgetAlert);
 
   // ── Product analytics (anonymous, path-free events only — see lib/analytics) ──
   useEffect(() => {
@@ -69,7 +55,7 @@ export function useDashboardNotifications(activeTab: string, limits: Limits) {
     const err = !isApi ? liveUsage.data?.error : undefined;
     // Nothing on screen is Claude.ai's while the platform switcher is on Codex —
     // an Anthropic token the user isn't currently using must not raise a toast.
-    if (!err || platform === 'codex') {
+    if (!err || !showClaude) {
       dismiss('offline');
       return;
     }
@@ -101,12 +87,33 @@ export function useDashboardNotifications(activeTab: string, limits: Limits) {
         ? `Anthropic's usage service is temporarily unavailable (${err.match(/5\d\d/)?.[0] ?? '5xx'}). It's on their side — the dashboard keeps retrying and this clears on its own.`
         : `${err} — try running \`claude\` in a terminal.`,
     });
-  }, [isApi, detectedMode, platform, liveUsage.data?.error, notify, dismiss]);
+  }, [isApi, detectedMode, showClaude, liveUsage.data?.error, notify, dismiss]);
 
-  // Pay-as-you-go note — shown once per session when API mode is active.
+  // Codex token expired/rejected — Codex counterpart of the Claude.ai toast; the ChatGPT app refreshes its own token, the dashboard never does.
+  useEffect(() => {
+    const err = showCodex ? codexLive.data?.error : undefined;
+    const rejected = !!err && /rejected/i.test(err);
+    if (!err || !(isTokenExpired(err) || rejected)) {
+      dismiss('codex-offline');
+      return;
+    }
+    notify({
+      id: 'codex-offline',
+      severity: 'warning',
+      title: rejected ? 'Codex sign-in rejected' : 'Codex token expired',
+      // The server's message says what to do (open the ChatGPT desktop app / sign in again).
+      message: err,
+    });
+  }, [showCodex, codexLive.data?.error, notify, dismiss]);
+
+  // Pay-as-you-go note — shown once per session when API mode is active and Claude is on screen; waits for /api/sources so a Codex-only user never sees it.
   const apiNotified = useRef(false);
   useEffect(() => {
-    if (isApi && configData && !apiNotified.current) {
+    if (!showClaude) {
+      dismiss('api-mode');
+      return;
+    }
+    if (isApi && configData && sourcesLoaded && !apiNotified.current) {
       apiNotified.current = true;
       notify({
         id: 'api-mode',
@@ -117,5 +124,5 @@ export function useDashboardNotifications(activeTab: string, limits: Limits) {
           "No Claude.ai subscription detected — dollar figures are estimated from local logs at Anthropic's API rates. Set spending caps in ⚙ Settings.",
       });
     }
-  }, [isApi, configData, notify]);
+  }, [isApi, configData, showClaude, sourcesLoaded, notify, dismiss]);
 }

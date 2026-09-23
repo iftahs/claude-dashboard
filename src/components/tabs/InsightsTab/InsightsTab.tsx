@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { StatCard } from '@/components/design-system/atoms/StatCard/StatCard';
 import { ToggleGroup } from '@/components/design-system/atoms/ToggleGroup/ToggleGroup';
+import { BarsSkeleton } from '@/components/design-system/atoms/Skeleton/Skeleton';
 import { Section } from '@/components/design-system/molecules/Section/Section';
 import { ErrorBreakdown } from '@/components/design-system/organisms/ErrorBreakdown/ErrorBreakdown';
 import { LanguageBreakdown } from '@/components/design-system/organisms/LanguageBreakdown/LanguageBreakdown';
@@ -13,12 +14,15 @@ import { RejectionsPanel } from '@/components/design-system/organisms/Rejections
 import { SubagentStatsPanel } from '@/components/design-system/organisms/SubagentStatsPanel/SubagentStatsPanel';
 import { CommandUsage } from '@/components/design-system/organisms/CommandUsage/CommandUsage';
 import { FileChurn } from '@/components/design-system/organisms/FileChurn/FileChurn';
-import { compact, usd } from '@/lib/format';
+import { ToolUsage } from '@/components/design-system/organisms/ToolUsage/ToolUsage';
+import { TurnLatency } from '@/components/design-system/organisms/TurnLatency/TurnLatency';
+import { toolLabel } from '@/lib/format';
 import { track } from '@/lib/analytics';
 import { titleScope } from '@/lib/platform';
 import { usePolling } from '@/hooks/usePolling';
 import { useSource } from '@/hooks/useSource';
 import { useAiInsightCtx } from '@/hooks/useAiInsightContext';
+import { INSIGHT_DAY_OPTIONS, kpiCards, panelCopy, type InsightDays } from './utils';
 import type {
   InsightsErrors,
   InsightsRetries,
@@ -31,104 +35,37 @@ import type {
   SubagentStats,
   CommandUsageData,
   FileChurnData,
+  InsightsSummary,
+  InsightsTurns,
+  ToolsData,
 } from '@/types';
 
-type InsightDays = '7' | '14' | '30';
-const INSIGHT_DAY_OPTIONS: { value: InsightDays; label: string }[] = [
-  { value: '7', label: '7d' },
-  { value: '14', label: '14d' },
-  { value: '30', label: '30d' },
-];
-
 const TWO_COL = 'grid grid-cols-1 gap-6 lg:grid-cols-2';
+const POLL = 60_000;
 
+// Every platform renders the same panels in the same rows; no signal shows n/a/empty state instead of disappearing.
 export function InsightsTab() {
-  const { platform, showClaude, withSrc } = useSource();
+  const { platform, withSrc } = useSource();
   const { aiProps } = useAiInsightCtx();
   const [insightDays, setInsightDays] = useState<InsightDays>('7');
-  const insightDaysNum = insightDays;
-
-  // Three panels have no Codex counterpart at all, so under the Codex platform
-  // they are dropped rather than rendered empty:
-  //   · Branches — Codex rollouts record no git branch.
-  //   · Permission rejections — Codex never asks, so nothing is ever rejected.
-  //   · Commands — slash commands come from ~/.claude/history.jsonl, which is
-  //     Claude Code's own file and is not source-filtered at all.
-  // Under Both they stay, labelled as the Claude-only readings they are.
-  const claudeOnlyPanels = showClaude;
   const scope = titleScope(platform);
+  const copy = panelCopy(platform);
+  const q = (path: string) => withSrc(`${path}?days=${insightDays}`);
 
-  const insightErrors = usePolling<InsightsErrors>(withSrc(`/api/insights/errors?days=${insightDaysNum}`), 60000);
-  const insightRetries = usePolling<InsightsRetries>(withSrc(`/api/insights/retries?days=${insightDaysNum}`), 60000);
-  const insightLanguages = usePolling<InsightsLanguages[]>(withSrc(`/api/insights/languages?days=${insightDaysNum}`), 60000);
-  const insightBranches = usePolling<InsightsBranches[]>(
-    claudeOnlyPanels ? withSrc(`/api/insights/branches?days=${insightDaysNum}`) : '',
-    60000,
-  );
-  const insightMcp = usePolling<InsightsMcp>(withSrc(`/api/insights/mcp?days=${insightDaysNum}`), 60000);
-  const insightComplexity = usePolling<ComplexityPoint[]>(withSrc(`/api/insights/complexity?days=${insightDaysNum}`), 60000);
-  const insightYield = usePolling<InsightsYield>(withSrc(`/api/insights/yield?days=${insightDaysNum}`), 60000);
-  const insightRejections = usePolling<InsightsRejections>(
-    claudeOnlyPanels ? withSrc(`/api/insights/rejections?days=${insightDaysNum}`) : '',
-    60000,
-  );
-  const insightSubagents = usePolling<SubagentStats>(withSrc(`/api/insights/subagents?days=${insightDaysNum}`), 60000);
-  const insightCommands = usePolling<CommandUsageData>(
-    claudeOnlyPanels ? `/api/insights/commands?days=${insightDaysNum}` : '',
-    60000,
-  );
-  const insightChurn = usePolling<FileChurnData>(withSrc(`/api/insights/churn?days=${insightDaysNum}`), 60000);
-
-  // Codex's only "subagent" is the guardian auto-review the desktop app spawns
-  // to check a turn — same shape as a Task spawn, different name on screen.
-  const delegationLabel = platform === 'codex' ? 'Guardian review rate' : 'Delegation rate';
-  const spawnNoun = platform === 'codex' ? 'guardian reviews' : 'subagent spawns';
-
-  const languagesPanel = (
-    <Section
-      title="Languages · edits by file type"
-      help="Files touched in this window, bucketed by extension into a language. Solid = edits/writes; dimmed = reads. Shows what kinds of files the work concentrated on."
-      {...aiProps('languages', insightLanguages.data)}
-    >
-      <LanguageBreakdown data={insightLanguages.data} />
-    </Section>
-  );
-
-  const mcpPanel = (
-    <Section
-      title="MCP vs built-in · tool call split"
-      help={`How tool calls split between ${
-        platform === 'codex' ? "Codex's" : platform === 'both' ? "each agent's" : "Claude's"
-      } built-in tools and tools from connected MCP servers. The per-server table lists call counts and how many failed (errors), one row per MCP server.`}
-      {...aiProps('mcp', insightMcp.data)}
-    >
-      <McpBreakdown data={insightMcp.data} />
-    </Section>
-  );
-
-  const branchesPanel = (
-    <Section
-      title="Branches · token usage by git branch"
-      help={`Effective tokens, cost and session count attributed to each git branch (shown as repo / branch). Reflects which branches the most work went into.${
-        platform === 'both' ? ' Claude Code only — Codex rollouts record no branch.' : ''
-      }`}
-      {...aiProps('branches', insightBranches.data)}
-    >
-      <BranchBreakdown data={insightBranches.data} />
-    </Section>
-  );
-
-  const rejectionsPanel = (
-    <Section
-      title="Permission rejections · by tool"
-      help={`Tool calls you declined when Claude asked for permission, grouped by tool. High counts flag tools Claude reaches for that you often block.${
-        platform === 'both' ? ' Claude Code only — Codex records no permission prompts.' : ''
-      }`}
-      {...aiProps('rejections', insightRejections.data)}
-    >
-      <RejectionsPanel data={insightRejections.data} />
-    </Section>
-  );
+  const summary = usePolling<InsightsSummary>(q('/api/insights/summary'), POLL);
+  const insightErrors = usePolling<InsightsErrors>(q('/api/insights/errors'), POLL);
+  const tools = usePolling<ToolsData>(q('/api/insights/tools'), POLL);
+  const insightMcp = usePolling<InsightsMcp>(q('/api/insights/mcp'), POLL);
+  const insightRejections = usePolling<InsightsRejections>(q('/api/insights/rejections'), POLL);
+  const insightRetries = usePolling<InsightsRetries>(q('/api/insights/retries'), POLL);
+  const insightLanguages = usePolling<InsightsLanguages[]>(q('/api/insights/languages'), POLL);
+  const insightBranches = usePolling<InsightsBranches[]>(q('/api/insights/branches'), POLL);
+  const insightComplexity = usePolling<ComplexityPoint[]>(q('/api/insights/complexity'), POLL);
+  const insightTurns = usePolling<InsightsTurns>(q('/api/insights/turns'), POLL);
+  const insightYield = usePolling<InsightsYield>(q('/api/insights/yield'), POLL);
+  const insightSubagents = usePolling<SubagentStats>(q('/api/insights/subagents'), POLL);
+  const insightCommands = usePolling<CommandUsageData>(q('/api/insights/commands'), POLL);
+  const insightChurn = usePolling<FileChurnData>(q('/api/insights/churn'), POLL);
 
   return (
     <>
@@ -145,140 +82,80 @@ export function InsightsTab() {
         />
       </div>
 
-      {/* Top stat cards */}
+      {/* KPI row — figures no panel below repeats */}
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-        <StatCard
-          label="Error rate"
-          value={insightErrors.data ? `${(insightErrors.data.errorRate * 100).toFixed(1)}%` : '—'}
-          sub={
-            insightErrors.data
-              ? `${insightErrors.data.errors} errors / ${insightErrors.data.totalCalls} calls`
-              : 'loading…'
-          }
-          accent="#f87171"
-          help="Share of tool calls in this window that failed or were rejected (error result returned). Lower is better."
-        />
-        <StatCard
-          label="One-shot rate"
-          value={insightRetries.data ? `${(insightRetries.data.oneShotRate * 100).toFixed(1)}%` : '—'}
-          sub={insightRetries.data ? `${insightRetries.data.retried} retried edits` : 'loading…'}
-          help="Share of Edit/Write calls that succeeded on the first try (no follow-up retry on the same file). Higher means cleaner edits."
-        />
-        <StatCard
-          label={delegationLabel}
-          value={insightSubagents.data ? `${(insightSubagents.data.delegationRate * 100).toFixed(0)}%` : '—'}
-          sub={insightSubagents.data ? `${insightSubagents.data.spawns} ${spawnNoun}` : 'loading…'}
-          help={
-            platform === 'codex'
-              ? 'Share of Codex threads that spawned at least one guardian auto-review — the review pass the ChatGPT desktop app runs over a turn.'
-              : `Share of sessions that spawned at least one subagent (Task/Agent tool). Indicates how often work is delegated to subagents.${
-                  platform === 'both' ? " Codex's equivalent is the guardian auto-review, counted the same way." : ''
-                }`
-          }
-        />
-        <StatCard
-          label="Wasted tokens"
-          value={insightRetries.data ? compact(insightRetries.data.wastedTokens) : '—'}
-          sub={insightRetries.data ? `est. ${usd(insightRetries.data.wastedCost)} wasted` : 'loading…'}
-          accent="#f59e0b"
-          help="Estimated tokens spent on edits that errored and had to be retried — approximated from each session's average tokens-per-turn. A rough waste indicator."
-        />
+        {kpiCards(summary.data, platform).map((k) => (
+          <StatCard key={k.key} label={k.label} value={k.value} sub={k.sub} accent={k.accent} help={k.help} />
+        ))}
       </div>
 
       {/* Tool errors — full width */}
-      <Section
-        title="Tool errors · failure analysis"
-        help="Failed/rejected tool calls in this window, grouped by error category (left) and by tool (right). The line shows errors per day. Percentages are each tool's own error rate."
-        {...aiProps('errors', insightErrors.data)}
-      >
+      <Section title={copy.errors.title} help={copy.errors.help} {...aiProps('errors', insightErrors.data)}>
         <ErrorBreakdown data={insightErrors.data} />
       </Section>
 
-      {/* Languages | Branches, then MCP | Rejections — or, with the Claude-only
-          panels gone, Languages | MCP in a single row. */}
-      {claudeOnlyPanels ? (
-        <>
-          <div className={TWO_COL}>
-            {languagesPanel}
-            {branchesPanel}
-          </div>
-          <div className={TWO_COL}>
-            {mcpPanel}
-            {rejectionsPanel}
-          </div>
-        </>
-      ) : (
-        <div className={TWO_COL}>
-          {languagesPanel}
-          {mcpPanel}
-        </div>
-      )}
-
-      {/* Complexity scatter — full width */}
-      <Section
-        title="Session complexity · tool calls vs tokens (dot size = subagents)"
-        help="One dot per session: x = number of tool calls, y = effective tokens, dot size = subagents spawned. Dots to the upper-right are the heaviest, most complex sessions."
-        {...aiProps('complexity', insightComplexity.data)}
-      >
-        <ComplexityScatter data={insightComplexity.data} />
-      </Section>
-
-      {/* Yield | Subagent stats */}
       <div className={TWO_COL}>
-        <Section
-          title="Yield · committed vs uncommitted sessions"
-          help="Sessions that ran a git commit vs those that didn't — a rough proxy for which work landed. Lists the biggest uncommitted sessions by tokens."
-          {...aiProps('yield', insightYield.data)}
-        >
-          <YieldPanel data={insightYield.data} />
+        <Section title={copy.tools.title} help={copy.tools.help} {...aiProps('tools', tools.data)}>
+          {tools.data ? (
+            <ToolUsage
+              tools={tools.data.tools.map((t) => ({ ...t, name: toolLabel(t.name) }))}
+              totalCalls={tools.data.totalCalls}
+              days={Number(insightDays)}
+              limit={14}
+            />
+          ) : (
+            <BarsSkeleton />
+          )}
         </Section>
-        <Section
-          title={
-            platform === 'codex'
-              ? 'Guardian reviews · auto-review analysis'
-              : 'Subagent stats · delegation analysis'
-          }
-          help={
-            platform === 'codex'
-              ? 'Guardian auto-review spawns in this window: total, average per reviewed thread, and the breakdown by review type and model. Their tokens are folded into the parent thread and priced at zero.'
-              : `Subagent (Task/Agent) spawns in this window: total, average per delegating session, and breakdowns by subagent type and model.${
-                  platform === 'both' ? " Codex's guardian auto-reviews appear here as their own type." : ''
-                }`
-          }
-          {...aiProps('subagents', insightSubagents.data)}
-        >
-          <SubagentStatsPanel data={insightSubagents.data} />
+        <Section title={copy.mcp.title} help={copy.mcp.help} {...aiProps('mcp', insightMcp.data)}>
+          <McpBreakdown data={insightMcp.data} platform={platform} />
         </Section>
       </div>
 
-      {/* Retry panel — standalone */}
-      <Section
-        title="Edit retries · one-shot analysis"
-        help="Edit/Write calls that succeeded first try vs those retried after an error, with the estimated tokens and cost wasted on the retries."
-        {...aiProps('retries', insightRetries.data)}
-      >
-        <RetryPanel data={insightRetries.data} />
+      <div className={TWO_COL}>
+        <Section title={copy.rejections.title} help={copy.rejections.help} {...aiProps('rejections', insightRejections.data)}>
+          <RejectionsPanel data={insightRejections.data} platform={platform} />
+        </Section>
+        <Section
+          title={copy.retries.title}
+          help={copy.retries.help}
+          {...(copy.retries.naText ? {} : aiProps('retries', insightRetries.data))}
+        >
+          <RetryPanel data={insightRetries.data} naText={copy.retries.naText} note={copy.retries.note} />
+        </Section>
+      </div>
+
+      <div className={TWO_COL}>
+        <Section title={copy.languages.title} help={copy.languages.help} {...aiProps('languages', insightLanguages.data)}>
+          <LanguageBreakdown data={insightLanguages.data} />
+        </Section>
+        <Section title={copy.branches.title} help={copy.branches.help} {...aiProps('branches', insightBranches.data)}>
+          <BranchBreakdown data={insightBranches.data} emptyText={copy.branches.emptyText} />
+        </Section>
+      </div>
+
+      <Section title={copy.complexity.title} help={copy.complexity.help} {...aiProps('complexity', insightComplexity.data)}>
+        <ComplexityScatter data={insightComplexity.data} platform={platform} />
       </Section>
 
-      {/* Commands | File churn — Commands reads Claude Code's own history file,
-          so under Codex only the churn panel survives (and takes the full width). */}
-      <div className={claudeOnlyPanels ? TWO_COL : 'grid grid-cols-1 gap-6'}>
-        {claudeOnlyPanels && (
-          <Section
-            title="Commands · slash-command & skill usage"
-            help={`How often each slash command / skill was invoked in this window, from your local command history. Reflects which commands you reach for most.${
-              platform === 'both' ? ' Claude Code only — read from ~/.claude/history.jsonl.' : ''
-            }`}
-            {...aiProps('commands', insightCommands.data)}
-          >
-            <CommandUsage data={insightCommands.data} />
-          </Section>
-        )}
-        <Section
-          title="File churn · most-edited files"
-          help="Files edited most often (Edit/Write/MultiEdit calls) in this window. Hover a row for the full path. High churn flags the files the work concentrated on."
-          {...aiProps('churn', insightChurn.data)}
-        >
+      <Section title={copy.turns.title} help={copy.turns.help} {...aiProps('turns', insightTurns.data)}>
+        <TurnLatency data={insightTurns.data} platform={platform} />
+      </Section>
+
+      <div className={TWO_COL}>
+        <Section title={copy.yield.title} help={copy.yield.help} {...aiProps('yield', insightYield.data)}>
+          <YieldPanel data={insightYield.data} />
+        </Section>
+        <Section title={copy.subagents.title} help={copy.subagents.help} {...aiProps('subagents', insightSubagents.data)}>
+          <SubagentStatsPanel data={insightSubagents.data} platform={platform} />
+        </Section>
+      </div>
+
+      <div className={TWO_COL}>
+        <Section title={copy.commands.title} help={copy.commands.help} {...aiProps('commands', insightCommands.data)}>
+          <CommandUsage data={insightCommands.data} emptyText={copy.commands.emptyText} />
+        </Section>
+        <Section title={copy.churn.title} help={copy.churn.help} {...aiProps('churn', insightChurn.data)}>
           <FileChurn data={insightChurn.data} />
         </Section>
       </div>

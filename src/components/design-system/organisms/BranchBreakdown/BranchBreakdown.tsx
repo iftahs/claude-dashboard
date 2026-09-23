@@ -3,7 +3,7 @@ import { Skeleton } from '@/components/design-system/atoms/Skeleton/Skeleton';
 import { compact, usd } from '@/lib/format';
 import type { BranchBreakdownProps } from './types';
 
-export function BranchBreakdown({ data }: BranchBreakdownProps) {
+export function BranchBreakdown({ data, emptyText = 'No branch data in this window.' }: BranchBreakdownProps) {
   if (!data) {
     return (
       <div className="space-y-3">
@@ -19,7 +19,7 @@ export function BranchBreakdown({ data }: BranchBreakdownProps) {
   }
 
   if (data.length === 0) {
-    return <div className="text-sm text-zinc-500">No branch data in this window.</div>;
+    return <div className="text-sm text-zinc-500">{emptyText}</div>;
   }
 
   const maxTokens = Math.max(1, ...data.map((b) => b.effectiveTokens));

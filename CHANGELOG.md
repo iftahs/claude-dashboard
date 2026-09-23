@@ -5,19 +5,56 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.1.27] - 2026-09-15
+## [0.1.27] - 2026-09-23
 
-### Fixed
-- Claude Mythos 5.1 was priced off the shared `/mythos/` row, which bills cache reads at
-  $1/MTok. Anthropic prices Mythos 5.1 cache hits at $0.25/MTok (0.025× base input, the
-  same footnote that covers Fable 5.1), so cached-heavy Mythos 5.1 sessions were
-  overstated 4× on that component. It now has its own pricing row, above the generic one
-  so Mythos 5 and Mythos Preview keep the 0.1× rate, plus a Cost Calculation row.
+### Added
+- **Codex looks exactly like Claude.** Every tab renders the same components in the same
+  layout under Claude, Codex and Both: Live gets a Codex 5-hour gauge, plan card, credits
+  card, "what's contributing" breakdown and limit hits; Trends, Models, Insights, Sessions,
+  Agents and Workspace no longer drop or swap panels per platform, and Codex views use no
+  Claude wording. Codex-only stats moved to the tab they belong on, each with a Claude
+  equivalent: lifetime tokens / peak day / streaks on Trends, threads / longest thread /
+  turn times on Sessions, reasoning effort on Models, server-vs-local on Trends.
+- New data from both platforms: reasoning effort and thinking/reasoning tokens (Models
+  "Reasoning effort"), usage-limit hits (Live "Limit hits"), turn latency (Insights),
+  real lines added/removed including subagent edits, PR links (Yield funnel sessions →
+  commit → PR), session and thread titles, the transcript viewer for Codex threads, and a
+  Workspace view of Codex's config, plugins, skills, plans and automations.
+- Trends windows from 1 week up to 1 year (1w · 2w · 1m · 2m · 3m · 6m · 1y), based on
+  #38 by @hareldigit: long windows poll once a minute, averages divide by the days that
+  have history, the AI ✨ payload is downsampled, and LiteLLM spend is fetched per range.
+- Opt-in history archive (`DASHBOARD_RETAIN_HISTORY=1`): keeps a slim copy of usage from
+  transcripts Claude Code's ~30-day cleanup deletes, so long windows keep their history.
+  Forget it from Settings.
+- App-wide rate-limit alerts for both platforms, per-platform spending caps, and Settings
+  for alert thresholds, Codex status and the archive.
+- Pricing for Claude Opus 5.5 ($4 / $20, cache reads $0.20) and OpenAI GPT-6 Sol ($2 / $10)
+  and GPT-6 Luna ($0.10 / $0.50); AI Insights defaults to Opus 5.5. gpt-5.4-mini is now
+  priced ($0.75 / $4.50, cache reads $0.075) instead of counted as an unmetered bundled
+  tier, so historical Codex cost estimates that include it rise.
 
 ### Changed
-- The mythos palette step is split by generation, matching what fable already does:
-  Mythos 5.1 takes the canonical mythos red (#b93b3f) and the superseded Mythos 5 steps
-  aside to #8e2a2f, so the two are separable in one chart (ΔE 10.0 normal / 8.3 protan).
+- The dashboard is branded "AI Usage"; the tab title and sidebar badge show the binding
+  limit (the fuller of the 5-hour and weekly windows) for the platform on screen.
+- **Docker listens on 127.0.0.1 only.** To open it from another device set
+  `DASHBOARD_BIND=0.0.0.0` and `ALLOWED_HOSTS` in `.env` (see the README).
+- Charts and model shares plot effective tokens; totals with cache reads are in tooltips.
+- Tool usage moved from Models to Insights; the Claude config card moved from Sessions to
+  Workspace; "Workspace Analytics" is now "Projects".
+- The mythos palette step is split by generation (Mythos 5.1 #b93b3f, Mythos 5 #8e2a2f).
+
+### Fixed
+- Claude Mythos 5.1 cache reads priced at $0.25/MTok (was $1); GPT-5.6 Sol priced at its
+  published $4 / $20 (was $5 / $30); Opus 5.5 no longer billed at Opus 5 rates.
+- The Codex activity heatmap no longer shows Claude Code's history.
+- Rejections count only real permission declines (normal file reads containing "reject"
+  inflated them ~100×); Codex guardian reviews count one per verdict (were ~6.5× low).
+- Charts no longer freeze while no new logs arrive; the 15 largest sessions appear in
+  Sessions, Insights and search; day buckets survive daylight-saving changes; the 5-hour
+  block rolls inside a session that outlives it.
+- The API no longer returns secrets from `settings.json`; AI Insights' `claude --print`
+  runs without tools, MCP servers or settings; host and cross-site request checks; the
+  Docker image ships `tsx` instead of downloading it at every start.
 
 ## [0.1.26] - 2026-09-08
 

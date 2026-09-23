@@ -1,55 +1,79 @@
-import { ConfigProfile } from '@/components/design-system/organisms/ConfigProfile/ConfigProfile';
+import { useEffect } from 'react';
 import { ProjectBreakdown } from '@/components/design-system/organisms/ProjectBreakdown/ProjectBreakdown';
 import { TagBreakdown } from '@/components/design-system/organisms/TagBreakdown/TagBreakdown';
 import { SessionHistoryTable } from '@/components/design-system/organisms/SessionHistoryTable/SessionHistoryTable';
-import { Skeleton } from '@/components/design-system/atoms/Skeleton/Skeleton';
+import { StatCard } from '@/components/design-system/atoms/StatCard/StatCard';
+import { Skeleton, StatCardSkeleton } from '@/components/design-system/atoms/Skeleton/Skeleton';
 import { usePolling } from '@/hooks/usePolling';
 import { useSource } from '@/hooks/useSource';
-import { useConfigMode } from '@/hooks/useConfigMode';
 import { useSessionPeriod } from '@/hooks/useSessionPeriod';
 import { useTags } from '@/hooks/useTags';
-import type { SessionMeta, ProjectData } from '@/types';
+import type { SessionMeta, ProjectData, SessionSummary } from '@/types';
+import { sessionNoun, summaryCards, tagMovesFrom } from './utils';
 
 export function SessionsTab() {
-  const { platform, showClaude, source, withSrc } = useSource();
-  const { configData, configLoading, isApi } = useConfigMode();
+  const { platform, source, withSrc } = useSource();
   const sessions = usePolling<SessionMeta[]>(withSrc('/api/sessions'), 10000);
-  const projectCosts = usePolling<ProjectData>(withSrc('/api/projects?days=90'), 30000);
-  const totalPeriodDays = useSessionPeriod(sessions.data);
+  const summary = usePolling<SessionSummary>(withSrc('/api/sessions/summary'), 30000);
+  // A year of cost, so the rollup covers every listed session (the list is not windowed).
+  const projectCosts = usePolling<ProjectData>(withSrc('/api/projects?days=365'), 30000);
+  const period = useSessionPeriod(sessions.data);
   const tags = useTags();
+  const { migrate } = tags;
+  const noun = sessionNoun(platform);
 
-  // The config profile reads ~/.claude's own settings/plan — meaningless under
-  // the Codex platform or a Cowork filter, but still worth showing under Both
-  // (the Claude half of the view is still Claude Code). Per-project and tag
-  // breakdowns need a host project: Cowork sessions run in a sandbox with none,
-  // so that filter skips straight to the session log, while Codex threads carry
-  // real cwd paths and keep them.
-  const showConfig = showClaude && source !== 'cowork';
+  // Project paths now come from the transcript's real cwd, not lossy folder names — move tags saved under an old path onto the new one.
+  useEffect(() => {
+    const moves = tagMovesFrom(projectCosts.data?.projects);
+    if (moves.length) migrate(moves);
+  }, [projectCosts.data, migrate]);
+
+  // Cowork sessions run in a sandbox with no host project, so that filter skips straight to the session log.
   const showProjects = source !== 'cowork';
 
   return (
     <>
+      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+        {summary.data
+          ? summaryCards(summary.data, platform).map((c) => (
+              <StatCard
+                key={c.key}
+                label={c.label}
+                value={c.value}
+                help={c.help}
+                sub={
+                  <>
+                    <span dir="auto" className="block truncate" title={c.sub}>
+                      {c.sub}
+                    </span>
+                    {c.split && <span className="mt-0.5 block text-xs text-zinc-500">{c.split}</span>}
+                  </>
+                }
+              />
+            ))
+          : [0, 1, 2, 3].map((i) => <StatCardSkeleton key={i} />)}
+      </div>
+
       {showProjects && (
-        <div className={`grid grid-cols-1 gap-6 ${showConfig ? 'lg:grid-cols-3' : ''}`}>
-          {showConfig && (
-            <div className="lg:col-span-1 self-start">
-              {configData ? (
-                <ConfigProfile config={configData} isApi={isApi} />
-              ) : configLoading ? (
-                <div className="card p-5">
-                  <Skeleton className="h-[200px] w-full rounded-2xl" />
-                </div>
-              ) : null}
-            </div>
-          )}
-          <div className={showConfig ? 'lg:col-span-2' : ''}>
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+          <div className="lg:col-span-2">
             {sessions.data ? (
               <ProjectBreakdown
                 sessions={sessions.data}
-                periodDays={totalPeriodDays}
+                since={period.since}
                 projectCosts={projectCosts.data?.projects}
                 tags={tags}
+                platform={platform}
               />
+            ) : sessions.loading ? (
+              <div className="card p-5">
+                <Skeleton className="h-[200px] w-full rounded-2xl" />
+              </div>
+            ) : null}
+          </div>
+          <div className="lg:col-span-1">
+            {sessions.data ? (
+              <TagBreakdown sessions={sessions.data} projectCosts={projectCosts.data?.projects} tags={tags} />
             ) : sessions.loading ? (
               <div className="card p-5">
                 <Skeleton className="h-[200px] w-full rounded-2xl" />
@@ -59,19 +83,13 @@ export function SessionsTab() {
         </div>
       )}
 
-      {showProjects && sessions.data && (
-        <TagBreakdown
-          sessions={sessions.data}
-          projectCosts={projectCosts.data?.projects}
-          tags={tags}
-        />
-      )}
-
       {sessions.data ? (
         <SessionHistoryTable
           sessions={sessions.data}
-          periodDays={totalPeriodDays}
+          since={period.since}
+          periodDays={period.days}
           onExport={() => sessions.data ?? []}
+          noun={noun}
           // Under Codex every row is a Codex thread, so the badge would label
           // the whole table rather than distinguish anything in it.
           hideSourceBadge={platform === 'codex'}

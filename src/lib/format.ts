@@ -26,12 +26,38 @@ export function toolLabel(name: string): string {
   return `${m[1].replace(/^claude_ai_/, '').replace(/_/g, ' ')} · ${m[2]}`;
 }
 
+export function effortLabel(effort: string): string {
+  if (effort === 'unknown' || !effort) return 'Not logged';
+  if (effort === 'xhigh') return 'X-high';
+  return effort.charAt(0).toUpperCase() + effort.slice(1);
+}
+
+// Read as a calendar date, not a timestamp, so a UTC-day key and a local-day key label the same way.
+export function ymdLabel(key: string, withYear = false): string {
+  const [y, m, d] = key.split('-').map(Number);
+  if (!y || !m || !d) return key;
+  const dt = new Date(y, m - 1, d);
+  const md = dt.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  return withYear ? `${md} '${String(y).slice(-2)}` : md;
+}
+
+/** "Sep 22, 2026" for an epoch-ms timestamp — first-seen dates, "since …" labels. */
+export function longDateLabel(ms: number): string {
+  return new Date(ms).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
 export function hourLabel(ms: number): string {
   return new Date(ms).toLocaleTimeString('en-US', { hour: 'numeric' });
 }
 
 export function dayLabel(ms: number): string {
   return new Date(ms).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+}
+
+// For day axes spanning more than ~2 months, where a bare "Mon, Sep 22" could be either year.
+export function dayLabelWithYear(ms: number): string {
+  const d = new Date(ms);
+  return `${d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} '${String(d.getFullYear()).slice(-2)}`;
 }
 
 export function dateTimeLabel(ms: number): string {

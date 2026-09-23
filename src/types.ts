@@ -17,11 +17,18 @@ export interface SourceSplit {
   codex: TokenTotals;
 }
 
-/** /api/sources — which usage surfaces have local data. Gates all Cowork and Codex UI. */
+/** /api/sources — which usage surfaces have local data and where each platform's files live; dirs are optional (older backend omits them, sidebar falls back to claudeDir). */
 export interface SourcesInfo {
   code: { events: number; lastTs: number };
   cowork: { available: boolean; events: number; lastTs: number };
-  codex: { available: boolean; events: number; lastTs: number };
+  /** `dir` (the Codex data dir) is optional: older backends do not send it. */
+  codex: { available: boolean; events: number; lastTs: number; dir?: string };
+  /** Claude Code's data folder (~/.claude, or /data/.claude in Docker). */
+  claudeDir?: string;
+  /** Codex's home (~/.codex, or /data/.codex in Docker). */
+  codexDir?: string;
+  /** The Cowork desktop root; null when this OS has no default and COWORK_DIR is unset. */
+  coworkDir?: string | null;
 }
 
 /** One Codex rate-limit window, normalised from either the live `/wham/usage`
@@ -43,7 +50,8 @@ export interface CodexLiveData {
   modelAvailability: Record<string, boolean>;
   origin: 'live' | 'passive';           // network fetch vs newest rollout snapshot
   snapshotAt: string | null;            // passive only: timestamp of the snapshot record
-  error?: string;
+  warning?: string;                     // passive only: why live failed — non-fatal, the data still renders
+  error?: string;                       // nothing usable (auth problem, no snapshot)
 }
 
 /** GET /api/codex/profile — server-side stats from `/wham/profiles/me` (stats only, no profile). */
@@ -71,7 +79,10 @@ export interface VersionInfo {
 
 export interface Bucket extends TokenTotals {
   start: number;
+  /** Total tokens per model, cache reads included (tooltips only). */
   byModel: Record<string, number>;
+  /** Effective tokens per model — what the token bar charts stack. */
+  byModelEffective: Record<string, number>;
   byModelCost: Record<string, number>;
 }
 
@@ -86,6 +97,38 @@ export interface ActiveBlock {
   totals: TokenTotals;
   prevTotals: TokenTotals;
   byModel: Record<string, number>;
+}
+
+/** GET /api/codex/block — the Codex counterpart of `RecentData.activeBlock`: local usage inside the current rate-limit window (5-hour, else weekly). */
+export interface CodexBlock extends ActiveBlock {
+  windowSec: number;
+  /** 'live'/'passive': the provider's window (reset − length); 'local': rolled from the first Codex event. */
+  anchor: 'live' | 'passive' | 'local';
+  /** Codex is signed in with an OpenAI API key (pay-as-you-go, no plan windows). */
+  apiKey?: boolean;
+}
+
+/** A stretch of refused requests at one usage limit — see server/aggregate.ts buildLimitHits. */
+export interface LimitHitEpisode {
+  start: number;
+  last: number;
+  resetsAt: number | null;
+  kind: 'session' | 'weekly' | 'model' | 'unknown';
+  source: UsageSource;
+  model: string;
+  requests: number;
+}
+
+/** GET /api/insights/limits?days=&source= */
+export interface LimitHitsData {
+  rangeFrom: number;
+  rangeTo: number;
+  episodes7d: number;
+  episodes30d: number;
+  requests7d: number;
+  requests30d: number;
+  active: LimitHitEpisode | null;
+  episodes: LimitHitEpisode[];
 }
 
 export interface RecentData {
@@ -107,7 +150,11 @@ export interface WeeklyData {
   prevTotals: TokenTotals;
   byModel: ModelShare[];
   bySource?: SourceSplit;
+  /** Codex usage split by thread kind — the Sources card under the Codex platform. */
+  codexSplit?: CodexSplit;
   cacheEfficiency?: { date: string; hitRate: number; cacheReadTokens: number; totalTokens: number }[];
+  /** Earliest event in the scoped history (null when there is none). */
+  firstEventTs?: number | null;
 }
 
 export interface ModelsData {
@@ -116,9 +163,76 @@ export interface ModelsData {
   models: ModelShare[];
 }
 
+/** Codex usage split into user threads vs guardian auto-reviews (mirrors server CodexSplit). */
+export interface CodexSplit {
+  threads: TokenTotals;
+  guardian: TokenTotals;
+}
+
+/** GET /api/usage/effort — one effort level's share (mirrors server EffortSlice). */
+export interface EffortSlice {
+  /** 'low' | 'medium' | 'high' | 'xhigh' | 'max' | … ; 'unknown' when the log has none. */
+  effort: string;
+  effectiveTokens: number;
+  cost: number;
+  messages: number;
+}
+
+/** Reasoning (thinking) share of output over the responses that report the split. */
+export interface ReasoningShare {
+  outputTokens: number;
+  reportedOutputTokens: number;
+  reasoningTokens: number;
+  /** null = nothing in the window reports it (show n/a, never 0%). */
+  share: number | null;
+  /** Fraction of the window's output tokens `share` is computed over. */
+  coverage: number;
+}
+
+export interface ModelEffort {
+  model: string;
+  effectiveTokens: number;
+  cost: number;
+  efforts: EffortSlice[];
+  reasoning: ReasoningShare;
+}
+
+/** GET /api/usage/effort?days=&source= — Models "Reasoning effort" card. */
+export interface EffortData {
+  rangeFrom: number;
+  rangeTo: number;
+  efforts: EffortSlice[];
+  models: ModelEffort[];
+  reasoning: ReasoningShare;
+}
+
+/** Lifetime figures over every event of the scoped history (mirrors server UsageSummary). */
+export interface UsageSummary {
+  firstEventTs: number | null;
+  lastEventTs: number | null;
+  lifetimeEffectiveTokens: number;
+  lifetimeTotalTokens: number;
+  lifetimeCost: number;
+  /** Local calendar day with the most effective tokens. */
+  peakDay: { date: string; effectiveTokens: number } | null;
+  currentStreakDays: number;
+  longestStreakDays: number;
+  activeDays: number;
+  /** Local calendar days from the first event's day through today. */
+  spanDays: number;
+}
+
+/** GET /api/usage/summary?source= — the unscoped (Both) response adds the per-platform split. */
+export interface UsageSummaryData extends UsageSummary {
+  byPlatform?: { claude: UsageSummary; codex: UsageSummary };
+}
+
 export interface DailyActivity {
+  /** YYYY-MM-DD — the local calendar day, or the UTC day for `?utc=1`. */
   date: string;
   effectiveTokens: number;
+  /** Every token, cache reads included; optional so client-side placeholder days need not invent one. */
+  totalTokens?: number;
   messageCount: number;
   toolCallCount: number;
 }
@@ -126,6 +240,8 @@ export interface DailyActivity {
 export interface ActivityData {
   rangeFrom: number;
   rangeTo: number;
+  /** True for `?utc=1`: days are UTC days (no stats-cache fallback). */
+  utc?: boolean;
   dailyActivity: DailyActivity[];
 }
 
@@ -159,6 +275,8 @@ export interface LiteLlmSpend {
   prevMonthToDate: number;
   lifetime: { user: number; key: number };
   daily: { date: string; cost: number; requests: number; successful: number; byModel: Record<string, number> }[];
+  /** Gateway had more spend rows than the page cap fetched — figures may undercount. */
+  truncated?: boolean;
 }
 export type LiteLlmSpendData = LiteLlmSpend | { error: string };
 
@@ -180,8 +298,6 @@ export interface ClaudeConfig {
   extraKnownMarketplaces?: Record<string, unknown>;
   permissions?: {
     allow?: string[];
-    deny?: string[];
-    ask?: string[];
     defaultMode?: string;
     additionalDirectories?: string[];
   };
@@ -191,8 +307,21 @@ export interface SessionMeta {
   session_id: string;
   source?: UsageSource;
   project_path: string;
+  /** Claude's custom / AI title, or the Codex thread name (session_index.jsonl). */
+  title?: string;
   start_time: string;
+  /** Wall clock, first → last record — idle time included. */
   duration_minutes: number;
+  /** Sum of recorded turn durations; null when no turn was recorded. */
+  active_ms?: number | null;
+  /** User turns that got an answer (Claude prompt → reply, Codex task_complete) — same on both platforms. */
+  turn_count?: number;
+  /** Pull requests the session opened or linked. */
+  pr_urls?: string[];
+  /** Client that wrote the session (Claude entrypoint / Codex originator) and its version. */
+  client?: string;
+  client_version?: string;
+  /** Every user line for Claude (tool results included) — prefer turn_count. */
   user_message_count: number;
   assistant_message_count: number;
   tool_counts: Record<string, number>;
@@ -245,8 +374,18 @@ export interface LiveExtraUsage {
   currency: string;
   decimal_places: number;
   disabled_reason: string | null;
+  /** The user switched extra usage off themselves (vs. the org never enabling it). */
+  user_disabled?: boolean | null;
+  credits_ever_enabled?: boolean | null;
   daily: unknown | null;
   weekly: unknown | null;
+}
+
+/** Each Claude surface's share of this week's usage so far (rows sum to 100: Code, Chats, Cowork, Other) — not a share of the quota. */
+export interface LiveWeeklyBreakdown {
+  as_of: string | null;
+  window_started_at: string | null;
+  rows: { key: string; display_name: string | null; percent: number }[];
 }
 
 /** Current spend against the extra-usage pool, in minor currency units
@@ -277,6 +416,7 @@ export interface LiveUsageData {
   limits?: LiveLimit[] | null;
   extra_usage?: LiveExtraUsage | null;
   spend?: LiveSpend | null;
+  seven_day_breakdown?: LiveWeeklyBreakdown | null;
   error?: string;
 }
 
@@ -324,6 +464,8 @@ export interface ContribWindow {
 export interface ContributorsData {
   day: ContribWindow;
   week: ContribWindow;
+  /** What each pct is a share of: estimated cost (Claude) or effective tokens (Codex — Guardian reviews are $0). */
+  weight?: 'cost' | 'effectiveTokens';
 }
 
 export interface HeatmapData {
@@ -339,6 +481,28 @@ export interface ProjectStat {
   effectiveTokens: number;
   cost: number;
   sessionCount: number;
+  /** Paths this project was filed under before paths came from the transcript cwd (tag-key migration). */
+  legacyPaths?: string[];
+}
+
+/** One platform's slice of the Sessions StatCard row (/api/sessions/summary). */
+export interface SessionSummaryPart {
+  sessions: number;
+  since: number | null;
+  longestActiveMs: number;
+  longestSessionId: string | null;
+  longestLabel: string;
+  medianTurnMs: number | null;
+  turnCount: number;
+  linesAdded: number;
+  linesRemoved: number;
+}
+
+export interface SessionSummary {
+  total: SessionSummaryPart;
+  /** Claude Code + Cowork. */
+  claude: SessionSummaryPart;
+  codex: SessionSummaryPart;
 }
 
 export interface ProjectData {
@@ -353,19 +517,29 @@ export interface ProjectData {
 
 export interface InsightsErrors {
   totalCalls: number;
+  /** Failed calls — rejections are never counted as failures. */
   errors: number;
   errorRate: number;
+  rejections: number;
+  rejectionRate: number;
+  /** Failure categories only (no 'rejected'). */
   categories: Record<string, number>;
+  /** Tools that failed at least once, most failures first (clipped). */
   perTool: { name: string; calls: number; errors: number; errorRate: number }[];
+  perToolTotal: number;
   trend: { date: string; calls: number; errors: number }[];
 }
 
 export interface InsightsRetries {
-  oneShotRate: number;
+  /** null when totalEdits is 0. */
+  oneShotRate: number | null;
+  /** Claude Edit/Write/MultiEdit calls only; declined ones never ran and are left out. */
   totalEdits: number;
   retried: number;
   wastedTokens: number;
   wastedCost: number;
+  /** Codex edits in the window, left out: a Codex patch never retries. */
+  codexEdits: number;
 }
 
 export interface InsightsLanguages {
@@ -388,28 +562,48 @@ export interface InsightsMcp {
   perServer: { server: string; calls: number; errors: number }[];
 }
 
+export type InsightPlatform = 'claude' | 'codex';
+
 export interface ComplexityPoint {
   sessionId: string;
   project: string;
   turns: number;
   toolCalls: number;
+  /** Subagent spawns + Codex guardian reviews — the dot size. */
   subagents: number;
   effectiveTokens: number;
   durationMin: number;
   date: string;
+  platform: InsightPlatform;
 }
 
 export interface InsightsYield {
+  /** Every session in the window. */
+  sessions: number;
+  /** Sessions that could commit (a branch, a remote, or git activity). */
+  repoSessions: number;
+  noRepo: number;
+  tokensNoRepo: number;
   committed: number;
   tokensCommitted: number;
   uncommitted: number;
   tokensUncommitted: number;
+  /** committed / repoSessions. */
   rate: number;
+  /** Committed sessions that also opened a PR — a subset of `committed`. */
+  prSessions: number;
+  prCount: number;
+  /** Uncommitted repo sessions that opened a PR (commits from an earlier session). */
+  prOnlySessions: number;
   topUncommitted: { project: string; date: string; effectiveTokens: number }[];
 }
 
 export interface InsightsRejections {
   total: number;
+  /** Codex guardian denials (tool name `GuardianReview`). */
+  guardianDenials: number;
+  /** Declines a person made: Claude permission prompts, Codex items under the 'user' reviewer. */
+  userDeclines: number;
   perTool: { name: string; calls: number; rejections: number }[];
 }
 
@@ -418,7 +612,50 @@ export interface SubagentStats {
   byType: Record<string, number>;
   byModel: Record<string, number>;
   avgPerSession: number;
+  /** Any spawn, guardian reviews included (legacy blend). */
   delegationRate: number;
+  delegation: { spawns: number; sessions: number; rate: number | null; avgPerSession: number };
+  autoReview: { reviews: number; denials: number; sessions: number; rate: number | null; avgPerSession: number };
+}
+
+/** /api/insights/turns — per-turn latency (mirrors server buildTurnLatency). */
+export interface LatencyStats {
+  turns: number;
+  medianMs: number | null;
+  p90Ms: number | null;
+  medianTtftMs: number | null;
+  p90TtftMs: number | null;
+  activeMs: number;
+}
+
+export interface InsightsTurns extends LatencyStats {
+  histogram: { label: string; upToMs: number | null; claude: number; codex: number; total: number }[];
+  byPlatform: Record<InsightPlatform, LatencyStats | null>;
+}
+
+/** /api/insights/summary — the Insights KPI row (mirrors server InsightKpis). */
+export interface InsightKpis {
+  totalCalls: number;
+  failures: number;
+  failureRate: number | null;
+  rejections: number;
+  rejectionRate: number | null;
+  sessions: number;
+  repoSessions: number;
+  committed: number;
+  commitRate: number | null;
+  delegatingSessions: number;
+  delegationSpawns: number;
+  delegationRate: number | null;
+  codexSessions: number;
+  reviews: number;
+  denials: number;
+  reviewedSessions: number;
+  autoReviewRate: number | null;
+}
+
+export interface InsightsSummary extends InsightKpis {
+  byPlatform: Record<InsightPlatform, InsightKpis | null>;
 }
 
 /** Traffic-light status: finished (green) · running (yellow) · waiting (red).
@@ -464,13 +701,16 @@ export interface MainAgent {
   delegating: boolean;
   status: 'running';
   traffic: AgentTrafficStatus;
+  /** The last turn finished and the session is idle on the user — a soft state, never red/alerting; optional so an older backend still type-checks. */
+  yourTurn?: boolean;
 }
 
 export interface LiveSubagents {
   running: LiveSubagent[];
   recentlyCompleted: RecentlyCompletedSubagent[];
   mainAgents: MainAgent[];
-  counts: { running: number; waiting: number; finished: number };
+  /** `yourTurn` counts mains idle on the user; absent from an older backend. */
+  counts: { running: number; waiting: number; finished: number; yourTurn?: number };
 }
 
 // ── Dynamic workflows ────────────────────────────────────────────────────────
@@ -618,9 +858,13 @@ export interface AiInsightResponse {
 // ── Workspace & extra insights panels ────────────────────────────────────────
 
 export interface CommandUsageData {
+  /** Slash-command invocations + skill sessions. */
   totalCommands: number;
   uniqueCommands: number;
-  commands: { command: string; count: number }[];
+  /** Slash commands count invocations; skills count the sessions that ran them. */
+  commands: { command: string; count: number; kind: 'slash' | 'skill' }[];
+  slashCommands: number;
+  skillSessions: number;
 }
 
 export interface FileChurnEntry {
@@ -644,11 +888,16 @@ export interface TaskItem {
   blocked: boolean;
 }
 
+/** A platform whose home folder the Workspace tab reads (~/.claude or ~/.codex). */
+export type WorkspacePlatform = 'claude' | 'codex';
+
 export interface PlanItem {
   name: string;
   title: string;
   sizeBytes: number;
   ageDays: number;
+  /** Set only on a merged `?source=all` list, where both platforms' plans share one list. */
+  platform?: WorkspacePlatform;
 }
 
 export interface WorkspaceTasksData {
@@ -657,13 +906,63 @@ export interface WorkspaceTasksData {
 }
 
 export interface InventoryData {
-  plugins: { name: string; marketplace: string; version: string; installedAt?: string }[];
+  plugins: {
+    name: string;
+    marketplace: string;
+    version: string;
+    installedAt?: string;
+    /** Codex only: the `[plugins.*] enabled` flag. */
+    enabled?: boolean;
+    platform?: WorkspacePlatform;
+  }[];
   marketplaces: string[];
   enabledPlugins: string[];
-  mcpServers: { name: string; scope: 'global' | 'project' }[];
+  /** `command` is the launch program's basename (Codex config.toml only). */
+  mcpServers: { name: string; scope: 'global' | 'project'; command?: string; platform?: WorkspacePlatform }[];
   hooks: string[];
   model?: string;
   effortLevel?: string;
+  /** User skills (<home>/skills/<name>/SKILL.md); `system` marks Codex's bundled ones. */
+  skills?: { name: string; system?: boolean; platform?: WorkspacePlatform }[];
+  /** Codex scheduled automations — name, human schedule, status. */
+  automations?: { name: string; schedule: string; status: string; platform?: WorkspacePlatform }[];
+}
+
+/** GET /api/codex/config — allowlisted ~/.codex/config.toml keys + login mode + data dir. */
+export interface CodexConfigData {
+  /** config.toml exists and was readable. */
+  available: boolean;
+  /** The active `profile = "<name>"`; its values are already applied to the fields below. */
+  profile: string | null;
+  model: string | null;
+  reasoningEffort: string | null;
+  approvalPolicy: string | null;
+  sandboxMode: string | null;
+  personality: string | null;
+  serviceTier: string | null;
+  /** A turn-complete notify program is configured. */
+  notify: boolean;
+  plugins: { name: string; marketplace: string; enabled: boolean }[];
+  marketplaces: string[];
+  mcpServers: { name: string; command: string | null }[];
+  /** Trusted-project counts only (no paths). */
+  projects: { trusted: number; untrusted: number; total: number };
+  /** How Codex is signed in: a ChatGPT plan token, an OpenAI API key, or neither. */
+  authMode: 'chatgpt' | 'apikey' | null;
+  /** The Codex data dir the dashboard reads (e.g. ~/.codex, or /data/.codex in Docker). */
+  dir: string;
+}
+
+/** GET /api/archive — the opt-in history archive (DASHBOARD_RETAIN_HISTORY=1). */
+export interface ArchiveSummary {
+  /** Retention is switched on for this server (the env opt-in). */
+  enabled: boolean;
+  /** Archived transcript files (their slim rows, kept after Claude Code deleted them). */
+  files: number;
+  /** Stored size of the archived rows, in bytes. */
+  bytes: number;
+  /** Oldest usage/session timestamp the archive holds (epoch ms); null when empty. */
+  oldestTs: number | null;
 }
 
 export interface SessionTranscriptTurn {
@@ -681,11 +980,18 @@ export interface SessionTranscript {
   compactions: number;
   totalTurns: number;
   truncated?: boolean;
+  /** The transcript file is gone (Claude Code cleanup); `turns` is empty and `message` says why. */
+  archived?: boolean;
+  message?: string;
 }
 
 export interface SearchResult {
   sessionId: string;
+  source?: UsageSource;
+  /** Last path segment of the project. */
   project: string;
+  projectPath?: string;
+  title?: string;
   date: string;
   snippet: string;
   matches: number;
