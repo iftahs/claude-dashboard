@@ -22,7 +22,8 @@ import { fetchCodexUsage, fetchCodexProfile } from './codex-live.ts';
 import { getLiveCodexAgents } from './codex-agents-live.ts';
 import { readFile } from 'node:fs/promises';
 import { computeCodexBlock, buildLimitHits } from './aggregate.ts';
-import { codexDir } from './scan.ts';
+import { codexDir, scanRoots } from './scan.ts';
+import { summarizeSources } from './sources.ts';
 import type { CodexLiveData } from './codex-live.ts';
 import { getWorkflows, getWorkflowStats } from './workflows.ts';
 import { readCodexTitles } from './codex-titles.ts';
@@ -250,23 +251,17 @@ app.get('/api/sessions/summary', async (req, res) => {
   }
 });
 
-// Reports which usage surfaces have local data. The frontend gates all Cowork
-// UI (source toggle, Sources card, ?source= params) on cowork.available so that
-// Code-only users see exactly the original dashboard.
+// Reports which usage surfaces have local data, and the folder each is read
+// from. The frontend gates all Cowork UI (source toggle, Sources card, ?source=
+// params) on cowork.available and the platform switcher on codex.available, so
+// Code-only users see exactly the original dashboard. The lifetime counts also
+// decide the empty state and a Codex-only user's default platform; the dirs label
+// the sidebar with the folder behind the platform on screen.
 app.get('/api/sources', async (_req, res) => {
   try {
     const { events, computedAt } = await getEvents();
-    let codeN = 0, coworkN = 0, codexN = 0, codeLast = 0, coworkLast = 0, codexLast = 0;
-    for (const e of events) {
-      if (e.source === 'cowork') { coworkN++; if (e.ts > coworkLast) coworkLast = e.ts; }
-      else if (e.source === 'codex') { codexN++; if (e.ts > codexLast) codexLast = e.ts; }
-      else { codeN++; if (e.ts > codeLast) codeLast = e.ts; }
-    }
-    res.json(wrap({
-      code: { events: codeN, lastTs: codeLast },
-      cowork: { available: coworkN > 0, events: coworkN, lastTs: coworkLast },
-      codex: { available: codexN > 0, events: codexN, lastTs: codexLast },
-    }, computedAt));
+    const coworkRoot = scanRoots().find((r) => r.source === 'cowork')?.dir ?? null;
+    res.json(wrap(summarizeSources(events, { claudeDir: claudeDir(), codexDir: codexDir(), coworkDir: coworkRoot }), computedAt));
   } catch (e) {
     res.status(500).json({ error: String(e) });
   }

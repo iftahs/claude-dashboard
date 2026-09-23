@@ -9,11 +9,19 @@ export interface SidebarTab {
   badge?: ReactNode;
 }
 
+/** One data folder behind what is on screen. */
+export interface SidebarDataDir {
+  /** Platform or surface name ('Claude' / 'Cowork' / 'Codex'), shown when there is more than one. */
+  label: string;
+  path: string;
+}
+
 export interface SidebarProps {
   tabs: SidebarTab[];
   activeTab: string;
   onNavigate: (id: string) => void;
-  claudeDir: string | null;
+  /** The folders the data on screen is read from — one per platform/surface shown. */
+  dataDirs: SidebarDataDir[];
   /** Footer credits: app version + repo link (optional). */
   version?: { current?: string; repoUrl?: string } | null;
 }

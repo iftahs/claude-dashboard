@@ -36,17 +36,28 @@ export const SOURCE_LABELS: Record<SourceFilter, string> = {
 
 const PLATFORM_KEY = 'claude-dashboard-platform';
 
-function loadPlatform(): Platform {
+/** The platform the user last picked, or null when they never picked one. */
+function loadPlatform(): Platform | null {
   try {
     const v = localStorage.getItem(PLATFORM_KEY);
-    return v === 'codex' || v === 'both' ? v : 'claude';
+    return v === 'claude' || v === 'codex' || v === 'both' ? v : null;
   } catch {
-    return 'claude';
+    return null;
   }
 }
 
+/** One data folder behind what is on screen, for the sidebar's path line. */
+export interface DataDir {
+  /** 'Claude' / 'Cowork' / 'Codex'. */
+  label: string;
+  path: string;
+}
+
 interface SourceCtx {
-  /** Effective platform — 'claude' whenever Codex data is absent, whatever was stored. */
+  /**
+   * Effective platform — 'claude' whenever Codex data is absent, whatever was
+   * stored. With nothing stored, 'codex' for a Codex-only user, else 'claude'.
+   */
   platform: Platform;
   setPlatform: (p: Platform) => void;
   /** Switcher options; empty (switcher hidden) until Codex data exists. */
@@ -70,6 +81,24 @@ interface SourceCtx {
   /** The `?source=` value data URLs get right now, or null when they get none. */
   effectiveSource: 'claude' | SourceFilter | null;
   withSrc: (url: string) => string;
+  /**
+   * /api/sources has answered at least once. Until then the platform is a
+   * placeholder ('claude') — a Codex-only user is about to be moved to Codex — so
+   * anything platform-specific that cannot be taken back (a toast) should wait.
+   */
+  sourcesLoaded: boolean;
+  /** The /api/sources fetch error while it has never succeeded; null once any response landed. */
+  sourcesError: string | null;
+  /**
+   * Whether the platform + surface on screen has ANY local events (lifetime, from
+   * /api/sources), or null until it answers. What the empty state keys on — not the
+   * Live/Trends windows, which read zero for anyone who simply has not used the
+   * tool today. A boolean rather than the count, so the context does not change on
+   * every new event.
+   */
+  hasScopeData: boolean | null;
+  /** The data folders behind the platform + surface on screen (empty on an older backend). */
+  dataDirs: DataDir[];
 }
 
 const SourceContext = createContext<SourceCtx | null>(null);
@@ -79,12 +108,41 @@ export function SourceProvider({ children }: { children: ReactNode }) {
   // users get the original dashboard byte-for-byte. `codex` is read defensively:
   // an older backend (e.g. a Docker image built before Codex support) omits the key.
   const sourcesInfo = usePolling<SourcesInfo>('/api/sources', 60000);
-  const coworkAvailable = !!sourcesInfo.data?.cowork?.available;
-  const codexAvailable = !!sourcesInfo.data?.codex?.available;
-  const [storedPlatform, setStoredPlatform] = useState<Platform>(loadPlatform);
+  const sources = sourcesInfo.data;
+  const sourcesLoaded = !!sources;
+  const sourcesError = sources ? null : sourcesInfo.error;
+  const coworkAvailable = !!sources?.cowork?.available;
+  const codexAvailable = !!sources?.codex?.available;
+  const codeN = sources?.code?.events ?? 0;
+  const coworkN = sources?.cowork?.events ?? 0;
+  const codexN = sources?.codex?.events ?? 0;
+  const [storedPlatform, setStoredPlatform] = useState<Platform | null>(loadPlatform);
   const [source, setSourceState] = useState<SourceFilter>('all');
 
-  const platform: Platform = codexAvailable ? storedPlatform : 'claude';
+  // With no stored choice, a Codex-only user (Codex events, no Claude Code or
+  // Cowork ones) starts on Codex instead of an empty Claude dashboard.
+  const defaultPlatform: Platform = codexAvailable && codeN + coworkN === 0 ? 'codex' : 'claude';
+  const platform: Platform = codexAvailable ? storedPlatform ?? defaultPlatform : 'claude';
+
+  // The surface filter narrows the Claude side only, and only while it is offered.
+  const surface: SourceFilter = platform === 'claude' && coworkAvailable ? source : 'all';
+  const claudeN = surface === 'code' ? codeN : surface === 'cowork' ? coworkN : codeN + coworkN;
+  const hasScopeData: boolean | null = !sources
+    ? null
+    : (platform === 'codex' ? codexN : platform === 'claude' ? claudeN : codeN + coworkN + codexN) > 0;
+
+  const claudeDirPath = sources?.claudeDir ?? '';
+  const coworkDirPath = sources?.coworkDir ?? '';
+  const codexDirPath = sources?.codexDir ?? '';
+  const dataDirs = useMemo<DataDir[]>(() => {
+    const dirs: DataDir[] = [];
+    if (platform !== 'codex') {
+      if (surface !== 'cowork' && claudeDirPath) dirs.push({ label: 'Claude', path: claudeDirPath });
+      if (surface !== 'code' && coworkAvailable && coworkDirPath) dirs.push({ label: 'Cowork', path: coworkDirPath });
+    }
+    if (platform !== 'claude' && codexDirPath) dirs.push({ label: 'Codex', path: codexDirPath });
+    return dirs;
+  }, [platform, surface, coworkAvailable, claudeDirPath, coworkDirPath, codexDirPath]);
 
   const available = useMemo<Record<UsageSource, boolean>>(
     () => ({ code: true, cowork: coworkAvailable, codex: codexAvailable }),
@@ -140,8 +198,15 @@ export function SourceProvider({ children }: { children: ReactNode }) {
       secondaryAvailable,
       effectiveSource,
       withSrc,
+      sourcesLoaded,
+      sourcesError,
+      hasScopeData,
+      dataDirs,
     };
-  }, [platform, source, available, coworkAvailable, codexAvailable, secondaryAvailable]);
+  }, [
+    platform, source, available, coworkAvailable, codexAvailable, secondaryAvailable,
+    sourcesLoaded, sourcesError, hasScopeData, dataDirs,
+  ]);
 
   return <SourceContext.Provider value={value}>{children}</SourceContext.Provider>;
 }

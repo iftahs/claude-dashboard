@@ -65,7 +65,7 @@ export function agentAlertText(claude: number, codex: number): { title: string; 
  * Fires an alert when the number of agents waiting for the user RISES (a new
  * agent needs attention). The red badge is always shown by the UI; this adds a
  * browser notification and/or chime per the user's Settings choice. 'visual'
- * mode is a no-op here. Mirrors useBlockAlerts' permission-request pattern.
+ * mode is a no-op here. Same permission-request pattern as useLimitAlerts.
  *
  * Counts come from BOTH platforms whatever the switcher shows — the badges stay
  * scoped to the view, but a Claude session stuck on a permission prompt still

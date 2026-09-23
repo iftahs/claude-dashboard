@@ -1,20 +1,32 @@
 import type { SidebarProps } from './types';
+import { BRAND } from './utils';
 
 const faviconUrl = '/favicon.svg';
 
-/** Left navigation rail: brand + the scanned dir + vertical tab nav + footer credits. */
-export function Sidebar({ tabs, activeTab, onNavigate, claudeDir, version }: SidebarProps) {
+/** Left navigation rail: brand + the scanned dir(s) + vertical tab nav + footer credits. */
+export function Sidebar({ tabs, activeTab, onNavigate, dataDirs, version }: SidebarProps) {
+  // One folder reads as before (just the path); several get their platform name.
+  const labelled = dataDirs.length > 1;
   return (
     <aside className="flex w-60 shrink-0 flex-col border-r border-white/10 bg-ink-900/60">
       <div className="px-4 pb-4 pt-5">
         <div className="flex items-center gap-2.5">
           <img src={faviconUrl} alt="" className="h-7 w-7" />
-          <h1 className="text-lg font-extrabold text-zinc-100">Claude Usage</h1>
+          <h1 className="text-lg font-extrabold text-zinc-100">{BRAND}</h1>
         </div>
-        {claudeDir && (
-          <p className="mt-1.5 truncate font-mono text-[10px] text-zinc-600" title={claudeDir}>
-            {claudeDir}
-          </p>
+        {dataDirs.length > 0 && (
+          <div className="mt-1.5 space-y-0.5">
+            {dataDirs.map((d) => (
+              <p
+                key={`${d.label}:${d.path}`}
+                className="truncate font-mono text-[10px] text-zinc-600"
+                title={`${d.label} data: ${d.path}`}
+              >
+                {labelled && <span className="text-zinc-500">{d.label} </span>}
+                {d.path}
+              </p>
+            ))}
+          </div>
         )}
       </div>
 

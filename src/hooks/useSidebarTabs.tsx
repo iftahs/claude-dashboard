@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import { SidebarBadge } from '@/components/design-system/atoms/SidebarBadge/SidebarBadge';
-import type { SidebarBadgeTone } from '@/components/design-system/atoms/SidebarBadge/types';
 import type { SidebarTab } from '@/components/design-system/organisms/Sidebar/types';
+import { limitTone } from '@/lib/limits';
 import { useLiveMetrics } from './useLiveMetrics';
 import { useAgentTraffic } from './useAgentTraffic';
 
@@ -13,20 +13,14 @@ interface TabDef {
 
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
 
-// 5-hour utilization → traffic-light tone (matches the Live gauge thresholds).
-function usageTone(pct: number): SidebarBadgeTone {
-  if (pct >= 80) return 'danger';
-  if (pct >= 50) return 'warning';
-  return 'success';
-}
-
 /**
- * Decorates the static tab list with live trailing badges (running agents,
- * 5-hour utilization, running workflows). Badge JSX lives in the SidebarBadge
- * atom — no inline pill markup.
+ * Decorates the static tab list with live trailing badges (running agents, the
+ * binding rate-limit window, running workflows). Badge JSX lives in the
+ * SidebarBadge atom — no inline pill markup. The limit badge takes its tone from
+ * limitTone() (70 / 90 %), the same thresholds as the gauge ring and the plan bars.
  */
 export function useSidebarTabs(tabs: TabDef[]): SidebarTab[] {
-  const { runningAgentCount, liveWorkflowCount, limitPct, limitTitle } = useLiveMetrics();
+  const { runningAgentCount, liveWorkflowCount, limitPct, limitTooltip } = useLiveMetrics();
   const { waiting: waitingAgentCount } = useAgentTraffic();
 
   return useMemo(
@@ -61,18 +55,12 @@ export function useSidebarTabs(tabs: TabDef[]): SidebarTab[] {
             };
           }
         }
-        // Rate-limit utilization for the active platform: Claude's 5-hour window
-        // under Claude/Both, Codex's weekly window under Codex (see useLiveMetrics).
+        // The binding rate-limit window for the platform(s) on screen — the fullest
+        // 5-hour or weekly window, 100% once one is reached (see useLiveMetrics).
         if (t.id === 'live' && limitPct != null) {
           return {
             ...t,
-            badge: (
-              <SidebarBadge
-                tone={usageTone(limitPct)}
-                label={`${limitPct}%`}
-                title={`${limitTitle}: ${limitPct}% used`}
-              />
-            ),
+            badge: <SidebarBadge tone={limitTone(limitPct)} label={`${limitPct}%`} title={limitTooltip} />,
           };
         }
         if (t.id === 'workflows' && liveWorkflowCount > 0) {
@@ -90,6 +78,6 @@ export function useSidebarTabs(tabs: TabDef[]): SidebarTab[] {
         }
         return { ...t };
       }),
-    [tabs, runningAgentCount, waitingAgentCount, liveWorkflowCount, limitPct, limitTitle],
+    [tabs, runningAgentCount, waitingAgentCount, liveWorkflowCount, limitPct, limitTooltip],
   );
 }

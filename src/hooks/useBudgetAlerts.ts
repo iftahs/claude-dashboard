@@ -41,7 +41,7 @@ const TITLES: Record<BudgetPeriod['key'], string> = {
  * notification (and optional chime) the first time spend crosses 70 / 90 / 100%
  * of a cap, deduped per period per calendar window: each threshold fires once,
  * and tracking resets when the period rolls over (a new resetsAt). 'off' is a
- * no-op. Mirrors useBlockAlerts' permission-request pattern.
+ * no-op. Same permission-request pattern as useLimitAlerts.
  */
 export function useBudgetAlerts(rows: BudgetPeriod[], mode: Settings['budgetAlert']) {
   // key → { window: resetsAt of the window we last alerted in, level: highest threshold fired }

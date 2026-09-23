@@ -13,16 +13,19 @@ import { useAgentAlerts } from './useAgentAlerts';
 import { useBudgetAlerts } from './useBudgetAlerts';
 import { useLimitAlerts } from './useLimitAlerts';
 import type { Limits } from './useLimits';
+import { isTokenExpired } from '@/components/design-system/organisms/CodexPlanPanel/utils';
 
 /**
  * App-level side effects: anonymous analytics + the toast notifications that
  * replaced the old inline banners (update available, Claude.ai offline/expired,
- * pay-as-you-go note). Kept out of the render tree so App stays a thin shell.
+ * Codex token expired, pay-as-you-go note) + the alert hooks. Each toast is
+ * scoped to the platform it is about. Kept out of the render tree so App stays
+ * a thin shell.
  */
 export function useDashboardNotifications(activeTab: string, limits: Limits) {
   const { configData, detectedMode, effectiveMode, isApi, settings, weekStart } = useConfigMode();
-  const { platform } = useSource();
-  const { liveUsage, version, liveWeekly } = useLiveData();
+  const { platform, showClaude, showCodex, sourcesLoaded } = useSource();
+  const { liveUsage, version, liveWeekly, codexLive } = useLiveData();
   const { litellmActual } = useLiteLlmActual();
   const { costPerDay } = useCostMetrics();
   const { notify, dismiss } = useNotifications();
@@ -75,7 +78,7 @@ export function useDashboardNotifications(activeTab: string, limits: Limits) {
     const err = !isApi ? liveUsage.data?.error : undefined;
     // Nothing on screen is Claude.ai's while the platform switcher is on Codex —
     // an Anthropic token the user isn't currently using must not raise a toast.
-    if (!err || platform === 'codex') {
+    if (!err || !showClaude) {
       dismiss('offline');
       return;
     }
@@ -107,12 +110,41 @@ export function useDashboardNotifications(activeTab: string, limits: Limits) {
         ? `Anthropic's usage service is temporarily unavailable (${err.match(/5\d\d/)?.[0] ?? '5xx'}). It's on their side — the dashboard keeps retrying and this clears on its own.`
         : `${err} — try running \`claude\` in a terminal.`,
     });
-  }, [isApi, detectedMode, platform, liveUsage.data?.error, notify, dismiss]);
+  }, [isApi, detectedMode, showClaude, liveUsage.data?.error, notify, dismiss]);
 
-  // Pay-as-you-go note — shown once per session when API mode is active.
+  // Codex token expired / rejected — the Codex counterpart of the Claude.ai toast
+  // above. Only while Codex is on screen; clears as soon as the live poll recovers
+  // (the ChatGPT app refreshes its own token — the dashboard never does). Other
+  // Codex errors (no login, no snapshot) are shown inline on the Live plan card.
+  useEffect(() => {
+    const err = showCodex ? codexLive.data?.error : undefined;
+    const rejected = !!err && /rejected/i.test(err);
+    if (!err || !(isTokenExpired(err) || rejected)) {
+      dismiss('codex-offline');
+      return;
+    }
+    notify({
+      id: 'codex-offline',
+      severity: 'warning',
+      title: rejected ? 'Codex sign-in rejected' : 'Codex token expired',
+      // The server's message says what to do (open the ChatGPT desktop app / sign in again).
+      message: err,
+    });
+  }, [showCodex, codexLive.data?.error, notify, dismiss]);
+
+  // Pay-as-you-go note — shown once per session when API mode is active and
+  // Claude is on screen. It is about Claude.ai (Anthropic's API rates), so a
+  // Codex-only view — e.g. a Codex user with no Claude.ai login, whose detected
+  // mode is 'api' — never sees it; switching to Claude later still shows it once.
+  // It waits for /api/sources: until then the platform is a 'claude' placeholder
+  // that a Codex-only user is about to leave.
   const apiNotified = useRef(false);
   useEffect(() => {
-    if (isApi && configData && !apiNotified.current) {
+    if (!showClaude) {
+      dismiss('api-mode');
+      return;
+    }
+    if (isApi && configData && sourcesLoaded && !apiNotified.current) {
       apiNotified.current = true;
       notify({
         id: 'api-mode',
@@ -123,5 +155,5 @@ export function useDashboardNotifications(activeTab: string, limits: Limits) {
           "No Claude.ai subscription detected — dollar figures are estimated from local logs at Anthropic's API rates. Set spending caps in ⚙ Settings.",
       });
     }
-  }, [isApi, configData, notify]);
+  }, [isApi, configData, showClaude, sourcesLoaded, notify, dismiss]);
 }

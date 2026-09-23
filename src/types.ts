@@ -17,11 +17,22 @@ export interface SourceSplit {
   codex: TokenTotals;
 }
 
-/** /api/sources — which usage surfaces have local data. Gates all Cowork and Codex UI. */
+/**
+ * /api/sources — which usage surfaces have local data (lifetime event counts) and
+ * where each platform's data is read from. Gates all Cowork and Codex UI, the
+ * empty state and a Codex-only user's default platform. The dirs are optional:
+ * an older backend omits them, and the sidebar falls back to the envelope's claudeDir.
+ */
 export interface SourcesInfo {
   code: { events: number; lastTs: number };
   cowork: { available: boolean; events: number; lastTs: number };
   codex: { available: boolean; events: number; lastTs: number };
+  /** Claude Code's data folder (~/.claude, or /data/.claude in Docker). */
+  claudeDir?: string;
+  /** Codex's home (~/.codex, or /data/.codex in Docker). */
+  codexDir?: string;
+  /** The Cowork desktop root; null when this OS has no default and COWORK_DIR is unset. */
+  coworkDir?: string | null;
 }
 
 /** One Codex rate-limit window, normalised from either the live `/wham/usage`
@@ -697,13 +708,21 @@ export interface MainAgent {
   delegating: boolean;
   status: 'running';
   traffic: AgentTrafficStatus;
+  /**
+   * The last turn finished and the session is idle on the user — a soft state,
+   * never red and never an alert. Sent by both live agent endpoints
+   * (/api/subagents/live, /api/codex/agents/live); optional so an older backend
+   * still type-checks and simply never shows it.
+   */
+  yourTurn?: boolean;
 }
 
 export interface LiveSubagents {
   running: LiveSubagent[];
   recentlyCompleted: RecentlyCompletedSubagent[];
   mainAgents: MainAgent[];
-  counts: { running: number; waiting: number; finished: number };
+  /** `yourTurn` counts mains idle on the user; absent from an older backend. */
+  counts: { running: number; waiting: number; finished: number; yourTurn?: number };
 }
 
 // ── Dynamic workflows ────────────────────────────────────────────────────────
