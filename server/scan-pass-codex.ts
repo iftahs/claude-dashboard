@@ -50,6 +50,32 @@
  *    'auto_review' the guardian decided: its deny is already the GuardianReview
  *    row, and a review that failed (e.g. at a usage limit) decided nothing.
  *
+ * History rows (counts and enums only — never diff text, messages or commands):
+ *  - EFFORT / REASONING: `turn_context.effort` joined by turn_id exactly like the
+ *    model (fallback `thread_settings.reasoning_effort`); reasoning tokens are
+ *    `usage.reasoning_output_tokens`, already inside output_tokens.
+ *  - RATE LIMITS: every `token_count.rate_limits` → one RateLimitSnapRow (resets_at
+ *    is epoch SECONDS). An identical repeat of the previous snapshot for the same
+ *    `limit_id` is skipped. `limit_id: 'premium'` snapshots carry null windows and
+ *    are written milliseconds before every usage-limit error — a probe, not a
+ *    reading.
+ *  - LIMIT HITS: a user-thread `task_complete` whose `error.codex_error_info` is
+ *    'usage_limit_exceeded' (key turn_id). The kind comes from the newest
+ *    Codex-bucket snapshot before it, classified by WINDOW LENGTH, never by slot
+ *    (the 'go' plan's primary IS the weekly window), and read with a 90% floor
+ *    because that snapshot predates the refused request (97–100% in practice). A
+ *    per-model bucket only counts when one of its windows reads 100%. Guardian
+ *    threads are skipped: their parent's turn records the same wall.
+ *  - TURNS: user-thread `task_complete.duration_ms` / `time_to_first_token_ms`
+ *    (started_at / completed_at are epoch seconds). A replayed 'rollout-N' turn id
+ *    yields neither a turn nor a limit hit, as the turn counter skips it.
+ *  - LINES: FileChange `unified_diff` hunks for updates (hunk-length aware, so a
+ *    removed `-- comment` line is not mistaken for a `---` header); whole `content`
+ *    lines for adds (added) and deletes (removed). Declined / failed patches changed
+ *    nothing and are skipped.
+ *  - SESSION: `originator`, `cli_version` and `git.{repository_url,branch}` from
+ *    session_meta; the branch is stamped on the thread's usage and tool rows too.
+ *
  * Performance: a ~140-char header regex is the only work most lines get; JSON.parse
  * is paid for the handful of record types above, and `compacted` lines (1.3–3.8 MB
  * full-history replays) are counted from the header and never parsed. That keeps
@@ -62,8 +88,12 @@ import {
   extractMcpServer,
   num,
   type FileRows,
+  type LimitHitRow,
+  type LineChangeRow,
+  type RateLimitSnapRow,
   type ScannedFile,
   type ToolResultRow,
+  type TurnRow,
   type UsageRow,
 } from './scan-pass.ts';
 
@@ -75,7 +105,10 @@ const EVENT_SCAN = 260;
 
 const HEADER_RE =
   /^\{"timestamp":"([^"]+)",(?:"ordinal":(\d+),)?"type":"(session_meta|turn_context|token_usage_record|event_msg|compacted|world_state)"/;
-/** event_msg sub-types we parse. task_complete only matters in guardian threads (the verdict). */
+/**
+ * event_msg sub-types we parse. task_complete is a guardian verdict in guardian
+ * threads, and a turn's latency / usage-limit error in user threads.
+ */
 const EVENT_RE = /"payload":\{"type":"(token_count|task_started|task_complete|item_completed|thread_settings_applied)"/;
 const ITEM_RE = /"item":\{"type":"([A-Za-z]+)"/;
 /** item_completed kinds that never yield a row — rejected from the header, before JSON.parse. */
@@ -162,9 +195,173 @@ function verdictOutcome(msg: unknown): string {
   }
 }
 
-/** A usage row whose model is resolved after the whole file has been read. */
+/**
+ * Codex writes epoch SECONDS (`resets_at`, `started_at`); accept milliseconds and
+ * ISO strings too so a format change degrades to a correct value, not a 1970 date.
+ */
+function epochMs(v: unknown): number | null {
+  if (typeof v === 'number' && Number.isFinite(v) && v > 0) return v < 1e11 ? v * 1000 : v;
+  if (typeof v === 'string' && v) {
+    const t = Date.parse(v);
+    return Number.isNaN(t) ? null : t;
+  }
+  return null;
+}
+
+function numOrNull(v: unknown): number | null {
+  return typeof v === 'number' && Number.isFinite(v) ? v : null;
+}
+
+const HUNK_RE = /^@@ -\d+(?:,(\d+))? \+\d+(?:,(\d+))? @@/;
+
+/**
+ * Lines added / removed by a unified diff. Walks each hunk by the lengths its
+ * `@@ -a,b +c,d @@` header declares, so a removed line that itself starts with
+ * `-- ` (a SQL / Lua comment) is counted, not mistaken for a `---` file header.
+ * A diff without parseable hunk headers falls back to counting +/- lines that
+ * are not `+++ ` / `--- ` headers.
+ */
+export function countUnifiedDiff(diff: string): { added: number; removed: number } {
+  const lines = diff.split('\n');
+  let added = 0;
+  let removed = 0;
+  let oldLeft = 0;
+  let newLeft = 0;
+  let sawHunk = false;
+  for (const l of lines) {
+    if (oldLeft > 0 || newLeft > 0) {
+      const c = l[0];
+      if (c === '+') { added++; newLeft--; }
+      else if (c === '-') { removed++; oldLeft--; }
+      else if (c !== '\\') { oldLeft--; newLeft--; } // context; '\ No newline at end of file' is neither
+      continue;
+    }
+    const m = HUNK_RE.exec(l);
+    if (m) {
+      sawHunk = true;
+      oldLeft = m[1] === undefined ? 1 : Number(m[1]);
+      newLeft = m[2] === undefined ? 1 : Number(m[2]);
+    }
+  }
+  if (sawHunk) return { added, removed };
+  added = 0;
+  removed = 0;
+  for (const l of lines) {
+    if (l.startsWith('+') && !l.startsWith('+++ ')) added++;
+    else if (l.startsWith('-') && !l.startsWith('--- ')) removed++;
+  }
+  return { added, removed };
+}
+
+/** Lines in a whole-file body; a trailing newline does not start another line. */
+function countContentLines(content: string): number {
+  if (!content) return 0;
+  const n = content.split('\n').length;
+  return content.endsWith('\n') ? n - 1 : n;
+}
+
+/** One FileChange entry → line counts, or null when it carries nothing countable. */
+function changeLineCounts(ch: any): { added: number; removed: number } | null {
+  if (!ch || typeof ch !== 'object') return null;
+  if (typeof ch.unified_diff === 'string') return countUnifiedDiff(ch.unified_diff);
+  if (typeof ch.content === 'string') {
+    if (ch.type === 'add') return { added: countContentLines(ch.content), removed: 0 };
+    if (ch.type === 'delete') return { added: 0, removed: countContentLines(ch.content) };
+  }
+  return null;
+}
+
+/** `token_count.rate_limits` → snapshot row; null when there is none. */
+function rateLimitSnap(rl: any, ts: number): RateLimitSnapRow | null {
+  if (!rl || typeof rl !== 'object') return null;
+  const limitId = str(rl.limit_id) || 'codex'; // older CLIs write no limit_id: the Codex bucket
+  const win = (w: any) => {
+    if (!w || typeof w !== 'object') return { pct: null, min: null, resets: null };
+    const inSec = numOrNull(w.resets_in_seconds);
+    return {
+      pct: numOrNull(w.used_percent),
+      min: numOrNull(w.window_minutes),
+      resets: epochMs(w.resets_at) ?? (inSec !== null ? ts + inSec * 1000 : null),
+    };
+  };
+  const p = win(rl.primary);
+  const s = win(rl.secondary);
+  return {
+    key: `${ts}|${limitId}`, ts, limitId,
+    primaryPct: p.pct, primaryWindowMin: p.min, primaryResetsAt: p.resets,
+    secondaryPct: s.pct, secondaryWindowMin: s.min, secondaryResetsAt: s.resets,
+    planType: typeof rl.plan_type === 'string' ? rl.plan_type : null,
+  };
+}
+
+/** Everything but the key and timestamp — two snapshots with the same signature say the same thing. */
+function snapSignature(s: RateLimitSnapRow): string {
+  return [
+    s.limitId, s.planType, s.primaryPct, s.primaryWindowMin, s.primaryResetsAt,
+    s.secondaryPct, s.secondaryWindowMin, s.secondaryResetsAt,
+  ].join('|');
+}
+
+/**
+ * The newest pre-hit snapshot was written before the refused request, so the
+ * window that ran out reads just under 100 there (97–100 across the corpus).
+ */
+const LIMIT_NEAR_FULL_PCT = 90;
+const DAY_MIN = 24 * 60;
+
+/**
+ * Which limit a usage_limit_exceeded turn hit, from the newest snapshots before
+ * it. A per-model bucket ('premium') counts only when one of its windows reads
+ * full — its usual null-window snapshot is a probe written just before every
+ * limit error. Otherwise the fullest open Codex window at or above the floor
+ * wins (ties → the longer window, which lifts later), classified by length.
+ */
+export function classifyLimitHit(
+  codex: RateLimitSnapRow | null, other: RateLimitSnapRow | null, at: number,
+): { kind: LimitHitRow['kind']; resetsAt: number | null } {
+  const windows = (s: RateLimitSnapRow) => [
+    { pct: s.primaryPct, min: s.primaryWindowMin, resetsAt: s.primaryResetsAt },
+    { pct: s.secondaryPct, min: s.secondaryWindowMin, resetsAt: s.secondaryResetsAt },
+  ].filter((w) => w.pct !== null && !(w.resetsAt !== null && w.resetsAt <= at)); // a lapsed window is empty again
+
+  if (other) {
+    const full = windows(other).find((w) => (w.pct as number) >= 100);
+    if (full) return { kind: 'model', resetsAt: full.resetsAt };
+  }
+  if (codex) {
+    let best: ReturnType<typeof windows>[number] | null = null;
+    for (const w of windows(codex)) {
+      const pct = w.pct as number;
+      const bestPct = best ? (best.pct as number) : -1;
+      if (pct > bestPct || (pct === bestPct && (w.min ?? 0) > (best?.min ?? 0))) best = w;
+    }
+    if (best && (best.pct as number) >= LIMIT_NEAR_FULL_PCT) {
+      const kind = best.min === null ? 'unknown' : best.min < DAY_MIN ? 'session' : 'weekly';
+      return { kind, resetsAt: best.resetsAt };
+    }
+  }
+  return { kind: 'unknown', resetsAt: null };
+}
+
+/** `error.codex_error_info` is the enum string today; tolerate an object-keyed variant. */
+function isUsageLimitError(err: unknown): boolean {
+  if (!err || typeof err !== 'object') return false;
+  const info = (err as any).codex_error_info;
+  if (info === 'usage_limit_exceeded') return true;
+  return !!info && typeof info === 'object' && 'usage_limit_exceeded' in info;
+}
+
+/** A usage row whose model and effort are resolved after the whole file has been read. */
 interface PendingUsage {
   row: UsageRow;
+  turnId: string;
+  fallbackModel: string;
+  fallbackEffort: string;
+}
+
+/** A limit hit whose model is resolved after the whole file has been read. */
+interface PendingLimitHit {
+  row: LimitHitRow;
   turnId: string;
   fallbackModel: string;
 }
@@ -201,12 +398,19 @@ export async function parseCodexFileRows(file: ScannedFile): Promise<FileRows> {
   let kind = '';
   let metaCwd = '';
   let ctxCwd = '';
+  let client = '';
+  let clientVersion = '';
+  let repoUrl = '';
+  let gitBranch = '';
   const sessionId = () => (subagent ? parentId : ownId);
 
-  // ---- model join state ----
+  // ---- model / effort join state ----
   const turnModel = new Map<string, string>();
+  const turnEffort = new Map<string, string>();
   let lastCtxModel = '';
+  let lastCtxEffort = '';
   let lastSettingsModel = '';
+  let lastSettingsEffort = '';
   let worldModel = '';
   let currentTurnId = '';
   // ---- approvals reviewer ('user' | 'auto_review'), joined the same way ----
@@ -214,10 +418,19 @@ export async function parseCodexFileRows(file: ScannedFile): Promise<FileRows> {
   let lastReviewer = '';
   const declines: PendingDecline[] = [];
 
+  // ---- rate-limit state: the newest snapshot per bucket, and the last one emitted per limit_id ----
+  let lastCodexSnap: RateLimitSnapRow | null = null;
+  let lastOtherSnap: RateLimitSnapRow | null = null;
+  const lastSnapSig = new Map<string, string>();
+
   // ---- accumulators ----
   const records: PendingUsage[] = []; // token_usage_record (CLI >= 0.153)
   const recordIdx = new Map<string, number>(); // dedupKey -> index into records
   const legacy: PendingUsage[] = []; // token_count — used only when `records` stays empty
+  const limitHits: PendingLimitHit[] = [];
+  const rateLimitSnaps: RateLimitSnapRow[] = [];
+  const lineChanges: LineChangeRow[] = [];
+  const turnRows: TurnRow[] = [];
   const toolsByTurn = new Map<string, string[]>();
   const gitCommitIds: string[] = [];
   const gitPushIds: string[] = [];
@@ -242,10 +455,10 @@ export async function parseCodexFileRows(file: ScannedFile): Promise<FileRows> {
 
   const makeUsageRow = (dedupKey: string, ts: number, u: any): UsageRow => {
     const cached = num(u.cached_input_tokens);
-    return {
+    const row: UsageRow = {
       dedupKey, ts,
       sessionId: sessionId(),
-      model: '', // resolved below once every turn_context has been seen
+      model: '', // resolved below once every turn_context has been seen (effort too)
       inputTokens: Math.max(0, num(u.input_tokens) - cached),
       outputTokens: num(u.output_tokens),
       cacheCreateTokens: num(u.cache_write_input_tokens),
@@ -256,9 +469,13 @@ export async function parseCodexFileRows(file: ScannedFile): Promise<FileRows> {
       attributionAgent: guardian ? 'guardian_review' : subagent ? kind : '',
       attributionSkill: '', attributionMcpServer: '', attributionPlugin: '',
       projectPathRaw: '', // patched below
-      gitBranch: '',
+      gitBranch: '', // patched below
       source,
     };
+    // Already inside output_tokens; left absent (→ null) when the CLI does not report it.
+    const reasoning = numOrNull(u.reasoning_output_tokens);
+    if (reasoning !== null) row.reasoningTokens = reasoning;
+    return row;
   };
 
   // Every tool row gets a result row: merge.ts resolves errors, git commits and
@@ -351,6 +568,15 @@ export async function parseCodexFileRows(file: ScannedFile): Promise<FileRows> {
           emitTool(n === 0 ? id : `${id}#${n}`, ts, turnId, name, hostPath(fp), failed, '', declined);
           if (declined) break;
           n++;
+          // Counts only — the diff / content text never leaves this function.
+          if (failed || !id) continue;
+          const counted = changeLineCounts(ch);
+          if (counted) {
+            lineChanges.push({
+              key: `${id}|${fp}`, ts, sessionId: sessionId(), source,
+              filePath: hostPath(fp), added: counted.added, removed: counted.removed,
+            });
+          }
         }
         return;
       }
@@ -408,7 +634,6 @@ export async function parseCodexFileRows(file: ScannedFile): Promise<FileRows> {
       const head = line.length > EVENT_SCAN ? line.slice(0, EVENT_SCAN) : line;
       const em = EVENT_RE.exec(head);
       if (!em) continue;
-      if (em[1] === 'task_complete' && !guardian) continue;
       if (em[1] === 'item_completed') {
         const im = ITEM_RE.exec(head);
         if (im && SKIP_ITEMS.has(im[1])) continue;
@@ -436,20 +661,30 @@ export async function parseCodexFileRows(file: ScannedFile): Promise<FileRows> {
           ? str(p.parent_thread_id) || str(p.source?.subagent?.thread_spawn?.parent_thread_id) || str(p.session_id) || ownId
           : ownId;
         metaCwd = str(p.cwd);
+        client = str(p.originator);
+        clientVersion = str(p.cli_version);
+        if (p.git && typeof p.git === 'object') {
+          // A remote can embed a token (https://user:token@host/…): keep the host and path only.
+          repoUrl = str(p.git.repository_url).replace(/^([a-z][a-z0-9+.-]*:\/\/)[^@/]*@/i, '$1');
+          gitBranch = str(p.git.branch);
+        }
         break;
       }
       case 'turn_context': {
-        // reasoning_effort is also here, but FileRows has no slot for it — dropped.
         const turnId = str(p.turn_id);
         const model = str(p.model) || str(p.collaboration_mode?.settings?.model);
         const reviewer = str(p.approvals_reviewer);
+        // `effort`, not `reasoning_effort` (which turn_context does not carry).
+        const effort = str(p.effort) || str(p.collaboration_mode?.settings?.reasoning_effort);
         if (turnId) {
           currentTurnId = turnId;
           if (model) turnModel.set(turnId, model); // last wins
           if (reviewer) turnReviewer.set(turnId, reviewer);
+          if (effort) turnEffort.set(turnId, effort);
         }
         if (model) lastCtxModel = model;
         if (reviewer) lastReviewer = reviewer;
+        if (effort) lastCtxEffort = effort;
         if (!ctxCwd) ctxCwd = str(p.cwd);
         break;
       }
@@ -467,6 +702,7 @@ export async function parseCodexFileRows(file: ScannedFile): Promise<FileRows> {
           row: makeUsageRow(dedupKey, ts, u),
           turnId: str(p.turn_id) || currentTurnId,
           fallbackModel: lastSettingsModel || worldModel,
+          fallbackEffort: lastSettingsEffort,
         };
         // Keep-max within the file, mirroring the Claude parser.
         const idx = recordIdx.get(dedupKey);
@@ -491,9 +727,22 @@ export async function parseCodexFileRows(file: ScannedFile): Promise<FileRows> {
             if (model) lastSettingsModel = model;
             const reviewer = str(p.thread_settings?.approvals_reviewer);
             if (reviewer) lastReviewer = reviewer;
+            const effort = str(p.thread_settings?.reasoning_effort);
+            if (effort) lastSettingsEffort = effort;
             break;
           }
           case 'token_count': {
+            const snap = rateLimitSnap(p.rate_limits, ts);
+            if (snap) {
+              if (snap.limitId === 'codex') lastCodexSnap = snap;
+              else lastOtherSnap = snap;
+              // A repeat of the previous reading for the same bucket adds nothing.
+              const sig = snapSignature(snap);
+              if (lastSnapSig.get(snap.limitId) !== sig) {
+                lastSnapSig.set(snap.limitId, sig);
+                rateLimitSnaps.push(snap);
+              }
+            }
             const u = p.info?.last_token_usage;
             if (!u || typeof u !== 'object') break;
             if (num(u.input_tokens) <= 0 && num(u.output_tokens) <= 0) break;
@@ -501,6 +750,7 @@ export async function parseCodexFileRows(file: ScannedFile): Promise<FileRows> {
               row: makeUsageRow(`codex:${ownId}:${ordinal}`, ts, u),
               turnId: currentTurnId,
               fallbackModel: lastCtxModel || lastSettingsModel || worldModel, // most recent preceding turn_context
+              fallbackEffort: lastCtxEffort || lastSettingsEffort,
             });
             break;
           }
@@ -508,8 +758,34 @@ export async function parseCodexFileRows(file: ScannedFile): Promise<FileRows> {
             handleItem(p, ts);
             break;
           case 'task_complete': {
-            // Guardian threads only (pre-filtered above): one review per verdict. A
-            // turn that ended without one (interrupted, errored) reviewed nothing.
+            if (!guardian) {
+              // A user turn: its latency, and whether a usage limit ended it. Replayed
+              // 'rollout-N' ids repeat a turn recorded (and counted) elsewhere. Other
+              // subagent threads' turns are not the user's and are skipped.
+              if (subagent) break;
+              const turnId = str(p.turn_id);
+              if (!UUID_RE.test(turnId)) break;
+              const durationMs = numOrNull(p.duration_ms);
+              if (durationMs !== null && durationMs >= 0) {
+                turnRows.push({
+                  key: turnId,
+                  ts: epochMs(p.started_at) ?? ts - durationMs,
+                  sessionId: sessionId(), source, durationMs,
+                  ttftMs: numOrNull(p.time_to_first_token_ms),
+                });
+              }
+              if (isUsageLimitError(p.error)) {
+                const { kind, resetsAt } = classifyLimitHit(lastCodexSnap, lastOtherSnap, ts);
+                limitHits.push({
+                  row: { key: turnId, ts, sessionId: sessionId(), source, kind, model: '', resetsAt },
+                  turnId,
+                  fallbackModel: lastCtxModel || lastSettingsModel || worldModel,
+                });
+              }
+              break;
+            }
+            // Guardian threads: one review per verdict. A turn that ended without
+            // one (interrupted, errored) reviewed nothing.
             const outcome = verdictOutcome(p.last_agent_message);
             if (!outcome) break;
             const reviewId = `${ownId}:${str(p.turn_id) || ordinal}`;
@@ -546,6 +822,8 @@ export async function parseCodexFileRows(file: ScannedFile): Promise<FileRows> {
   const lastOfTurn = new Map<string, PendingUsage>();
   for (const e of chosen) {
     e.row.model = (e.turnId && turnModel.get(e.turnId)) || e.fallbackModel || 'unknown';
+    const effort = (e.turnId && turnEffort.get(e.turnId)) || e.fallbackEffort;
+    if (effort) e.row.effort = effort; // absent = unknown (merge maps it to '')
     if (e.turnId) lastOfTurn.set(e.turnId, e);
   }
   for (const [turnId, names] of toolsByTurn) {
@@ -561,10 +839,16 @@ export async function parseCodexFileRows(file: ScannedFile): Promise<FileRows> {
     else rejectionCount++;
   }
 
+  for (const h of limitHits) h.row.model = turnModel.get(h.turnId) || h.fallbackModel || 'unknown';
+  rows.limitHits = limitHits.map((h) => h.row);
+  rows.rateLimitSnaps = rateLimitSnaps;
+  rows.lineChanges = lineChanges;
+  rows.turns = turnRows;
+
   const projectPath = projectPathOf(metaCwd || ctxCwd);
-  for (const r of rows.usage) r.projectPathRaw = projectPath;
-  for (const t of rows.toolCalls) t.projectPath = projectPath;
-  for (const t of rows.taskSpawns) t.projectPath = projectPath;
+  for (const r of rows.usage) { r.projectPathRaw = projectPath; r.gitBranch = gitBranch; }
+  for (const t of rows.toolCalls) { t.projectPath = projectPath; t.gitBranch = gitBranch; }
+  for (const t of rows.taskSpawns) { t.projectPath = projectPath; t.gitBranch = gitBranch; }
 
   if (firstTs === Infinity) return rows; // nothing recognisable in the file
 
@@ -576,13 +860,17 @@ export async function parseCodexFileRows(file: ScannedFile): Promise<FileRows> {
     turns: subagent ? 0 : turns,
     compactions, errorCount, rejectionCount,
     firstPrompt: subagent ? '' : firstPrompt,
-    gitBranch: '', projectPath, file: path,
+    gitBranch, projectPath, file: path,
     agentId: subagent ? ownId : null,
     source,
     // The usage keys stand in for assistant-message ids so /api/sessions does not
     // drop the thread as an empty shell (assistantMsgs === 0).
     assistantKeys: rows.usage.map((r) => r.dedupKey),
     gitCommitIds, gitPushIds, nonErrorResultIds,
+    // Absent rather than '' when unknown — merge takes the first non-empty value.
+    ...(client ? { client } : {}),
+    ...(clientVersion ? { clientVersion } : {}),
+    ...(repoUrl ? { repoUrl } : {}),
   });
 
   // Any other subagent (/review, spawn_agent, …) ends its turns with findings or
