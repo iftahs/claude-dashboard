@@ -10,9 +10,20 @@ export interface PlanUsageLabels {
   weekly?: string;
 }
 
+/**
+ * A per-model row that is a gate, not a meter — the provider says only whether the
+ * model can run right now (Codex's premium models), so it shows a status, not a bar.
+ */
+export interface PlanGateRow {
+  label: string;
+  status: string;
+  tone: 'ok' | 'muted' | 'danger';
+}
+
 export interface PlanUsageProps {
   block: ActiveBlock | null;
   weekly: WeeklyData | null;
+  /** Live limits. Its `seven_day_breakdown`, when present (Claude.ai), adds the weekly split by surface. */
   liveUsage?: LiveUsageData | null;
   /** First day of the week — drives the weekly-reset countdown fallback. */
   weekStart: WeekStart;
@@ -26,6 +37,8 @@ export interface PlanUsageProps {
   help?: ReactNode;
   /** Window row labels. Defaults to the Claude.ai strings so existing callers are unchanged. */
   labels?: PlanUsageLabels;
+  /** Per-model gate rows, after the per-model weekly bars (Codex premium models). */
+  gates?: PlanGateRow[];
   /** Optional footnote under the bars (e.g. "passive snapshot · 3h old"). */
   note?: ReactNode;
 }

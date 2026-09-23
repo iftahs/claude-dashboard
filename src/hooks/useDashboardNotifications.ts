@@ -11,6 +11,7 @@ import { useCostMetrics } from './useCostMetrics';
 import { useAgentTraffic } from './useAgentTraffic';
 import { useAgentAlerts } from './useAgentAlerts';
 import { useBudgetAlerts } from './useBudgetAlerts';
+import { useLimitAlerts } from './useLimitAlerts';
 import type { Limits } from './useLimits';
 
 /**
@@ -29,9 +30,14 @@ export function useDashboardNotifications(activeTab: string, limits: Limits) {
   useUpdateToast(version.data);
   // Alert (per Settings) when a new agent turns red / needs attention.
   useAgentAlerts(waiting, settings.agentAlert);
+  // Rate-limit alerts (Claude 5h / weekly, Codex 5h / weekly) — every tab, every platform.
+  useLimitAlerts();
 
   // Soft (non-blocking) budget alerts (LiteLLM-inspired) — fire app-wide, not
-  // just on the Live tab, the first time spend crosses a cap threshold.
+  // just on the Live tab, the first time spend crosses a cap threshold. The
+  // gateway's real bill is Anthropic spend, so it replaces the estimate only when
+  // the rows cover Claude alone (under Both it would drop the Codex share).
+  const budgetActual = platform === 'claude' ? litellmActual ?? null : null;
   const budgetRows = useMemo(
     () =>
       buildBudgetRows({
@@ -39,10 +45,10 @@ export function useDashboardNotifications(activeTab: string, limits: Limits) {
         buckets: liveWeekly.data?.buckets,
         costPerDay,
         weekStart,
-        actual: litellmActual ?? null,
+        actual: budgetActual,
         now: Date.now(),
       }),
-    [limits, liveWeekly.data?.buckets, costPerDay, weekStart, litellmActual],
+    [limits, liveWeekly.data?.buckets, costPerDay, weekStart, budgetActual],
   );
   useBudgetAlerts(budgetRows, settings.budgetAlert);
 

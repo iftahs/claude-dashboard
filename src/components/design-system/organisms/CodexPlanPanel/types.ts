@@ -1,8 +1,8 @@
 import type { PollState } from '@/hooks/usePolling';
-import type { CodexLiveData, CodexProfileStats } from '@/types';
+import type { CodexLiveData } from '@/types';
 import type { WeekStart } from '@/lib/week';
 
-/** One StatCard's worth of Codex data, built by the utils and rendered by the panel. */
+/** One StatCard's worth of Codex data (the server-side profile stats — see utils `profileStats`). */
 export interface CodexStat {
   key: string;
   label: string;
@@ -13,18 +13,9 @@ export interface CodexStat {
   accent?: string;
 }
 
-/** The rate-limit card on its own — the Codex counterpart of BlockGauge/PlanUsage. */
+/** The Codex rate-limit card — the Codex counterpart of the Claude PlanUsage card. */
 export interface CodexPlanCardProps {
   live: PollState<CodexLiveData>;
   /** First day of the week — drives PlanUsage's weekly-reset countdown fallback. */
   weekStart: WeekStart;
 }
-
-export interface CodexPlanStatsProps {
-  live: PollState<CodexLiveData>;
-  profile: PollState<CodexProfileStats>;
-  /** Compact (side-by-side) mode: one 2x2 of the four most useful cards. */
-  compact?: boolean;
-}
-
-export interface CodexPlanPanelProps extends CodexPlanCardProps, CodexPlanStatsProps {}

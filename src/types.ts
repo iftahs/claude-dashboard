@@ -92,6 +92,41 @@ export interface ActiveBlock {
   byModel: Record<string, number>;
 }
 
+/**
+ * GET /api/codex/block — the Codex counterpart of `RecentData.activeBlock`: local
+ * Codex usage inside the current rate-limit window (the 5-hour one, else weekly).
+ */
+export interface CodexBlock extends ActiveBlock {
+  windowSec: number;
+  /** 'live'/'passive': the provider's window (reset − length); 'local': rolled from the first Codex event. */
+  anchor: 'live' | 'passive' | 'local';
+  /** Codex is signed in with an OpenAI API key (pay-as-you-go, no plan windows). */
+  apiKey?: boolean;
+}
+
+/** A stretch of refused requests at one usage limit — see server/aggregate.ts buildLimitHits. */
+export interface LimitHitEpisode {
+  start: number;
+  last: number;
+  resetsAt: number | null;
+  kind: 'session' | 'weekly' | 'model' | 'unknown';
+  source: UsageSource;
+  model: string;
+  requests: number;
+}
+
+/** GET /api/insights/limits?days=&source= */
+export interface LimitHitsData {
+  rangeFrom: number;
+  rangeTo: number;
+  episodes7d: number;
+  episodes30d: number;
+  requests7d: number;
+  requests30d: number;
+  active: LimitHitEpisode | null;
+  episodes: LimitHitEpisode[];
+}
+
 export interface RecentData {
   rangeFrom: number;
   rangeTo: number;
@@ -323,8 +358,21 @@ export interface LiveExtraUsage {
   currency: string;
   decimal_places: number;
   disabled_reason: string | null;
+  /** The user switched extra usage off themselves (vs. the org never enabling it). */
+  user_disabled?: boolean | null;
+  credits_ever_enabled?: boolean | null;
   daily: unknown | null;
   weekly: unknown | null;
+}
+
+/**
+ * Each Claude surface's share of this week's usage so far (the rows add up to 100):
+ * Claude Code, Chats, Cowork, Other. Not a share of the quota.
+ */
+export interface LiveWeeklyBreakdown {
+  as_of: string | null;
+  window_started_at: string | null;
+  rows: { key: string; display_name: string | null; percent: number }[];
 }
 
 /** Current spend against the extra-usage pool, in minor currency units
@@ -355,6 +403,7 @@ export interface LiveUsageData {
   limits?: LiveLimit[] | null;
   extra_usage?: LiveExtraUsage | null;
   spend?: LiveSpend | null;
+  seven_day_breakdown?: LiveWeeklyBreakdown | null;
   error?: string;
 }
 
@@ -402,6 +451,8 @@ export interface ContribWindow {
 export interface ContributorsData {
   day: ContribWindow;
   week: ContribWindow;
+  /** What each pct is a share of: estimated cost (Claude) or effective tokens (Codex — Guardian reviews are $0). */
+  weight?: 'cost' | 'effectiveTokens';
 }
 
 export interface HeatmapData {

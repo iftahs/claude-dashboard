@@ -1,10 +1,16 @@
 import { ago, compact } from '@/lib/format';
+import { windowName } from '@/lib/limits';
+import type { BlockGaugeLabels, GaugeLive } from '@/components/design-system/organisms/BlockGauge/types';
+import type { PlanGateRow } from '@/components/design-system/molecules/PlanUsage/types';
 import type { CodexLiveData, CodexProfileStats, CodexWindow, LiveUsageData } from '@/types';
 import type { CodexStat } from './types';
 
+/** What the Codex numbers cover — shared by the plan card and the gauge InfoTips. */
+const CODEX_COVERAGE =
+  "Local figures come from the Codex rollouts the ChatGPT desktop app writes under ~/.codex — every thread run on this machine, with each turn's Guardian auto-review folded into its parent thread. Codex usage from the ChatGPT mobile and web apps never reaches this machine: it moves the % used, but not the local token counts. Costs are estimates at OpenAI's list API prices (a plan has no per-token bill).";
+
 /** InfoTip copy for the Codex rate-limit card (overrides PlanUsage's Claude.ai default). */
-export const CODEX_PLAN_HELP =
-  "Your ChatGPT plan's Codex rate-limit windows: the 5-hour window and the weekly window, each with % used and time to reset. Read from OpenAI's usage API with the token the ChatGPT desktop app stores locally — surfaced for awareness, never enforced or refreshed by this dashboard.";
+export const CODEX_PLAN_HELP = `Your ChatGPT plan's Codex rate-limit windows: the 5-hour window and the weekly window, each with % used and time to reset, plus any premium model the plan gates separately. Read from OpenAI's usage API with the token the ChatGPT desktop app stores locally — surfaced for awareness, never enforced or refreshed by this dashboard. ${CODEX_COVERAGE}`;
 
 /** Row labels for the two Codex windows. */
 export const CODEX_PLAN_LABELS = { block: '5-hour limit', weekly: 'Weekly limit' };
@@ -27,15 +33,24 @@ export function toPlanUsageLive(live: CodexLiveData): LiveUsageData {
   return shaped as LiveUsageData;
 }
 
+/**
+ * Premium models the plan gates separately (wham/usage `model_usage` lists only
+ * those) as PlanUsage gate rows. "Unavailable" while a plan window is exhausted
+ * almost always means the window, not the model, so it reads "paused".
+ */
+export function codexModelGates(live: CodexLiveData): PlanGateRow[] {
+  return Object.entries(live.modelAvailability ?? {})
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([slug, available]) => ({
+      label: `Premium · ${slug}`,
+      status: available ? 'available' : live.limitReached ? 'paused · plan limit reached' : 'not available right now',
+      tone: available ? 'ok' : live.limitReached ? 'danger' : 'muted',
+    }));
+}
+
 /** Error strings containing "expired" mean the local Codex token lapsed (see server/codex-live.ts). */
 export function isTokenExpired(err: string): boolean {
   return /expired/i.test(err);
-}
-
-/** "plus" → "Plus"; null → "—". */
-export function planLabel(planType: string | null): string {
-  if (!planType) return '—';
-  return planType.charAt(0).toUpperCase() + planType.slice(1).replace(/_/g, ' ');
 }
 
 /** Footnote for a passive (rollout-snapshot) reading of the limits, with the server's reason when it sent one. */
@@ -46,6 +61,45 @@ export function snapshotNote(live: CodexLiveData): string {
   return `passive snapshot · ${age} — from the newest local rollout; open the ChatGPT app for live numbers${why}`;
 }
 
+// ── BlockGauge adapters ─────────────────────────────────────────────────────
+
+/** The window the Codex gauge rings: the 5-hour one, else the weekly one ('go' plan). */
+export function codexGaugeWindow(live: CodexLiveData | null | undefined): CodexWindow | null {
+  if (!live || live.error) return null;
+  return live.fiveHour ?? live.weekly;
+}
+
+/** The Codex gauge's live ring value, or null when the limits could not be read. */
+export function codexGaugeLive(live: CodexLiveData | null | undefined): GaugeLive | null {
+  const w = codexGaugeWindow(live);
+  return w ? { pct: w.usedPct, resetsAt: w.resetsAt } : null;
+}
+
+/** BlockGauge wording for Codex — no Claude block, session or slash-command vocabulary. */
+export function codexGaugeLabels(live: CodexLiveData | null | undefined, windowSec: number): Partial<BlockGaugeLabels> {
+  const name = windowName(windowSec);
+  const passive = !!live && !live.error && live.origin === 'passive';
+  const snapAt = live?.snapshotAt ? Date.parse(live.snapshotAt) : NaN;
+  return {
+    title: `Codex · ${name} window`,
+    apiTitle: `Codex · spend this ${name} window`,
+    help: `The ring is the live % of your ChatGPT plan's ${name} Codex window, from OpenAI's usage API (offline: the newest local rollout snapshot). The rows count this window's effective tokens (input + output) on this machine; the previous window is the equally long stretch before it. The limit ETA extrapolates the live % at its average pace since the window opened. ${CODEX_COVERAGE}`,
+    apiHelp: `Estimated cost of your Codex usage in the current ${name} window, at OpenAI's list API prices, from local rollouts — you are signed in with an API key, so there are no plan windows. The ring fills against your daily spending cap when one is set in ⚙ Settings.`,
+    apiBadge: 'API key · estimated from local rollouts',
+    liveBadge: passive ? `Snapshot · ${Number.isNaN(snapAt) ? 'age unknown' : ago(snapAt)}` : 'Live from ChatGPT',
+    livePulse: !passive,
+    expiredBadge: '⚠️ Codex token expired — open the ChatGPT app',
+    offlineBadge: '⚠️ Local rollouts only (hover for details)',
+    connectingBadge: 'Local rollouts (connecting to ChatGPT...)',
+    current: 'This window',
+    previous: 'Prev window',
+  };
+}
+
+// ── Server-side profile stats ───────────────────────────────────────────────
+// Not rendered on Live (lifetime / history figures belong on Trends, Sessions and
+// Models); kept for the tabs that show them next to their Claude equivalents.
+
 /** "1h 12m" / "4m 20s" / "45s" for a duration in seconds. */
 export function formatSeconds(sec: number): string {
   const s = Math.max(0, Math.round(sec));
@@ -53,65 +107,6 @@ export function formatSeconds(sec: number): string {
   const m = Math.floor(s / 60);
   if (m < 60) return `${m}m ${s % 60}s`;
   return `${Math.floor(m / 60)}h ${m % 60}m`;
-}
-
-/** Plan / credits / status cards from the live payload (no PII in any field). */
-export function liveStats(live: CodexLiveData): CodexStat[] {
-  const models = Object.values(live.modelAvailability ?? {});
-  const modelsSub = models.length
-    ? `${models.filter(Boolean).length} of ${models.length} models available`
-    : undefined;
-
-  const c = live.credits;
-  const creditsValue = !c ? '—' : c.unlimited ? 'Unlimited' : c.hasCredits ? (c.balance ?? 'Available') : 'None';
-  const creditsSub = !c
-    ? 'not reported'
-    : c.overageLimitReached
-      ? 'overage limit reached'
-      : c.hasCredits || c.unlimited
-        ? 'pay-as-you-go beyond the plan'
-        : 'usage pauses at the plan limit';
-
-  const rc = live.resetCredits;
-  const originSub =
-    live.origin === 'live'
-      ? 'live · ChatGPT usage API'
-      : live.snapshotAt
-        ? `snapshot · ${ago(Date.parse(live.snapshotAt))}`
-        : 'passive snapshot';
-
-  return [
-    {
-      key: 'plan',
-      label: 'Plan',
-      value: planLabel(live.planType),
-      sub: modelsSub,
-      help: "Your ChatGPT plan as reported by OpenAI's usage API (or, offline, the newest local rollout snapshot). Model availability counts the models the plan can currently run.",
-    },
-    {
-      key: 'credits',
-      label: 'Credits',
-      value: creditsValue,
-      sub: creditsSub,
-      accent: c?.overageLimitReached ? '#ef4444' : undefined,
-      help: 'Purchased credits that keep Codex running once the plan windows are exhausted. "None" means usage pauses at the limit until the window resets.',
-    },
-    {
-      key: 'reset-credits',
-      label: 'Reset credits',
-      value: rc ? String(rc.available) : '—',
-      sub: rc ? `${rc.applicable} applicable now` : 'not offered on this plan',
-      help: "OpenAI's rate-limit reset credits: how many the account holds vs how many could be applied to the current window.",
-    },
-    {
-      key: 'status',
-      label: 'Limit status',
-      value: live.limitReached ? 'Limit reached' : 'Within limits',
-      sub: originSub,
-      accent: live.limitReached ? '#ef4444' : undefined,
-      help: 'Whether a plan window is currently exhausted. "Live" numbers come straight from the usage API; a snapshot is the last rate-limit record Codex wrote locally.',
-    },
-  ];
 }
 
 /** Server-side lifetime stats from the Codex profile endpoint (stats only, no profile). */
@@ -160,18 +155,4 @@ export function profileStats(p: CodexProfileStats): CodexStat[] {
       help: 'The reasoning-effort setting (low / medium / high) your turns most often ran with.',
     },
   ];
-}
-
-/**
- * The four cards worth keeping when the panel shares the row with another platform
- * (Both mode): what the plan is and whether it is exhausted, plus the two
- * server-side numbers that have no equivalent anywhere else in the dashboard.
- */
-export function compactStats(live: CodexLiveData | null, profile: CodexProfileStats | null): CodexStat[] {
-  const fromLive = live && !live.error ? liveStats(live).filter((s) => s.key === 'plan' || s.key === 'status') : [];
-  const fromProfile =
-    profile && !profile.error
-      ? profileStats(profile).filter((s) => s.key === 'lifetime' || s.key === 'streak')
-      : [];
-  return [...fromLive, ...fromProfile];
 }

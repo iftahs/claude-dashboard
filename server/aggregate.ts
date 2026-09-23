@@ -1,4 +1,5 @@
 import type { UsageEvent, UsageSource } from './scan.ts';
+import type { LimitHitRow } from './scan-pass.ts';
 import { estimateCost } from './pricing.ts';
 
 const HOUR = 3600_000;
@@ -326,6 +327,164 @@ export function buildRecent(events: UsageEvent[], now: number, hours = 5) {
     // The 5h block is an Anthropic concept (one window per Claude session); a
     // trailing Codex event must never become its anchor under the All filter.
     activeBlock: computeActiveBlock(events.filter((e) => e.source !== 'codex'), now),
+  };
+}
+
+// ── Codex block ─────────────────────────────────────────────────────────────
+
+/** One Codex rate-limit window as /api/codex/live reports it (structural, so this module stays I/O-free). */
+export interface CodexWindowInput {
+  windowSec: number;
+  /** ISO; null when the window has lapsed or its reset is unknown. */
+  resetsAt: string | null;
+}
+
+/** The Codex counterpart of `ActiveBlock`, plus how its window was placed. */
+export interface CodexBlock extends ActiveBlock {
+  windowSec: number;
+  /**
+   * 'live' / 'passive': the window is the provider's own (start = reset − length),
+   * read live or from the newest rollout snapshot. 'local': no reset time was known,
+   * so windows roll from the first Codex event, one opening at the first event at
+   * or after the previous one's end.
+   */
+  anchor: 'live' | 'passive' | 'local';
+}
+
+/**
+ * Codex's current rate-limit window and the local usage inside it. Codex limits are
+ * account-wide, not per thread, so the window is the provider's when a reset time
+ * is known — the 5-hour one, else the weekly one (the 'go' plan has only that) —
+ * and the rows count every Codex event in it; `prevTotals` is the equally long
+ * stretch just before. Without a reset time (offline with no usable snapshot) the
+ * windows are reconstructed locally from the event stream.
+ *
+ * `events` must be Codex-only and ascending. The Claude block (computeActiveBlock)
+ * never sees Codex events, and this never sees Claude ones.
+ */
+export function computeCodexBlock(
+  events: UsageEvent[],
+  live: { fiveHour: CodexWindowInput | null; weekly: CodexWindowInput | null; origin: 'live' | 'passive' } | null,
+  now: number,
+): CodexBlock {
+  const win = live ? (live.fiveHour ?? live.weekly) : null;
+  const windowSec = win && win.windowSec > 0 ? win.windowSec : BLOCK_MS / 1000;
+  const windowMs = windowSec * 1000;
+  const blockOf = (current: UsageEvent[], previous: UsageEvent[], start: number, anchor: CodexBlock['anchor']): CodexBlock => {
+    const byModel: Record<string, number> = {};
+    for (const e of current) byModel[e.model] = (byModel[e.model] ?? 0) + eventTokens(e);
+    const resetsAt = start + windowMs;
+    return {
+      start, resetsAt, isActive: now < resetsAt,
+      totals: sumTotals(current), prevTotals: sumTotals(previous), byModel,
+      windowSec, anchor,
+    };
+  };
+
+  const resetsAt = win?.resetsAt ? Date.parse(win.resetsAt) : NaN;
+  if (live && Number.isFinite(resetsAt) && resetsAt > now) {
+    const start = resetsAt - windowMs;
+    const current = events.filter((e) => e.ts >= start && e.ts <= now);
+    const previous = events.filter((e) => e.ts >= start - windowMs && e.ts < start);
+    return blockOf(current, previous, start, live.origin);
+  }
+
+  // Local anchor: account-wide rolling windows over the whole Codex stream.
+  let current: UsageEvent[] = [];
+  let previous: UsageEvent[] = [];
+  let start = -Infinity;
+  for (const e of events) {
+    if (e.ts >= start + windowMs) {
+      previous = current;
+      current = [];
+      start = e.ts;
+    }
+    current.push(e);
+  }
+  // No Codex events at all: an idle, not-yet-opened window (like computeActiveBlock's).
+  if (!current.length) return { ...blockOf([], [], now, 'local'), isActive: false };
+  return blockOf(current, previous, start, 'local');
+}
+
+// ── Limit hits ──────────────────────────────────────────────────────────────
+
+/**
+ * One stretch of being refused by a usage limit: the first refused request, every
+ * retry until that limit lifted, and when it lifted. Retries while blocked are one
+ * episode, not many — 51 refused requests in one evening are one wall hit.
+ */
+export interface LimitHitEpisode {
+  /** First refused request (epoch ms). */
+  start: number;
+  /** Last refused request in the episode. */
+  last: number;
+  /** When the provider said the limit lifts; null when it did not say. */
+  resetsAt: number | null;
+  kind: LimitHitRow['kind'];
+  source: UsageSource;
+  model: string;
+  /** Refused requests in the episode. */
+  requests: number;
+}
+
+export interface LimitHitsSummary {
+  rangeFrom: number;
+  rangeTo: number;
+  episodes7d: number;
+  episodes30d: number;
+  requests7d: number;
+  requests30d: number;
+  /** The newest episode whose limit has not lifted yet, if any. */
+  active: LimitHitEpisode | null;
+  /** Episodes that started inside the requested window, newest first (at most LIMIT_EPISODES_MAX). */
+  episodes: LimitHitEpisode[];
+}
+
+const LIMIT_EPISODES_MAX = 50;
+
+/**
+ * Group refused requests into episodes per (platform, limit kind — and model, for a
+ * per-model cap): a refusal joins the open episode until that episode's reset
+ * time, or, when no reset was recorded, until an hour after its latest refusal.
+ */
+export function buildLimitHits(hits: LimitHitRow[], now: number, days: number): LimitHitsSummary {
+  const sorted = [...hits].sort((a, b) => a.ts - b.ts);
+  const open = new Map<string, LimitHitEpisode>();
+  const episodes: LimitHitEpisode[] = [];
+  for (const h of sorted) {
+    // Claude's limits are account-wide, so Code and Cowork refusals of one limit are one episode.
+    const platform = h.source === 'codex' ? 'codex' : 'claude';
+    const group = `${platform}|${h.kind}|${h.kind === 'model' ? h.model : ''}`;
+    const cur = open.get(group);
+    const until = cur ? (cur.resetsAt !== null && cur.resetsAt > cur.start ? cur.resetsAt : cur.last + HOUR) : -Infinity;
+    if (cur && h.ts < until) {
+      cur.last = h.ts;
+      cur.requests += 1;
+      if (cur.resetsAt === null && h.resetsAt !== null) cur.resetsAt = h.resetsAt;
+      if (!cur.model && h.model) cur.model = h.model;
+      continue;
+    }
+    const ep: LimitHitEpisode = {
+      start: h.ts, last: h.ts, resetsAt: h.resetsAt, kind: h.kind, source: h.source, model: h.model, requests: 1,
+    };
+    open.set(group, ep);
+    episodes.push(ep);
+  }
+
+  const since = (ms: number) => now - ms;
+  const from = since(days * DAY);
+  const count = <T>(list: T[], ts: (x: T) => number, windowMs: number) =>
+    list.reduce((n, x) => (ts(x) >= since(windowMs) && ts(x) <= now ? n + 1 : n), 0);
+  const newestFirst = episodes.filter((e) => e.start <= now).reverse();
+  return {
+    rangeFrom: from,
+    rangeTo: now,
+    episodes7d: count(episodes, (e) => e.start, 7 * DAY),
+    episodes30d: count(episodes, (e) => e.start, 30 * DAY),
+    requests7d: count(sorted, (h) => h.ts, 7 * DAY),
+    requests30d: count(sorted, (h) => h.ts, 30 * DAY),
+    active: newestFirst.find((e) => e.resetsAt !== null && e.resetsAt > now) ?? null,
+    episodes: newestFirst.filter((e) => e.start >= from).slice(0, LIMIT_EPISODES_MAX),
   };
 }
 

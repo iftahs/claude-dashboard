@@ -21,6 +21,10 @@ import { getWorkspaceTasks, getInventory } from './workspace.ts';
 import { getLiveSubagents } from './subagents-live.ts';
 import { fetchCodexUsage, fetchCodexProfile } from './codex-live.ts';
 import { getLiveCodexAgents } from './codex-agents-live.ts';
+import { readFile } from 'node:fs/promises';
+import { computeCodexBlock, buildLimitHits } from './aggregate.ts';
+import { codexDir } from './scan.ts';
+import type { CodexLiveData } from './codex-live.ts';
 import { getWorkflows, getWorkflowStats } from './workflows.ts';
 import { getAgentDetail } from './workflow-agent-detail.ts';
 import { runAi, runAiStream, resolveBackend, AiUnavailableError, AiTokenRejectedError, AiCallError, type AiCreds } from './ai.ts';
@@ -527,6 +531,70 @@ app.get('/api/codex/profile', async (_req, res) => {
 app.get('/api/codex/agents/live', async (_req, res) => {
   try {
     res.json(wrap(await getLiveCodexAgents(), Date.now()));
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+/**
+ * How Codex is signed in, from `<codexDir>/auth.json`: 'chatgpt' (a ChatGPT plan
+ * token), 'apikey' (pay-as-you-go OpenAI key, no plan windows) or null (no login).
+ * Reads key NAMES only — neither the token nor the key ever leaves this function.
+ */
+async function readCodexAuthMode(): Promise<'chatgpt' | 'apikey' | null> {
+  try {
+    const json = JSON.parse(await readFile(join(codexDir(), 'auth.json'), 'utf8'));
+    const mode = typeof json?.auth_mode === 'string' ? json.auth_mode.toLowerCase().replace(/[^a-z]/g, '') : '';
+    const hasToken = typeof json?.tokens?.access_token === 'string' && !!json.tokens.access_token;
+    const hasKey = typeof json?.OPENAI_API_KEY === 'string' && !!json.OPENAI_API_KEY;
+    if (mode === 'apikey') return 'apikey';
+    if (mode === 'chatgpt' || hasToken) return 'chatgpt';
+    return hasKey ? 'apikey' : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The Codex window the block is placed on, fetched at most every 30 s — failures
+ * included: fetchCodexUsage caches only successes, and with no login its passive
+ * fallback tail-reads every rollout, which a 5 s Live poll must not repeat.
+ */
+let codexWindowState: { at: number; live: CodexLiveData | null; authMode: 'chatgpt' | 'apikey' | null } | null = null;
+async function codexWindow() {
+  if (codexWindowState && Date.now() - codexWindowState.at < 30_000) return codexWindowState;
+  const [live, authMode] = await Promise.all([fetchCodexUsage().catch(() => null), readCodexAuthMode()]);
+  codexWindowState = { at: Date.now(), live, authMode };
+  return codexWindowState;
+}
+
+// The Codex counterpart of /api/usage/recent's activeBlock, for the Live tab's
+// gauge: local Codex usage inside the current rate-limit window. Not memoised —
+// the window moves with the live reset time, not with the event fingerprint.
+// Computed even when the live limits are unavailable (local anchor).
+app.get('/api/codex/block', async (_req, res) => {
+  try {
+    const { events, computedAt } = await getEvents();
+    const { live, authMode } = await codexWindow();
+    const block = computeCodexBlock(filterSource(events, 'codex'), live && !live.error ? live : null, computedAt);
+    res.json(wrap({ ...block, apiKey: authMode === 'apikey' }, computedAt));
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+// Usage-limit hits (requests the provider refused at a limit), grouped into
+// episodes — the Live tab's "Limit hits" card, on every platform. 7d/30d counts
+// are always included; `days` bounds the episode list.
+app.get('/api/insights/limits', async (req, res) => {
+  try {
+    const days = intParam(req.query.days, 30, 1, MAX_WINDOW_DAYS);
+    const { insights, computedAt } = await getInsights();
+    const source = parseSource(req.query.source);
+    const data = memoBuilder('limits', [days, source], insightsFingerprint(), () =>
+      buildLimitHits(scopeInsights(insights, source).limitHits, computedAt, days),
+    );
+    res.json(wrap(data, computedAt));
   } catch (e) {
     res.status(500).json({ error: String(e) });
   }

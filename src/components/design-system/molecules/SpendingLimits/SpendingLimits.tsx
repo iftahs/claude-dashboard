@@ -5,7 +5,12 @@ import { formatResetCountdown } from '@/lib/budget';
 import { spendingBarColor } from './utils';
 import type { SpendingLimitsProps } from './types';
 
-export function SpendingLimits({ rows, note, alwaysShow = false }: SpendingLimitsProps) {
+/**
+ * Spend against the user's own USD caps (today / this week / this month). The
+ * figures are an estimate from local logs unless a LiteLLM gateway supplies the
+ * real bill — the title says which ("est." vs "actual").
+ */
+export function SpendingLimits({ rows, note, alwaysShow = false, titleSuffix = '' }: SpendingLimitsProps) {
   const actual = rows.some((r) => r.isActual);
   // API mode shows every row (the spend is the bill); subscription mode only
   // shows rows the user has set a cap for.
@@ -17,7 +22,8 @@ export function SpendingLimits({ rows, note, alwaysShow = false }: SpendingLimit
     <div className="card p-5">
       <div className="mb-4 flex items-center justify-between">
         <h3 className="flex items-center gap-1.5 text-sm font-bold uppercase tracking-wider text-zinc-500">
-          API Spending
+          {actual ? 'Spend vs caps (actual)' : 'Spend vs caps (est.)'}
+          {titleSuffix}
           <InfoTip
             text={
               actual

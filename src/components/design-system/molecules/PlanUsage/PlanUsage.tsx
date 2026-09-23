@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import { ProgressBar } from '@/components/design-system/atoms/ProgressBar/ProgressBar';
 import { InfoTip } from '@/components/design-system/atoms/InfoTip/InfoTip';
-import { blockBarColor } from './utils';
+import { LegendDot } from '@/components/design-system/atoms/LegendDot/LegendDot';
+import { GATE_TONE_CLASS, LEGACY_MODEL_COLORS, blockBarColor, modelBarColor, surfaceSegments } from './utils';
 import { untilFull, dateTimeLabel } from '@/lib/format';
 import { nextWeekReset, startOfWeek } from '@/lib/week';
 import { buildWeeklyForecast } from '@/lib/forecast';
@@ -14,22 +15,6 @@ const DEFAULT_WEEKLY_LIMIT = 35000000; // 35M effective tokens
 
 // Per-model weekly bar (normalized across the new limits[] array and legacy keys).
 type WeeklyModelBar = { label: string; pct: number; resetsAt: string | null; color: string };
-const MODEL_COLORS: Record<string, string> = {
-  Opus: '#a78bfa',
-  Sonnet: '#10b981',
-  Haiku: '#f472b6',
-  Fable: '#f59e0b',
-};
-const DEFAULT_MODEL_COLOR = '#22d3ee';
-
-// Anthropic's display_name is a plain family word today ("Opus"), but a generation
-// may get appended ("Opus 5") — match the family out of it rather than keying on the
-// whole string, which would silently drop every bar to DEFAULT_MODEL_COLOR.
-function modelBarColor(displayName: string): string {
-  const family = displayName.match(/fable|mythos|opus|sonnet|haiku/i)?.[0].toLowerCase();
-  const key = family && family[0].toUpperCase() + family.slice(1);
-  return (key && MODEL_COLORS[key]) || DEFAULT_MODEL_COLOR;
-}
 
 // Default copy — the Claude.ai wording. Callers for another plan system (the
 // Codex tab) override these via `help` / `labels` without touching this file.
@@ -48,6 +33,7 @@ export function PlanUsage({
   active,
   help,
   labels,
+  gates,
   note,
 }: PlanUsageProps) {
   const [, forceUpdate] = useState(0);
@@ -58,7 +44,7 @@ export function PlanUsage({
   }, []);
 
   const tierLabel = tier ? tier.replace(/_/g, ' ').toUpperCase() : null;
-  const cardClass = `card p-5 flex flex-col justify-between flex-none${active ? ' ring-1 ring-clay-500/40' : ''}`;
+  const cardClass = `card p-5 flex flex-col justify-start flex-none${active ? ' ring-1 ring-clay-500/40' : ''}`;
   const title = accountLabel ?? 'Plan usage';
   const titleSpanClass = accountLabel ? 'truncate normal-case' : 'uppercase';
 
@@ -127,15 +113,18 @@ export function PlanUsage({
 
   const legacyModelLimits: WeeklyModelBar[] = hasLive
     ? ([
-        { label: 'Weekly · Sonnet', info: liveUsage.seven_day_sonnet, color: MODEL_COLORS.Sonnet },
-        { label: 'Weekly · Opus', info: liveUsage.seven_day_opus, color: MODEL_COLORS.Opus },
-        { label: 'Weekly · Cowork', info: liveUsage.seven_day_cowork, color: DEFAULT_MODEL_COLOR },
+        { label: 'Weekly · Sonnet', info: liveUsage.seven_day_sonnet, color: LEGACY_MODEL_COLORS.sonnet },
+        { label: 'Weekly · Opus', info: liveUsage.seven_day_opus, color: LEGACY_MODEL_COLORS.opus },
+        { label: 'Weekly · Cowork', info: liveUsage.seven_day_cowork, color: LEGACY_MODEL_COLORS.cowork },
       ] as const)
         .filter((l) => l.info != null)
         .map((l) => ({ label: l.label, pct: Math.round(l.info!.utilization), resetsAt: l.info!.resets_at, color: l.color }))
     : [];
 
   const modelLimits: WeeklyModelBar[] = scopedFromLimits.length ? scopedFromLimits : legacyModelLimits;
+
+  // Where this week's usage went, by Claude surface (Claude.ai only — Codex has no split).
+  const surfaces = hasLive ? surfaceSegments(liveUsage.seven_day_breakdown) : [];
 
   return (
     <div className={cardClass}>
@@ -185,6 +174,24 @@ export function PlanUsage({
                 <span>{weeklyForecast.label}</span>
               </div>
             )}
+            {surfaces.length > 1 && (
+              <div className="space-y-1 pt-0.5">
+                <div className="flex h-1 w-full overflow-hidden rounded-full bg-ink-600" aria-hidden>
+                  {surfaces.map((s) => (
+                    <div key={s.key} style={{ width: `${s.pct}%`, background: s.color }} />
+                  ))}
+                </div>
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] text-zinc-500">
+                  <span className="flex items-center gap-1">
+                    Share of this week&apos;s usage
+                    <InfoTip text="Where the weekly usage so far came from, by surface. The shares add up to 100% of what you have used this week — not of the weekly limit." />
+                  </span>
+                  {surfaces.map((s) => (
+                    <LegendDot key={s.key} color={s.color} label={`${s.label} ${Math.round(s.pct)}%`} />
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         )}
 
@@ -208,6 +215,14 @@ export function PlanUsage({
             </div>
           );
         })}
+
+        {/* Per-model gates (a model the plan can or cannot run right now) */}
+        {gates?.map((g) => (
+          <div key={g.label} className="flex items-center justify-between text-xs">
+            <span className="font-semibold text-zinc-200">{g.label}</span>
+            <span className={GATE_TONE_CLASS[g.tone]}>{g.status}</span>
+          </div>
+        ))}
       </div>
       {note && <p className="mt-3 text-[11px] text-zinc-500">{note}</p>}
     </div>

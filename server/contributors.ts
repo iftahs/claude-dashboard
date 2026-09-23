@@ -11,6 +11,12 @@
 // subagent, skill and MCP breakdowns match Claude exactly, including the CLI's rule
 // that an MCP server's cost covers the whole session tail once its results are in
 // context. Context (>150k), 8h-session and 4+-parallel thresholds are the CLI's.
+//
+// Codex gets the same panel with two differences. Its shares are of EFFECTIVE
+// TOKENS, not cost: the Guardian auto-review model is priced at $0, so a
+// cost-weighted breakdown would make every auto-review invisible even though it
+// spends the plan's limit. And the copy talks about threads and auto-reviews, not
+// Claude Code's sessions, subagents and slash commands.
 
 import type { UsageEvent } from './scan.ts';
 import { estimateCost } from './pricing.ts';
@@ -48,10 +54,38 @@ export interface ContribWindow {
 export interface ContributorsData {
   day: ContribWindow;
   week: ContribWindow;
+  /** What every pct is a share of: estimated cost (Claude), or effective tokens (Codex). */
+  weight: 'cost' | 'effectiveTokens';
 }
 
-const MCP_BODY =
-  'MCP tool results stay in context for the rest of the session. /compact to flush them, or disable servers you don’t need.';
+type Platform = 'claude' | 'codex';
+type BehaviourKey = 'subagent_heavy' | 'long_context' | 'high_parallel' | 'cron';
+
+/** Codex-only input gets Codex weighting and copy; anything with Claude usage keeps the CLI's. */
+function platformOf(events: UsageEvent[]): Platform {
+  return events.length > 0 && events.every((e) => e.source === 'codex') ? 'codex' : 'claude';
+}
+
+/** Per-platform wording of the headline behaviours. */
+const COPY: Record<Platform, Record<BehaviourKey, { headline: (p: number) => string; body: string }>> = {
+  claude: {
+    subagent_heavy: { headline: (p) => `${p}% of your usage came from subagent-heavy sessions`, body: 'Each subagent runs its own requests. Be deliberate about spawning them — and consider configuring a cheaper model for simpler subagents.' },
+    long_context: { headline: (p) => `${p}% of your usage was at >150k context`, body: 'Longer sessions are more expensive even when cached. /compact mid-task, /clear when switching to new tasks.' },
+    high_parallel: { headline: (p) => `${p}% of your usage was while 4+ sessions ran in parallel`, body: "All sessions share one limit. If you don't need them all at once, queueing uses it more evenly." },
+    cron: { headline: (p) => `${p}% of your usage came from sessions active for 8+ hours`, body: 'These are often background/loop sessions. Continuous usage can add up quickly so make sure it is intentional.' },
+  },
+  codex: {
+    subagent_heavy: { headline: (p) => `${p}% of your usage came from threads with Guardian auto-reviews`, body: 'Each auto-review runs its own model requests on top of the turn it checks, and they count against the same plan limit.' },
+    long_context: { headline: (p) => `${p}% of your usage was at >150k context`, body: 'Long threads cost more with every turn, even when cached. Start a new thread when you switch to a new task.' },
+    high_parallel: { headline: (p) => `${p}% of your usage was while 4+ threads ran in parallel`, body: "All threads share one plan limit. If you don't need them all at once, queueing uses it more evenly." },
+    cron: { headline: (p) => `${p}% of your usage came from threads active for 8+ hours`, body: 'Long-running threads keep spending for as long as they work. Continuous usage can add up quickly so make sure it is intentional.' },
+  },
+};
+
+const MCP_BODY: Record<Platform, string> = {
+  claude: 'MCP tool results stay in context for the rest of the session. /compact to flush them, or disable servers you don’t need.',
+  codex: 'MCP tool results stay in the thread’s context. Start a new thread to drop them, or disable servers you don’t need.',
+};
 
 /** Map → sorted [{name, pct}] (desc, pct>0), mirroring the CLI's flr(). */
 function toRows(map: Map<string, number>, total: number): ContribRow[] {
@@ -99,7 +133,7 @@ function makeConcurrency(intervals: Array<[number, number]>): (ts: number) => nu
   };
 }
 
-function buildWindow(events: UsageEvent[]): ContribWindow {
+function buildWindow(events: UsageEvent[], platform: Platform): ContribWindow {
   // Per-session first/last ts + whether it is a top-level (non-subagent) session.
   // Subagent sub-sessions are excluded from the "parallel" / "8h" behaviours: a
   // workflow fanning out 16 agents isn't "16 sessions in parallel", and a subagent's
@@ -135,46 +169,52 @@ function buildWindow(events: UsageEvent[]): ContribWindow {
   const bySkill = new Map<string, number>();
   const byPlugin = new Map<string, number>();
 
+  let totalWeight = 0;
   for (const e of events) {
     const cost = estimateCost(e.model, e);
-    if (cost <= 0) continue;
+    const weight = platform === 'codex' ? e.inputTokens + e.outputTokens + e.cacheCreateTokens : cost;
+    if (weight <= 0) continue;
     totalCost += cost;
+    totalWeight += weight;
 
     // Behaviours (independent characteristics — shares can overlap).
     const contextTokens = e.inputTokens + e.cacheReadTokens + e.cacheCreateTokens;
-    if (contextTokens > CTX_THRESHOLD) longCtx += cost;
-    if (heavyRoot.has(e.rootSessionId)) subagentHeavy += cost;
-    if (activeAt(e.ts) >= PARALLEL_MIN) highParallel += cost;
+    if (contextTokens > CTX_THRESHOLD) longCtx += weight;
+    if (heavyRoot.has(e.rootSessionId)) subagentHeavy += weight;
+    if (activeAt(e.ts) >= PARALLEL_MIN) highParallel += weight;
     const s = sess.get(e.sessionId);
-    if (s && s.topLevel && s.last - s.first >= CRON_MS) cron += cost;
+    if (s && s.topLevel && s.last - s.first >= CRON_MS) cron += weight;
 
     // Breakdowns — straight from the CLI's attribution tags.
-    addTo(byMcp, e.attributionMcpServer, cost);
-    addTo(bySubagent, e.attributionAgent, cost);
-    addTo(bySkill, e.attributionSkill, cost);
-    addTo(byPlugin, e.attributionPlugin, cost);
+    addTo(byMcp, e.attributionMcpServer, weight);
+    addTo(bySubagent, e.attributionAgent, weight);
+    addTo(bySkill, e.attributionSkill, weight);
+    addTo(byPlugin, e.attributionPlugin, weight);
   }
 
-  const pct = (cost: number): number => (totalCost > 0 ? Math.round((cost / totalCost) * 100) : 0);
+  const pct = (w: number): number => (totalWeight > 0 ? Math.round((w / totalWeight) * 100) : 0);
+  const behaviour = (key: BehaviourKey, share: number): ContribBehavior => ({
+    key, pct: pct(share), headline: COPY[platform][key].headline(pct(share)), body: COPY[platform][key].body,
+  });
 
   // Headline insights: the four behaviours plus any single MCP server / skill /
   // plugin that alone exceeds the threshold (the CLI promotes these to headlines
   // too, e.g. `22% of your usage came from MCP server "chrome-devtools"`).
   const candidates: ContribBehavior[] = [
-    { key: 'subagent_heavy', pct: pct(subagentHeavy), headline: `${pct(subagentHeavy)}% of your usage came from subagent-heavy sessions`, body: 'Each subagent runs its own requests. Be deliberate about spawning them — and consider configuring a cheaper model for simpler subagents.' },
-    { key: 'long_context', pct: pct(longCtx), headline: `${pct(longCtx)}% of your usage was at >150k context`, body: 'Longer sessions are more expensive even when cached. /compact mid-task, /clear when switching to new tasks.' },
-    { key: 'high_parallel', pct: pct(highParallel), headline: `${pct(highParallel)}% of your usage was while 4+ sessions ran in parallel`, body: "All sessions share one limit. If you don't need them all at once, queueing uses it more evenly." },
-    { key: 'cron', pct: pct(cron), headline: `${pct(cron)}% of your usage came from sessions active for 8+ hours`, body: 'These are often background/loop sessions. Continuous usage can add up quickly so make sure it is intentional.' },
+    behaviour('subagent_heavy', subagentHeavy),
+    behaviour('long_context', longCtx),
+    behaviour('high_parallel', highParallel),
+    behaviour('cron', cron),
   ];
-  const topMcp = toRows(byMcp, totalCost)[0];
+  const topMcp = toRows(byMcp, totalWeight)[0];
   if (topMcp && topMcp.pct >= SHOW_PCT) {
-    candidates.push({ key: `mcp:${topMcp.name}`, pct: topMcp.pct, headline: `${topMcp.pct}% of your usage came from MCP server "${topMcp.name}"`, body: MCP_BODY });
+    candidates.push({ key: `mcp:${topMcp.name}`, pct: topMcp.pct, headline: `${topMcp.pct}% of your usage came from MCP server "${topMcp.name}"`, body: MCP_BODY[platform] });
   }
-  const topSkill = toRows(bySkill, totalCost)[0];
+  const topSkill = toRows(bySkill, totalWeight)[0];
   if (topSkill && topSkill.pct >= SHOW_PCT) {
     candidates.push({ key: `skill:${topSkill.name}`, pct: topSkill.pct, headline: `${topSkill.pct}% of your usage came from /${topSkill.name}`, body: "This skill's instructions stay in context for the rest of the session." });
   }
-  const topPlugin = toRows(byPlugin, totalCost)[0];
+  const topPlugin = toRows(byPlugin, totalWeight)[0];
   if (topPlugin && topPlugin.pct >= SHOW_PCT) {
     candidates.push({ key: `plugin:${topPlugin.name}`, pct: topPlugin.pct, headline: `${topPlugin.pct}% of your usage came from plugin "${topPlugin.name}"`, body: 'Plugin skills and commands add to every request while active.' });
   }
@@ -189,17 +229,18 @@ function buildWindow(events: UsageEvent[]): ContribWindow {
     requestCount: events.length,
     sessionCount: [...sess.values()].filter((s) => s.topLevel).length,
     behaviors,
-    subagents: toRows(bySubagent, totalCost),
-    mcpServers: toRows(byMcp, totalCost),
-    skills: toRows(bySkill, totalCost),
-    plugins: toRows(byPlugin, totalCost),
+    subagents: toRows(bySubagent, totalWeight),
+    mcpServers: toRows(byMcp, totalWeight),
+    skills: toRows(bySkill, totalWeight),
+    plugins: toRows(byPlugin, totalWeight),
   };
 }
 
 export function buildContributors(events: UsageEvent[], now: number): ContributorsData {
+  const platform = platformOf(events);
   const windowOf = (windowMs: number): ContribWindow => {
     const from = now - windowMs;
-    return buildWindow(events.filter((e) => e.ts >= from && e.ts <= now));
+    return buildWindow(events.filter((e) => e.ts >= from && e.ts <= now), platform);
   };
-  return { day: windowOf(DAY_MS), week: windowOf(WEEK_MS) };
+  return { day: windowOf(DAY_MS), week: windowOf(WEEK_MS), weight: platform === 'codex' ? 'effectiveTokens' : 'cost' };
 }
