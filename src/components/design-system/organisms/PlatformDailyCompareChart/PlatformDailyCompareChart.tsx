@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, memo } from 'react';
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { Section } from '@/components/design-system/molecules/Section/Section';
 import { ChartTooltip } from '@/components/design-system/molecules/ChartTooltip/ChartTooltip';
@@ -60,7 +60,7 @@ function CompareTooltip({ active, payload, metric = 'tokens' }: CompareTooltipPr
  * subscription bills per token, and the two vendors' rate cards differ, so the
  * cost view compares list-price equivalents, not money actually spent.
  */
-export function PlatformDailyCompareChart({
+function PlatformDailyCompareChartImpl({
   claude,
   codex,
   loading,
@@ -134,3 +134,10 @@ export function PlatformDailyCompareChart({
     </Section>
   );
 }
+
+/**
+ * Memoised: its parent re-renders on every live poll (the shared LiveData context
+ * changes about once a second), and on long windows this chart has hundreds of
+ * categories × every model series. Its props only change when its own data does.
+ */
+export const PlatformDailyCompareChart = memo(PlatformDailyCompareChartImpl);

@@ -1,4 +1,4 @@
-import { dayLabel } from '@/lib/format';
+import { localYmd } from '@/lib/week';
 import type { WeeklyData } from '@/types';
 import type { DailyMetric } from './types';
 
@@ -16,7 +16,7 @@ export function trendDelta(data: WeeklyData | null, metric: DailyMetric): number
 export function trendExport(data: WeeklyData, weekDays: number) {
   const models = [...new Set(data.buckets.flatMap((b) => Object.keys(b.byModel)))];
   const csv = data.buckets.map((b) => ({
-    date: dayLabel(b.start),
+    date: localYmd(b.start),
     effectiveTokens: b.effectiveTokens,
     cost: b.cost.toFixed(4),
     ...Object.fromEntries(models.map((m) => [m, b.byModel[m] ?? 0])),

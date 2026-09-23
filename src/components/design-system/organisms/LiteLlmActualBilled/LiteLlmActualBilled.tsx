@@ -71,6 +71,11 @@ export function LiteLlmActualBilled({ spend, host, weekDays }: LiteLlmActualBill
             </span>
           </div>
           <LiteLlmDailyChart days={daily} />
+          {spend.truncated && (
+            <p className="mt-2 text-xs text-amber-300/80">
+              Partial history: the gateway returned more spend rows than the dashboard pages through, so some days read low.
+            </p>
+          )}
         </div>
       </div>
       {tokTotal > 0 && (

@@ -21,7 +21,7 @@ import type { Limits } from './useLimits';
 export function useDashboardNotifications(activeTab: string, limits: Limits) {
   const { configData, detectedMode, effectiveMode, isApi, settings, weekStart } = useConfigMode();
   const { platform } = useSource();
-  const { liveUsage, version, weekly } = useLiveData();
+  const { liveUsage, version, liveWeekly } = useLiveData();
   const { litellmActual } = useLiteLlmActual();
   const { costPerDay } = useCostMetrics();
   const { notify, dismiss } = useNotifications();
@@ -36,13 +36,13 @@ export function useDashboardNotifications(activeTab: string, limits: Limits) {
     () =>
       buildBudgetRows({
         limits,
-        buckets: weekly.data?.buckets,
+        buckets: liveWeekly.data?.buckets,
         costPerDay,
         weekStart,
         actual: litellmActual ?? null,
         now: Date.now(),
       }),
-    [limits, weekly.data?.buckets, costPerDay, weekStart, litellmActual],
+    [limits, liveWeekly.data?.buckets, costPerDay, weekStart, litellmActual],
   );
   useBudgetAlerts(budgetRows, settings.budgetAlert);
 

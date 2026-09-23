@@ -11,7 +11,7 @@ export interface DailyTrendChartProps {
   onMetricChange: (m: DailyMetric) => void;
   /** Drives the dotted projection past today. */
   costPerDay: number;
-  /** Average effective tokens per day of history — drives the token projection. */
+  /** Average total tokens per day of history (the bars' unit) — drives the token projection. */
   tokensPerDay?: number;
   /** AI-insight props for the wrapping Section (from useAiInsightCtx().aiProps). */
   ai: SectionAiProps;

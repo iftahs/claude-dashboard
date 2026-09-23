@@ -504,6 +504,9 @@ export interface LiteLlmSpend {
   // `days` calendar days incl. today, oldest→newest, zero-filled. Per-day cost,
   // request count, successful count, and per-model spend (for the hover breakdown).
   daily: { date: string; cost: number; requests: number; successful: number; byModel: Record<string, number> }[];
+  /** True when the gateway had more spend rows than the page cap fetched — some days
+   *  (and possibly the month totals) are undercounted. */
+  truncated: boolean;
 }
 
 interface LiteLlmBase {
@@ -517,10 +520,19 @@ interface LiteLlmBase {
   monthTokens: { prompt: number; completion: number; cacheRead: number; cacheCreate: number };
   prevMonthLabel: string;
   prevMonthToDate: number;
+  /** True when the page cap stopped the fetch with more rows left: some days in the
+   *  range are incomplete, and the UI must not present them as exact. */
+  truncated: boolean;
 }
 
 const LITELLM_TTL = 5 * 60 * 1000; // 5 min — billing data moves slowly
-let cachedLiteLlmBase: { key: string; data: LiteLlmBase; fetchedAt: number } | null = null;
+/** At most this many pages of 1000 rows per fetch. The gateway pages raw spend rows
+ *  (date × key × model), so a year of a busy key can exceed it. */
+const LITELLM_MAX_PAGES = 20;
+// One entry per range ('short' | 'long'), each keyed by its date span, plus one
+// in-flight promise per range so concurrent polls share a single paged fetch.
+const cachedLiteLlmBase = new Map<'short' | 'long', { key: string; data: LiteLlmBase; fetchedAt: number }>();
+const inflightLiteLlmBase = new Map<'short' | 'long', Promise<LiteLlmBase>>();
 const MONTH_ABBR = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
 /** Local YYYY-MM-DD (matches the app's local-tz day bucketing). */
@@ -534,16 +546,32 @@ function localYmd(d: Date): string {
  *  /api/usage/litellm, and the span fetchLiteLlmBase always covers. */
 export const MAX_WINDOW_DAYS = 365;
 
+/** Days from the previous month's 1st through today, inclusive — what the short
+ *  range covers. Windows up to this length never need the year-long fetch. */
+function shortRangeDays(today = new Date()): number {
+  const prevMonthStart = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+  const todayMidnight = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  return Math.round((todayMidnight.getTime() - prevMonthStart.getTime()) / 86_400_000) + 1;
+}
+
 /**
- * One self-scoped /user/daily/activity fetch covering the longer of the last
- * MAX_WINDOW_DAYS days and previous-month-start → today (enough for month-to-date,
- * the previous-month same-period total, and any daily window). The range depends
- * only on today, never on the requested `days`, so every window shares one cache
- * entry (5 min) — a per-window range would make two dashboards on different presets
- * evict each other and re-page the gateway on every poll. Throws distinct messages
- * so the route can degrade gracefully (no permission / not a LiteLLM gateway / outage).
+ * A self-scoped /user/daily/activity fetch. 'short' covers previous-month-start →
+ * today (month-to-date, the previous-month same-period total, and any window up to
+ * ~1–2 months); 'long' covers the last MAX_WINDOW_DAYS days and is only fetched when
+ * a longer window asks for it. Each range depends only on today, never on the exact
+ * `days`, so windows share cache entries (5 min) instead of evicting each other, and
+ * concurrent callers share one in-flight fetch. Throws distinct messages so the route
+ * can degrade gracefully (no permission / not a LiteLLM gateway / outage).
  */
-async function fetchLiteLlmBase(): Promise<LiteLlmBase> {
+function fetchLiteLlmBase(range: 'short' | 'long'): Promise<LiteLlmBase> {
+  const pending = inflightLiteLlmBase.get(range);
+  if (pending) return pending;
+  const p = doFetchLiteLlmBase(range).finally(() => inflightLiteLlmBase.delete(range));
+  inflightLiteLlmBase.set(range, p);
+  return p;
+}
+
+async function doFetchLiteLlmBase(range: 'short' | 'long'): Promise<LiteLlmBase> {
   const base = litellmBaseUrl();
   const token = litellmAuthToken();
   if (!base || !token) throw new Error('LiteLLM gateway not configured');
@@ -555,18 +583,18 @@ async function fetchLiteLlmBase(): Promise<LiteLlmBase> {
   // Same day-of-month in the previous month, clamped to its last day, for a
   // fair "same point in the month" comparison.
   const prevMonthEnd = new Date(today.getFullYear(), today.getMonth() - 1, Math.min(today.getDate(), prevMonthLastDay));
-  // The window's first day is today − (MAX_WINDOW_DAYS − 1): fetchLiteLlmSpend
+  // The long window's first day is today − (MAX_WINDOW_DAYS − 1): fetchLiteLlmSpend
   // counts today as day 1.
   const windowStart = new Date(today.getFullYear(), today.getMonth(), today.getDate() - (MAX_WINDOW_DAYS - 1));
-  const startYmd = localYmd(windowStart < prevMonthStart ? windowStart : prevMonthStart);
+  const startYmd = localYmd(range === 'long' && windowStart < prevMonthStart ? windowStart : prevMonthStart);
   const endYmd = localYmd(today);
   const monthStartYmd = localYmd(monthStart);
   const prevMonthStartYmd = localYmd(prevMonthStart);
   const prevEndYmd = localYmd(prevMonthEnd);
 
   const cacheKey = `${startYmd}|${endYmd}`;
-  if (cachedLiteLlmBase && cachedLiteLlmBase.key === cacheKey && Date.now() - cachedLiteLlmBase.fetchedAt < LITELLM_TTL)
-    return cachedLiteLlmBase.data;
+  const hit = cachedLiteLlmBase.get(range);
+  if (hit && hit.key === cacheKey && Date.now() - hit.fetchedAt < LITELLM_TTL) return hit.data;
 
   // /user/daily/activity is paginated (page_size default 50). Use a large page_size
   // and follow has_more so month-to-date / daily aren't undercounted. (We don't pass
@@ -574,7 +602,8 @@ async function fetchLiteLlmBase(): Promise<LiteLlmBase> {
   // the totals we sum are tz-independent — so day bucketing stays the gateway default.)
   const headers = { Authorization: `Bearer ${token}`, Accept: 'application/json' };
   const results: any[] = [];
-  for (let page = 1; page <= 20; page++) {
+  let truncated = false;
+  for (let page = 1; page <= LITELLM_MAX_PAGES; page++) {
     const url = `${base}/user/daily/activity?start_date=${startYmd}&end_date=${endYmd}&page=${page}&page_size=1000`;
     const res = await fetch(url, { headers, signal: AbortSignal.timeout(15_000) });
     if (page === 1 && (res.status === 401 || res.status === 403))
@@ -585,6 +614,7 @@ async function fetchLiteLlmBase(): Promise<LiteLlmBase> {
     const json: any = await res.json();
     if (Array.isArray(json?.results)) results.push(...json.results);
     if (!json?.metadata?.has_more) break;
+    if (page === LITELLM_MAX_PAGES) truncated = true;
   }
 
   // YYYY-MM-DD sorts lexicographically, so date-string range checks work directly.
@@ -634,8 +664,9 @@ async function fetchLiteLlmBase(): Promise<LiteLlmBase> {
     monthTokens,
     prevMonthLabel: MONTH_ABBR[prevMonthStart.getMonth()],
     prevMonthToDate,
+    truncated,
   };
-  cachedLiteLlmBase = { key: cacheKey, data, fetchedAt: Date.now() };
+  cachedLiteLlmBase.set(range, { key: cacheKey, data, fetchedAt: Date.now() });
   return data;
 }
 
@@ -673,7 +704,7 @@ async function fetchLiteLlmAccount(): Promise<{ user: number; key: number }> {
 /** Actual billed spend: month-to-date, previous-month same-period total, and the
  *  last `days` calendar days (incl. today, zero-filled) with per-model breakdown. */
 export async function fetchLiteLlmSpend(days: number): Promise<LiteLlmSpend> {
-  const b = await fetchLiteLlmBase();
+  const b = await fetchLiteLlmBase(days > shortRangeDays() ? 'long' : 'short');
   const lifetime = await fetchLiteLlmAccount();
   const daily: LiteLlmSpend['daily'] = [];
   for (let i = days - 1; i >= 0; i--) {
@@ -692,6 +723,7 @@ export async function fetchLiteLlmSpend(days: number): Promise<LiteLlmSpend> {
     prevMonthToDate: b.prevMonthToDate,
     lifetime,
     daily,
+    truncated: b.truncated,
   };
 }
 

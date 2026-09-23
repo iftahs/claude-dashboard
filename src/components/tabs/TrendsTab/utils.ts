@@ -68,16 +68,18 @@ const AI_MAX_BUCKETS = 60;
 
 /**
  * The Trends payload for the AI explainer, small enough for long windows: past
- * AI_MAX_BUCKETS days, consecutive daily buckets merge into equal runs (a 1-year
- * window becomes ~52 weekly-ish buckets) and the per-model cost map is dropped —
- * 366 buckets with both maps overflow the 64 KB section limit.
+ * AI_MAX_BUCKETS days, consecutive daily buckets merge into runs of
+ * `daysPerBucket` days (a 1-year window becomes ~61 six-day buckets) and the
+ * per-model cost map is dropped — 366 buckets with both maps overflow the 64 KB
+ * section limit. Runs are cut from the newest end, so only the OLDEST bucket can
+ * be short; the newest one still holds only part of today.
  */
 export function aiTrendsPayload(data: WeeklyData | null): (WeeklyData & { daysPerBucket?: number }) | null {
   if (!data || data.buckets.length <= AI_MAX_BUCKETS) return data;
   const per = Math.ceil(data.buckets.length / AI_MAX_BUCKETS);
   const buckets: Bucket[] = [];
-  for (let i = 0; i < data.buckets.length; i += per) {
-    const run = data.buckets.slice(i, i + per);
+  for (let end = data.buckets.length; end > 0; end -= per) {
+    const run = data.buckets.slice(Math.max(0, end - per), end);
     const merged: Bucket = {
       start: run[0].start,
       byModel: {},
@@ -100,16 +102,16 @@ export function aiTrendsPayload(data: WeeklyData | null): (WeeklyData & { daysPe
       merged.cost += b.cost;
       for (const [m, v] of Object.entries(b.byModel)) merged.byModel[m] = (merged.byModel[m] ?? 0) + v;
     }
-    buckets.push(merged);
+    buckets.unshift(merged);
   }
   const ce = data.cacheEfficiency ?? [];
   const cePer = Math.max(1, Math.ceil(ce.length / AI_MAX_BUCKETS));
   const cacheEfficiency: NonNullable<WeeklyData['cacheEfficiency']> = [];
-  for (let i = 0; i < ce.length; i += cePer) {
-    const run = ce.slice(i, i + cePer);
+  for (let end = ce.length; end > 0; end -= cePer) {
+    const run = ce.slice(Math.max(0, end - cePer), end);
     const cacheReadTokens = run.reduce((a, r) => a + r.cacheReadTokens, 0);
     const totalTokens = run.reduce((a, r) => a + r.totalTokens, 0);
-    cacheEfficiency.push({
+    cacheEfficiency.unshift({
       date: run[0].date,
       hitRate: totalTokens > 0 ? (cacheReadTokens / totalTokens) * 100 : 0,
       cacheReadTokens,

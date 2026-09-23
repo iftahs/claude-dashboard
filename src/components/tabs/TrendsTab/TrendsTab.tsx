@@ -193,7 +193,7 @@ export function TrendsTab() {
         metric={dailyMetric}
         onMetricChange={setDailyMetric}
         costPerDay={costPerDay}
-        tokensPerDay={weeklyEffective / coverageDays}
+        tokensPerDay={(weekly.data?.totals.totalTokens ?? 0) / coverageDays}
         ai={aiProps('trends', aiTrendsPayload(weekly.data))}
       />
 

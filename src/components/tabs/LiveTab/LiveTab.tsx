@@ -65,9 +65,9 @@ function HourlyChart() {
 
 export function LiveTab({ limits }: LiveTabProps) {
   const { platform, codexAvailable } = useSource();
-  const { recent, weekly, weekDays, liveUsage, codexLive, codexProfile } = useLiveData();
+  const { recent, weekly, liveWeekly, weekDays, liveUsage, codexLive, codexProfile } = useLiveData();
   const { configData, isApi, weekStart } = useConfigMode();
-  const { costPerDay } = useCostMetrics();
+  const { costPerDay, coverageDays } = useCostMetrics();
   const { litellmActual } = useLiteLlmActual();
 
   // Live plan/limits per logged-in account (only polled while the Live tab is
@@ -91,7 +91,7 @@ export function LiveTab({ limits }: LiveTabProps) {
 
   const budgetRows = buildBudgetRows({
     limits,
-    buckets: weekly.data?.buckets,
+    buckets: liveWeekly.data?.buckets,
     costPerDay,
     weekStart,
     actual: litellmActual ?? null,
@@ -106,7 +106,7 @@ export function LiveTab({ limits }: LiveTabProps) {
       ) : (
         <PlanUsage
           block={block}
-          weekly={weekly.data}
+          weekly={liveWeekly.data}
           liveUsage={liveUsage.data}
           weekStart={weekStart}
           tier={configData.subscriptionType ?? configData.rateLimitTier ?? null}
@@ -172,6 +172,7 @@ export function LiveTab({ limits }: LiveTabProps) {
           bySource={weekly.data?.bySource ?? null}
           byModel={weekly.data?.byModel ?? []}
           weekDays={weekDays}
+          perDayDivisor={coverageDays}
           loading={weekly.loading}
         />
 
