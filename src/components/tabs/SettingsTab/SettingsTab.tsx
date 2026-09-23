@@ -28,7 +28,7 @@ export function SettingsTab() {
     ? codexStatusRows(
         codexConfig.data,
         codexLive.data,
-        sources.data?.codex?.dir ?? codexConfig.data?.dir ?? null,
+        sources.data?.codexDir ?? sources.data?.codex?.dir ?? codexConfig.data?.dir ?? null,
       )
     : null;
 

@@ -71,6 +71,10 @@ services:
       # Extra hostnames/IPs (comma-separated) the server answers to besides
       # localhost — only needed with DASHBOARD_BIND above. See .env.example.
       - ALLOWED_HOSTS=${ALLOWED_HOSTS:-}
+      # Opt-in history archive: set DASHBOARD_RETAIN_HISTORY=1 in .env to keep the
+      # usage history of transcripts Claude Code's ~30-day cleanup deletes (kept in
+      # the claude-dashboard-cache volume — deleting the volume then deletes it too).
+      - DASHBOARD_RETAIN_HISTORY=${DASHBOARD_RETAIN_HISTORY:-}
       # AI Insights (chat + per-section buttons). In Docker there's no `claude`
       # CLI, so set ANTHROPIC_API_KEY in .env for a dedicated, un-throttled
       # backend. Unset → falls back to the Claude.ai OAuth token (works, but is
