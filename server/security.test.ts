@@ -46,7 +46,7 @@ test('loopback names are always allowed; ALLOWED_HOSTS adds more', () => {
 
 test('Host check: loopback passes, a rebinding hostname is refused', () => {
   assert.equal(checkRequest(get('localhost:8787'), LOCAL), null);
-  // The Vite dev proxy forwards the browser's Host unchanged.
+  // The Vite dev proxy forwards the browser's Host unchanged (changeOrigin: false in vite.config.ts).
   assert.equal(checkRequest(get('localhost:5180'), LOCAL), null);
   assert.equal(checkRequest(get('127.0.0.1:8788'), LOCAL), null);
   assert.equal(checkRequest(get('[::1]:8787'), LOCAL), null);
@@ -88,6 +88,14 @@ test('the Host check runs before the write rules', () => {
   const r = checkRequest(post({ host: 'evil.example', origin: 'http://localhost' }), LOCAL);
   assert.equal(r?.status, 403);
   assert.match(r!.error, /Host/);
+});
+
+test('the Vite dev proxy passes the browser Host through to the backend', async () => {
+  const { default: config } = await import('../vite.config.ts');
+  const api = (config as { server?: { proxy?: Record<string, unknown> } }).server?.proxy?.['/api'];
+  // The string shorthand means changeOrigin: true — Host becomes the proxy target.
+  assert.equal(typeof api, 'object');
+  assert.equal((api as { changeOrigin?: boolean }).changeOrigin, false);
 });
 
 test('publicSettings keeps only the fields the UI renders', () => {

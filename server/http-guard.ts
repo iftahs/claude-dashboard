@@ -12,9 +12,15 @@
  *     bodies without a preflight. Requiring `application/json` forces a CORS
  *     preflight we never answer, and a present Origin must name an allowed host.
  *
- * Only the HOSTNAME is compared, never the port: the Vite dev proxy forwards the
- * browser's `Host: localhost:5180` unchanged, and the same page reaches the API
- * on 8787 (Docker) or 8788 (dev).
+ * Only the HOSTNAME is compared, never the port: the same page reaches the API
+ * on 8787 (Docker) or through the Vite dev proxy on 8788, which forwards the
+ * browser's `Host: localhost:5180` unchanged — it is configured with
+ * changeOrigin: false (vite.config.ts); Vite's string shorthand would rewrite
+ * Host to the proxy target and this check would never see the browser's name.
+ *
+ * Both checks defend BROWSERS (rebinding, forged forms). Neither is access
+ * control: any other client that can reach the port just sends `Host: localhost`.
+ * Only binding to loopback keeps the API local.
  *
  * Pure functions only — index.ts wires them into Express middleware.
  */

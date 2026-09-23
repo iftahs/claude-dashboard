@@ -40,9 +40,12 @@ export default defineConfig({
     port: 5180,
     proxy: {
       // 127.0.0.1, not localhost: the backend binds IPv4 loopback only, and Node
-      // may resolve localhost to ::1 first. The string form keeps the browser's
-      // Host header (localhost:5180), which the backend's Host check accepts.
-      '/api': `http://127.0.0.1:${SERVER_PORT}`,
+      // may resolve localhost to ::1 first. The object form with changeOrigin:
+      // false forwards the browser's Host header (localhost:5180) unchanged, so
+      // the backend's Host check sees — and enforces — the name the browser used.
+      // The string shorthand means changeOrigin: true, which rewrites Host to the
+      // target (127.0.0.1:8788) and leaves only Vite's own host check in front.
+      '/api': { target: `http://127.0.0.1:${SERVER_PORT}`, changeOrigin: false },
     },
   },
 });
