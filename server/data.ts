@@ -234,6 +234,7 @@ export async function getInsights(): Promise<{ insights: InsightsData; computedA
     insights: insights ?? {
       toolCalls: [], toolResults: new Map(), taskSpawns: [],
       sessionsMeta: new Map(), searchCorpus: new Map(),
+      limitHits: [], rateLimitSnaps: [], lineChanges: [], prLinks: [], turns: [],
     },
     computedAt,
   };

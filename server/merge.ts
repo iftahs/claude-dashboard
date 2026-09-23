@@ -19,7 +19,8 @@
 import { estimateCost } from './pricing.ts';
 import type { UsageEvent } from './scan.ts';
 import type {
-  CorpusRow, FileRows, SessionPartialRow, TaskSpawnRow, ToolCallRow, UsageRow,
+  CorpusRow, FileRows, LimitHitRow, LineChangeRow, PrLinkRow, RateLimitSnapRow, SessionPartialRow,
+  TaskSpawnRow, ToolCallRow, TurnRow, UsageRow,
 } from './scan-pass.ts';
 import type {
   InsightsData, SessionMetaRecord, TaskSpawnRecord, ToolCallRecord, ToolResultRecord,
@@ -54,7 +55,22 @@ function toEvent(r: UsageRow, sessionPathMap: Map<string, string>): UsageEvent {
     projectPath,
     gitBranch: r.gitBranch,
     source: r.source,
+    effort: r.effort ?? '',
+    reasoningTokens: r.reasoningTokens ?? null,
   };
+}
+
+/** First row per key wins (files arrive in listing order); result sorted by ts. */
+function dedupBy<T extends { ts: number }>(rows: T[], key: (r: T) => string): T[] {
+  const seen = new Set<string>();
+  const out: T[] = [];
+  for (const r of rows) {
+    const k = key(r);
+    if (!k || seen.has(k)) continue;
+    seen.add(k);
+    out.push(r);
+  }
+  return out.sort((a, b) => a.ts - b.ts);
 }
 
 /**
@@ -101,6 +117,15 @@ export function mergeRows(files: FileRows[], sessionMetas: any[]): MergeResult {
   const taskSpawnRows: TaskSpawnRow[] = [];
   const sessionPartials: SessionPartialRow[] = [];
   const corpusRows: CorpusRow[] = [];
+  const limitHitRows: LimitHitRow[] = [];
+  const rateLimitRows: RateLimitSnapRow[] = [];
+  const lineChangeRows: LineChangeRow[] = [];
+  const prLinkRows: PrLinkRow[] = [];
+  const turnRows: TurnRow[] = [];
+  // Titles carry no timestamp: a later record (file order, then line order) wins,
+  // and a user's custom rename beats Claude's generated ai-title.
+  const customTitle = new Map<string, string>();
+  const aiTitle = new Map<string, string>();
   const toolResults = new Map<string, ToolResultRecord>();
   const resultBySession = new Map<string, string | null>(); // `${toolId}|${sessionId}` -> agentId
   const nonErrorResultIds = new Set<string>();
@@ -110,7 +135,16 @@ export function mergeRows(files: FileRows[], sessionMetas: any[]): MergeResult {
       allUsage.push(u);
       if (!f.insightsSkipped) insightUsage.push(u);
     }
+    // Limit hits and rate-limit snapshots are cheap and matter for every file.
+    if (f.limitHits) limitHitRows.push(...f.limitHits);
+    if (f.rateLimitSnaps) rateLimitRows.push(...f.rateLimitSnaps);
     if (f.insightsSkipped) continue;
+    if (f.lineChanges) lineChangeRows.push(...f.lineChanges);
+    if (f.prLinks) prLinkRows.push(...f.prLinks);
+    if (f.turns) turnRows.push(...f.turns);
+    for (const t of [...(f.titles ?? [])].sort((a, b) => a.seq - b.seq)) {
+      (t.kind === 'custom' ? customTitle : aiTitle).set(t.sessionId, t.title);
+    }
     toolCallRows.push(...f.toolCalls);
     taskSpawnRows.push(...f.taskSpawns);
     sessionPartials.push(...f.sessions);
@@ -184,6 +218,7 @@ export function mergeRows(files: FileRows[], sessionMetas: any[]): MergeResult {
         firstPrompt: '', gitBranch: p.gitBranch, projectPath: p.projectPath,
         models: {}, effectiveTokens: 0, cost: 0, file: p.file,
         agentId: p.agentId ?? undefined, source: p.source,
+        linesAdded: 0, linesRemoved: 0, activeMs: 0, prUrls: [],
       };
       sessionsMeta.set(p.sessionId, sm);
     } else if (!p.fileIsSidechain && sm.isSidechain) {
@@ -194,6 +229,10 @@ export function mergeRows(files: FileRows[], sessionMetas: any[]): MergeResult {
     if (p.lastTs > sm.lastTs) sm.lastTs = p.lastTs;
     if (p.gitBranch && !sm.gitBranch) sm.gitBranch = p.gitBranch;
     if (p.firstPrompt && !sm.firstPrompt) sm.firstPrompt = p.firstPrompt;
+    if (p.cwd && !sm.cwd) sm.cwd = p.cwd;
+    if (p.client && !sm.client) sm.client = p.client;
+    if (p.clientVersion && !sm.clientVersion) sm.clientVersion = p.clientVersion;
+    if (p.repoUrl && !sm.repoUrl) sm.repoUrl = p.repoUrl;
     sm.turns += p.turns;
     sm.compactions += p.compactions;
     sm.errorCount += p.errorCount;
@@ -264,6 +303,31 @@ export function mergeRows(files: FileRows[], sessionMetas: any[]): MergeResult {
     sm.models[r.model] = (sm.models[r.model] ?? 0) + eff;
   }
 
+  // ---- history rows: dedup across files, then roll up per session ----
+  const limitHits = dedupBy(limitHitRows, (r) => r.key);
+  const rateLimitSnaps = dedupBy(rateLimitRows, (r) => r.key);
+  const lineChanges = dedupBy(lineChangeRows, (r) => r.key);
+  const prLinks = dedupBy(prLinkRows, (r) => r.url);
+  const turns = dedupBy(turnRows, (r) => r.key);
+  for (const r of lineChanges) {
+    const sm = sessionsMeta.get(r.sessionId);
+    if (!sm) continue;
+    sm.linesAdded += r.added;
+    sm.linesRemoved += r.removed;
+  }
+  for (const r of turns) {
+    const sm = sessionsMeta.get(r.sessionId);
+    if (sm) sm.activeMs += r.durationMs;
+  }
+  for (const r of prLinks) {
+    const sm = sessionsMeta.get(r.sessionId);
+    if (sm) sm.prUrls.push(r.url);
+  }
+  for (const [sessionId, sm] of sessionsMeta) {
+    const title = customTitle.get(sessionId) ?? aiTitle.get(sessionId);
+    if (title) sm.title = title;
+  }
+
   // ---- search corpus ----
   const searchCorpus = new Map<string, string>();
   for (const c of corpusRows) {
@@ -277,6 +341,9 @@ export function mergeRows(files: FileRows[], sessionMetas: any[]): MergeResult {
 
   return {
     events,
-    insights: { toolCalls, toolResults, taskSpawns, sessionsMeta, searchCorpus },
+    insights: {
+      toolCalls, toolResults, taskSpawns, sessionsMeta, searchCorpus,
+      limitHits, rateLimitSnaps, lineChanges, prLinks, turns,
+    },
   };
 }

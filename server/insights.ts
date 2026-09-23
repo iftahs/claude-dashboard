@@ -30,6 +30,12 @@ export function scopeInsights(d: InsightsData, source: SourceFilter): InsightsDa
     taskSpawns: d.taskSpawns.filter((t) => sourceMatches(t.source, source)),
     sessionsMeta,
     searchCorpus: d.searchCorpus,
+    limitHits: d.limitHits.filter((r) => sourceMatches(r.source, source)),
+    // Rate-limit snapshots are Codex account state, not per-source usage.
+    rateLimitSnaps: source === 'codex' ? d.rateLimitSnaps : [],
+    lineChanges: d.lineChanges.filter((r) => sourceMatches(r.source, source)),
+    prLinks: d.prLinks.filter((r) => sourceMatches(r.source, source)),
+    turns: d.turns.filter((r) => sourceMatches(r.source, source)),
   };
 }
 

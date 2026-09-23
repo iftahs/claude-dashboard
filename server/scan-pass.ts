@@ -70,6 +70,10 @@ export interface UsageRow {
   projectPathRaw: string;
   gitBranch: string;
   source: UsageSource;
+  /** Reasoning effort this request ran at ('low'…'max'); '' or absent when unknown. */
+  effort?: string;
+  /** Thinking/reasoning share of outputTokens, when the log reports it; null/absent = unknown. */
+  reasoningTokens?: number | null;
 }
 
 export interface ToolCallRow {
@@ -129,6 +133,84 @@ export interface SessionPartialRow {
   gitPushIds: string[];
   /** tool_use ids whose result came back non-error — resolves the two lists above. */
   nonErrorResultIds: string[];
+  /** Real working directory from the transcript (Claude Code only; '' for Cowork). */
+  cwd?: string;
+  /** Client that wrote the file: Claude `entrypoint` (cli, claude-desktop, sdk-cli…) or Codex `originator`. */
+  client?: string;
+  clientVersion?: string;
+  /** Git remote of the working directory, when the log records it (Codex session_meta.git). */
+  repoUrl?: string;
+}
+
+// Per-item rows added for history features. Each carries its own identity so
+// merge.ts can dedup across files (a resumed transcript repeats earlier lines);
+// never pre-sum these per file.
+
+/** A request the provider refused for a usage limit. */
+export interface LimitHitRow {
+  key: string; // message uuid (Claude) / turn id (Codex)
+  ts: number;
+  sessionId: string;
+  source: UsageSource;
+  /** Which limit: the rolling session/5-hour window, the weekly one, a per-model cap, or unknown. */
+  kind: 'session' | 'weekly' | 'model' | 'unknown';
+  model: string;
+  /** When the provider said the limit lifts (epoch ms), if it said. */
+  resetsAt: number | null;
+}
+
+/** One Codex rate-limit snapshot (event_msg token_count.rate_limits). */
+export interface RateLimitSnapRow {
+  key: string; // `${ts}|${limitId}`
+  ts: number;
+  limitId: string;
+  primaryPct: number | null;
+  primaryWindowMin: number | null;
+  primaryResetsAt: number | null;
+  secondaryPct: number | null;
+  secondaryWindowMin: number | null;
+  secondaryResetsAt: number | null;
+  planType: string | null;
+}
+
+/** Lines added/removed by one edit — counts only, never diff text. */
+export interface LineChangeRow {
+  key: string; // tool_use id (Claude) / item id (Codex)
+  ts: number;
+  sessionId: string;
+  source: UsageSource;
+  filePath: string | null;
+  added: number;
+  removed: number;
+}
+
+/** A pull request a session opened or linked. */
+export interface PrLinkRow {
+  url: string; // dedup key
+  ts: number;
+  sessionId: string;
+  source: UsageSource;
+  number: number | null;
+  repo: string | null;
+}
+
+/** One user turn's latency. */
+export interface TurnRow {
+  key: string; // Codex turn_id / Claude prompt uuid
+  ts: number;
+  sessionId: string;
+  source: UsageSource;
+  durationMs: number;
+  /** Time to first token, when recorded. */
+  ttftMs: number | null;
+}
+
+/** A session title record, in file order (`seq`); these records carry no timestamp. */
+export interface TitleRow {
+  sessionId: string;
+  title: string;
+  kind: 'custom' | 'ai';
+  seq: number;
 }
 
 export interface CorpusRow {
@@ -149,6 +231,13 @@ export interface FileRows {
   taskSpawns: TaskSpawnRow[];
   sessions: SessionPartialRow[];
   corpus: CorpusRow[];
+  // Optional so rows cached before they existed still load; merge.ts treats absent as [].
+  limitHits?: LimitHitRow[];
+  rateLimitSnaps?: RateLimitSnapRow[];
+  lineChanges?: LineChangeRow[];
+  prLinks?: PrLinkRow[];
+  turns?: TurnRow[];
+  titles?: TitleRow[];
 }
 
 export interface ScannedFile {

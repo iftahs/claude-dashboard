@@ -20,6 +20,7 @@
  * These are corrections, not regressions.
  */
 import type { UsageSource } from './scan.ts';
+import type { LimitHitRow, LineChangeRow, PrLinkRow, RateLimitSnapRow, TurnRow } from './scan-pass.ts';
 
 export interface ToolCallRecord {
   ts: number;
@@ -78,6 +79,17 @@ export interface SessionMetaRecord {
   cost: number;
   file: string;
   agentId?: string;
+  cwd?: string;
+  client?: string;
+  clientVersion?: string;
+  repoUrl?: string;
+  /** Human title: custom rename, else Claude's ai-title (Codex titles come from session_index.jsonl at the endpoint). */
+  title?: string;
+  linesAdded: number;
+  linesRemoved: number;
+  /** Sum of recorded turn durations — active time, unlike lastTs − firstTs. */
+  activeMs: number;
+  prUrls: string[];
   source: UsageSource; // 'code' = Claude Code CLI, 'cowork' = desktop local-agent mode, 'codex' = OpenAI Codex rollout
 }
 
@@ -87,6 +99,12 @@ export interface InsightsData {
   taskSpawns: TaskSpawnRecord[];
   sessionsMeta: Map<string, SessionMetaRecord>;
   searchCorpus: Map<string, string>;
+  /** Deduped, ts-sorted history rows (see scan-pass.ts row types). */
+  limitHits: LimitHitRow[];
+  rateLimitSnaps: RateLimitSnapRow[];
+  lineChanges: LineChangeRow[];
+  prLinks: PrLinkRow[];
+  turns: TurnRow[];
 }
 
 export { getInsights, dataFingerprint as insightsFingerprint } from './data.ts';

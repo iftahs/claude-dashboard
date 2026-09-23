@@ -30,7 +30,9 @@ export interface UsageEvent {
   attributionPlugin: string; // plugin this request ran under
   projectPath: string; // decoded path of the project directory
   gitBranch: string; // git branch at the time of the message ('' if unknown)
-  source: UsageSource; // 'code' = Claude Code CLI, 'cowork' = desktop local-agent mode, 'codex' = OpenAI Codex (ChatGPT desktop)
+  source: UsageSource;
+  effort?: string; // reasoning effort ('' / absent when the log doesn't say)
+  reasoningTokens?: number | null; // thinking/reasoning part of outputTokens; null = not reported // 'code' = Claude Code CLI, 'cowork' = desktop local-agent mode, 'codex' = OpenAI Codex (ChatGPT desktop)
 }
 
 export function claudeDir(): string {
