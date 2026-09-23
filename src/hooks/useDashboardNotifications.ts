@@ -1,18 +1,14 @@
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useRef } from 'react';
 import { track, setUserContext } from '../lib/analytics';
-import { buildBudgetRows } from '../lib/budget';
 import { useNotifications } from './useNotifications';
 import { useUpdateToast } from './useUpdateToast';
 import { useConfigMode } from './useConfigMode';
 import { useSource } from './useSource';
 import { useLiveData } from './useLiveData';
-import { useLiteLlmActual } from './useLiteLlmActual';
-import { useCostMetrics } from './useCostMetrics';
 import { useAgentTraffic } from './useAgentTraffic';
 import { useAgentAlerts } from './useAgentAlerts';
 import { useBudgetAlerts } from './useBudgetAlerts';
 import { useLimitAlerts } from './useLimitAlerts';
-import type { Limits } from './useLimits';
 import { isTokenExpired } from '@/components/design-system/organisms/CodexPlanPanel/utils';
 
 /**
@@ -22,12 +18,10 @@ import { isTokenExpired } from '@/components/design-system/organisms/CodexPlanPa
  * scoped to the platform it is about. Kept out of the render tree so App stays
  * a thin shell.
  */
-export function useDashboardNotifications(activeTab: string, limits: Limits) {
-  const { configData, detectedMode, effectiveMode, isApi, settings, weekStart } = useConfigMode();
-  const { platform, showClaude, showCodex, sourcesLoaded } = useSource();
-  const { liveUsage, version, liveWeekly, codexLive } = useLiveData();
-  const { litellmActual } = useLiteLlmActual();
-  const { costPerDay } = useCostMetrics();
+export function useDashboardNotifications(activeTab: string) {
+  const { configData, detectedMode, effectiveMode, isApi, settings } = useConfigMode();
+  const { showClaude, showCodex, sourcesLoaded } = useSource();
+  const { liveUsage, version, codexLive } = useLiveData();
   const { notify, dismiss } = useNotifications();
   const { waiting } = useAgentTraffic();
   useUpdateToast(version.data);
@@ -37,23 +31,9 @@ export function useDashboardNotifications(activeTab: string, limits: Limits) {
   useLimitAlerts();
 
   // Soft (non-blocking) budget alerts (LiteLLM-inspired) — fire app-wide, not
-  // just on the Live tab, the first time spend crosses a cap threshold. The
-  // gateway's real bill is Anthropic spend, so it replaces the estimate only when
-  // the rows cover Claude alone (under Both it would drop the Codex share).
-  const budgetActual = platform === 'claude' ? litellmActual ?? null : null;
-  const budgetRows = useMemo(
-    () =>
-      buildBudgetRows({
-        limits,
-        buckets: liveWeekly.data?.buckets,
-        costPerDay,
-        weekStart,
-        actual: budgetActual,
-        now: Date.now(),
-      }),
-    [limits, liveWeekly.data?.buckets, costPerDay, weekStart, budgetActual],
-  );
-  useBudgetAlerts(budgetRows, settings.budgetAlert);
+  // just on the Live tab, the first time spend crosses a cap threshold. Each
+  // platform is checked against its own caps, whatever the header shows.
+  useBudgetAlerts(settings.budgetAlert);
 
   // ── Product analytics (anonymous, path-free events only — see lib/analytics) ──
   useEffect(() => {

@@ -1,8 +1,21 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import type { Settings } from './useSettings';
-import type { BudgetPeriod } from '@/lib/budget';
+import { usePolling } from './usePolling';
+import { useSource } from './useSource';
+import { useLiveData } from './useLiveData';
+import { useConfigMode } from './useConfigMode';
+import { useCostMetrics } from './useCostMetrics';
+import { useLiteLlmActual } from './useLiteLlmActual';
+import { hasCaps, usePlatformLimits, type CapPlatform } from './useLimits';
+import { buildBudgetRows, type BudgetPeriod } from '@/lib/budget';
+import { coverageDays } from '@/lib/coverage';
+import type { WeeklyData } from '@/types';
 
 const THRESHOLDS = [70, 90, 100] as const;
+
+/** The 7-day window the budget rows need; alerts are not a 5 s concern, so a separate poll runs at 30 s. */
+const WEEKLY_7D = '/api/usage/weekly?days=7';
+const SCOPED_POLL_MS = 30_000;
 
 /** Short WebAudio chime — no asset needed. Best-effort; silent on failure.
  *  (Mirrors useAgentAlerts' chime; kept local so each alert hook is self-contained.) */
@@ -36,15 +49,75 @@ const TITLES: Record<BudgetPeriod['key'], string> = {
   month: 'Monthly',
 };
 
+const PLATFORM_NAME: Record<CapPlatform, string> = { claude: 'Claude', codex: 'Codex' };
+
+/** One platform's budget rows, tagged for the notification copy and dedupe. */
+interface PlatformRows {
+  platform: CapPlatform;
+  rows: BudgetPeriod[];
+}
+
 /**
- * Soft (non-blocking) budget alerts — LiteLLM-inspired. Fires a browser
- * notification (and optional chime) the first time spend crosses 70 / 90 / 100%
- * of a cap, deduped per period per calendar window: each threshold fires once,
- * and tracking resets when the period rolls over (a new resetsAt). 'off' is a
- * no-op. Same permission-request pattern as useLimitAlerts.
+ * Soft (non-blocking) budget alerts — LiteLLM-inspired, evaluated PER PLATFORM:
+ * Claude's spend against Claude's caps and Codex's against Codex's, whatever the
+ * header switcher shows (switching the view never fires or hides an alert).
+ *
+ * Each platform's 7-day spend comes from `liveWeekly` when that poll is already
+ * scoped to the platform (a Claude-only install always is), else from its own
+ * explicit `?source=claude` / `?source=codex` poll — which only runs while that
+ * platform has a cap and alerts are on. Fires a browser notification (and
+ * optional chime) the first time spend crosses 70 / 90 / 100% of a cap, once per
+ * threshold per calendar window; tracking resets when the period rolls over (a
+ * new resetsAt). 'off' is a no-op. Same permission-request pattern as useLimitAlerts.
  */
-export function useBudgetAlerts(rows: BudgetPeriod[], mode: Settings['budgetAlert']) {
-  // key → { window: resetsAt of the window we last alerted in, level: highest threshold fired }
+export function useBudgetAlerts(mode: Settings['budgetAlert']) {
+  const [caps] = usePlatformLimits();
+  const { effectiveSource, codexAvailable } = useSource();
+  const { liveWeekly } = useLiveData();
+  const { weekStart } = useConfigMode();
+  const { costPerDay } = useCostMetrics();
+  const { litellmActual } = useLiteLlmActual();
+
+  const on = mode !== 'off';
+  const claudeCapped = on && hasCaps(caps.claude);
+  const codexCapped = on && codexAvailable && hasCaps(caps.codex);
+  // liveWeekly (and the Trends-window `weekly` behind costPerDay) already cover
+  // exactly this platform: reuse them instead of polling the same numbers twice.
+  const claudeInView = effectiveSource === 'claude' || (!codexAvailable && effectiveSource === null);
+  const codexInView = effectiveSource === 'codex';
+
+  const claudePoll = usePolling<WeeklyData>(claudeCapped && !claudeInView ? `${WEEKLY_7D}&source=claude` : '', SCOPED_POLL_MS);
+  const codexPoll = usePolling<WeeklyData>(codexCapped && !codexInView ? `${WEEKLY_7D}&source=codex` : '', SCOPED_POLL_MS);
+
+  const perPlatform = useMemo<PlatformRows[]>(() => {
+    const now = Date.now();
+    const out: PlatformRows[] = [];
+    const rowsFor = (platform: CapPlatform, weekly: WeeklyData | null, inView: boolean) => {
+      const limits = platform === 'claude' ? caps.claude : caps.codex;
+      if (!limits || !weekly) return;
+      out.push({
+        platform,
+        rows: buildBudgetRows({
+          limits,
+          buckets: weekly.buckets,
+          // In view: the Trends-window average, exactly as before; otherwise the 7-day one.
+          costPerDay: inView ? costPerDay : weekly.totals.cost / coverageDays(weekly, 7, now),
+          weekStart,
+          // The LiteLLM gateway bills Anthropic spend — it can only stand in for Claude's rows.
+          actual: platform === 'claude' ? litellmActual ?? null : null,
+          now,
+        }),
+      });
+    };
+    if (claudeCapped) rowsFor('claude', claudeInView ? liveWeekly.data : claudePoll.data, claudeInView);
+    if (codexCapped) rowsFor('codex', codexInView ? liveWeekly.data : codexPoll.data, codexInView);
+    return out;
+  }, [
+    caps, claudeCapped, codexCapped, claudeInView, codexInView, liveWeekly.data, claudePoll.data, codexPoll.data,
+    costPerDay, weekStart, litellmActual,
+  ]);
+
+  // `${platform}:${period}` → { window: resetsAt of the window we last alerted in, level: highest threshold fired }
   const fired = useRef<Record<string, { window: number; level: number }>>({});
 
   useEffect(() => {
@@ -57,35 +130,40 @@ export function useBudgetAlerts(rows: BudgetPeriod[], mode: Settings['budgetAler
     if (mode === 'off') return;
     if (!('Notification' in window) || Notification.permission !== 'granted') return;
 
-    for (const r of rows) {
-      if (r.pct == null) continue; // no cap configured
+    for (const { platform, rows } of perPlatform) {
+      // Claude-only installs keep the original wording; with Codex the platform is named.
+      const who = codexAvailable ? `${PLATFORM_NAME[platform]} ` : '';
+      for (const r of rows) {
+        if (r.pct == null) continue; // no cap configured
 
-      const prev = fired.current[r.key];
-      // Reset the high-water mark when this period rolls into a new window.
-      const baseLevel = prev && prev.window === r.resetsAt ? prev.level : 0;
-      let level = baseLevel;
+        const id = `${platform}:${r.key}`;
+        const prev = fired.current[id];
+        // Reset the high-water mark when this period rolls into a new window.
+        let level = prev && prev.window === r.resetsAt ? prev.level : 0;
 
-      for (const t of THRESHOLDS) {
-        if (r.pct >= t && level < t) {
-          level = t;
-          new Notification(
-            t === 100 ? `${TITLES[r.key]} budget reached` : `${TITLES[r.key]} budget at ${t}%`,
-            {
-              body:
-                t === 100
-                  ? `You've hit your ${r.key} spend cap of $${r.cap}.`
-                  : `You've used ${Math.round(r.pct)}% of your ${r.key} spend cap.`,
-              icon: '/favicon.ico',
-              tag: `claude-budget-${r.key}`,
-            },
-          );
-          if (mode === 'sound') playChime();
+        for (const t of THRESHOLDS) {
+          if (r.pct >= t && level < t) {
+            level = t;
+            const title = `${TITLES[r.key]} budget`;
+            new Notification(
+              t === 100 ? `${who}${who ? title.toLowerCase() : title} reached` : `${who}${who ? title.toLowerCase() : title} at ${t}%`,
+              {
+                body:
+                  t === 100
+                    ? `You've hit your ${who}${r.key} spend cap of $${r.cap}.`
+                    : `You've used ${Math.round(r.pct)}% of your ${who}${r.key} spend cap.`,
+                icon: '/favicon.ico',
+                tag: `${platform}-budget-${r.key}`,
+              },
+            );
+            if (mode === 'sound') playChime();
+          }
+        }
+
+        if (!prev || prev.window !== r.resetsAt || level !== prev.level) {
+          fired.current[id] = { window: r.resetsAt, level };
         }
       }
-
-      if (!prev || prev.window !== r.resetsAt || level !== prev.level) {
-        fired.current[r.key] = { window: r.resetsAt, level };
-      }
     }
-  }, [rows, mode]);
+  }, [perPlatform, mode, codexAvailable]);
 }

@@ -26,7 +26,8 @@ export interface SourceSplit {
 export interface SourcesInfo {
   code: { events: number; lastTs: number };
   cowork: { available: boolean; events: number; lastTs: number };
-  codex: { available: boolean; events: number; lastTs: number };
+  /** `dir` (the Codex data dir) is optional: older backends do not send it. */
+  codex: { available: boolean; events: number; lastTs: number; dir?: string };
   /** Claude Code's data folder (~/.claude, or /data/.claude in Docker). */
   claudeDir?: string;
   /** Codex's home (~/.codex, or /data/.codex in Docker). */
@@ -900,11 +901,16 @@ export interface TaskItem {
   blocked: boolean;
 }
 
+/** A platform whose home folder the Workspace tab reads (~/.claude or ~/.codex). */
+export type WorkspacePlatform = 'claude' | 'codex';
+
 export interface PlanItem {
   name: string;
   title: string;
   sizeBytes: number;
   ageDays: number;
+  /** Set only on a merged `?source=all` list, where both platforms' plans share one list. */
+  platform?: WorkspacePlatform;
 }
 
 export interface WorkspaceTasksData {
@@ -913,13 +919,61 @@ export interface WorkspaceTasksData {
 }
 
 export interface InventoryData {
-  plugins: { name: string; marketplace: string; version: string; installedAt?: string }[];
+  plugins: {
+    name: string;
+    marketplace: string;
+    version: string;
+    installedAt?: string;
+    /** Codex only: the `[plugins.*] enabled` flag. */
+    enabled?: boolean;
+    platform?: WorkspacePlatform;
+  }[];
   marketplaces: string[];
   enabledPlugins: string[];
-  mcpServers: { name: string; scope: 'global' | 'project' }[];
+  /** `command` is the launch program's basename (Codex config.toml only). */
+  mcpServers: { name: string; scope: 'global' | 'project'; command?: string; platform?: WorkspacePlatform }[];
   hooks: string[];
   model?: string;
   effortLevel?: string;
+  /** User skills (<home>/skills/<name>/SKILL.md); `system` marks Codex's bundled ones. */
+  skills?: { name: string; system?: boolean; platform?: WorkspacePlatform }[];
+  /** Codex scheduled automations — name, human schedule, status. */
+  automations?: { name: string; schedule: string; status: string; platform?: WorkspacePlatform }[];
+}
+
+/** GET /api/codex/config — allowlisted ~/.codex/config.toml keys + login mode + data dir. */
+export interface CodexConfigData {
+  /** config.toml exists and was readable. */
+  available: boolean;
+  model: string | null;
+  reasoningEffort: string | null;
+  approvalPolicy: string | null;
+  sandboxMode: string | null;
+  personality: string | null;
+  serviceTier: string | null;
+  /** A turn-complete notify program is configured. */
+  notify: boolean;
+  plugins: { name: string; marketplace: string; enabled: boolean }[];
+  marketplaces: string[];
+  mcpServers: { name: string; command: string | null }[];
+  /** Trusted-project counts only (no paths). */
+  projects: { trusted: number; untrusted: number; total: number };
+  /** How Codex is signed in: a ChatGPT plan token, an OpenAI API key, or neither. */
+  authMode: 'chatgpt' | 'apikey' | null;
+  /** The Codex data dir the dashboard reads (e.g. ~/.codex, or /data/.codex in Docker). */
+  dir: string;
+}
+
+/** GET /api/archive — the opt-in history archive (DASHBOARD_RETAIN_HISTORY=1). */
+export interface ArchiveSummary {
+  /** Retention is switched on for this server (the env opt-in). */
+  enabled: boolean;
+  /** Archived transcript files (their slim rows, kept after Claude Code deleted them). */
+  files: number;
+  /** Stored size of the archived rows, in bytes. */
+  bytes: number;
+  /** Oldest usage/session timestamp the archive holds (epoch ms); null when empty. */
+  oldestTs: number | null;
 }
 
 export interface SessionTranscriptTurn {

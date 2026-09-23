@@ -1,17 +1,8 @@
+import { PLATFORM_NOUN } from '@/lib/platform';
 import type { TasksPanelProps } from './types';
+import { statusClass } from './utils';
 
-const STATUS_COLOR: Record<string, string> = {
-  completed: 'bg-emerald-500/10 text-emerald-400',
-  in_progress: 'bg-clay-500/15 text-clay-300',
-  pending: 'bg-zinc-700/40 text-zinc-400',
-  blocked: 'bg-red-500/10 text-red-400',
-};
-
-function statusClass(s: string): string {
-  return STATUS_COLOR[s] ?? 'bg-zinc-700/40 text-zinc-400';
-}
-
-export function TasksPanel({ data }: TasksPanelProps) {
+export function TasksPanel({ data, emptyTasks = 'No tasks tracked.' }: TasksPanelProps) {
   if (!data) return <div className="text-sm text-zinc-500">Loading…</div>;
   const { tasks, plans } = data;
   const hasTasks = tasks.total > 0;
@@ -49,7 +40,7 @@ export function TasksPanel({ data }: TasksPanelProps) {
             </div>
           </>
         ) : (
-          <p className="text-sm text-zinc-600">No tasks tracked.</p>
+          <p className="text-sm text-zinc-600">{emptyTasks}</p>
         )}
       </div>
 
@@ -62,7 +53,12 @@ export function TasksPanel({ data }: TasksPanelProps) {
         {plans.items.length > 0 ? (
           <div className="space-y-1.5">
             {plans.items.slice(0, 14).map((p) => (
-              <div key={p.name} className="flex items-center gap-2 rounded-lg bg-ink-800/50 px-2.5 py-1.5 text-xs ring-1 ring-white/10">
+              <div key={`${p.platform ?? ''}:${p.name}`} className="flex items-center gap-2 rounded-lg bg-ink-800/50 px-2.5 py-1.5 text-xs ring-1 ring-white/10">
+                {p.platform && (
+                  <span className="flex-none rounded-full bg-zinc-700/40 px-1.5 py-0.5 text-[10px] text-zinc-400">
+                    {PLATFORM_NOUN[p.platform]}
+                  </span>
+                )}
                 <span className="min-w-0 flex-1 truncate text-zinc-300" title={p.title}>{p.title}</span>
                 <span className="flex-none tabular-nums text-zinc-600">{(p.sizeBytes / 1024).toFixed(0)}kb</span>
                 <span className="flex-none tabular-nums text-zinc-600">{p.ageDays === 0 ? 'today' : `${p.ageDays}d`}</span>

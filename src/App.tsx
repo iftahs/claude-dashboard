@@ -109,9 +109,9 @@ export default function App() {
 
   const { recent, weekly, version, liveUsage, codexLive } = useLiveData();
   const { isApi } = useConfigMode();
-  const [limits, setLimits] = useLimits();
+  const limits = useLimits();
   const sidebarTabs = useSidebarTabs(visibleTabs);
-  useDashboardNotifications(activeTab, limits);
+  useDashboardNotifications(activeTab);
   useDocumentTitle();
 
   const error = recent.error || weekly.error;
@@ -168,7 +168,7 @@ export default function App() {
 
           <Suspense fallback={<TabFallback />}>
             {activeTab === 'settings' ? (
-              <SettingsTab limits={limits} onChangeLimits={setLimits} />
+              <SettingsTab />
             ) : sourcesError ? (
               // The server never answered: say so, rather than claiming there is no usage.
               <div className="card mt-6 p-12 text-center">

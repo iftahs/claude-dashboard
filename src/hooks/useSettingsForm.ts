@@ -1,25 +1,65 @@
 import { useState } from 'react';
 import { parseDollar, fmt } from '@/components/design-system/molecules/LimitsPanel/utils';
 import { PROVIDER_LABELS, PROVIDER_MODELS } from './useAiConfig';
-import type { Limits } from './useLimits';
+import { NO_LIMITS, type CapPlatform, type Limits, type PlatformLimits } from './useLimits';
 import type { AiConfig, AiProvider } from '../types';
 
 interface Params {
-  limits: Limits;
-  onChangeLimits: (l: Limits) => void;
+  limits: PlatformLimits;
+  onChangeLimits: (platform: CapPlatform, l: Limits | null) => void;
   aiConfig: AiConfig;
   onChangeAiConfig: (c: AiConfig) => void;
 }
 
+/** Draft inputs + save/clear for one platform's Daily / Weekly / Monthly caps. */
+export interface CapDraft {
+  dailyVal: string;
+  setDailyVal: (v: string) => void;
+  weeklyVal: string;
+  setWeeklyVal: (v: string) => void;
+  monthlyVal: string;
+  setMonthlyVal: (v: string) => void;
+  save: () => void;
+  clear: () => void;
+}
+
+function useCapDraft(limits: Limits | null, onSave: (l: Limits | null) => void): CapDraft {
+  const l = limits ?? NO_LIMITS;
+  const [dailyVal, setDailyVal] = useState(fmt(l.dailyLimit));
+  const [weeklyVal, setWeeklyVal] = useState(fmt(l.weeklyLimit));
+  const [monthlyVal, setMonthlyVal] = useState(fmt(l.monthlyLimit));
+  return {
+    dailyVal,
+    setDailyVal,
+    weeklyVal,
+    setWeeklyVal,
+    monthlyVal,
+    setMonthlyVal,
+    save: () =>
+      onSave({
+        dailyLimit: parseDollar(dailyVal),
+        weeklyLimit: parseDollar(weeklyVal),
+        monthlyLimit: parseDollar(monthlyVal),
+      }),
+    clear: () => {
+      onSave(null);
+      setDailyVal('');
+      setWeeklyVal('');
+      setMonthlyVal('');
+    },
+  };
+}
+
 /**
- * Draft state + save/clear handlers for the Settings panel's spending-limit and
- * AI-key forms. Keeps the parsing/persistence logic out of the presentational
- * SettingsView (which just renders inputs bound to this).
+ * Draft state + save/clear handlers for the Settings panel's per-platform
+ * spending-limit forms and the AI-key form. Keeps the parsing/persistence logic
+ * out of the presentational SettingsView (which just renders inputs bound to this).
  */
 export function useSettingsForm({ limits, onChangeLimits, aiConfig, onChangeAiConfig }: Params) {
-  const [dailyVal, setDailyVal] = useState(fmt(limits.dailyLimit));
-  const [weeklyVal, setWeeklyVal] = useState(fmt(limits.weeklyLimit));
-  const [monthlyVal, setMonthlyVal] = useState(fmt(limits.monthlyLimit));
+  const caps: Record<CapPlatform, CapDraft> = {
+    claude: useCapDraft(limits.claude, (l) => onChangeLimits('claude', l)),
+    codex: useCapDraft(limits.codex, (l) => onChangeLimits('codex', l)),
+  };
   const [aiKey, setAiKey] = useState(aiConfig.apiKey);
   const [showKey, setShowKey] = useState(false);
 
@@ -39,27 +79,9 @@ export function useSettingsForm({ limits, onChangeLimits, aiConfig, onChangeAiCo
     setAiKey('');
     onChangeAiConfig({ ...aiConfig, apiKey: '' });
   }
-  function saveLimits() {
-    onChangeLimits({
-      dailyLimit: parseDollar(dailyVal),
-      weeklyLimit: parseDollar(weeklyVal),
-      monthlyLimit: parseDollar(monthlyVal),
-    });
-  }
-  function clearLimits() {
-    onChangeLimits({ dailyLimit: null, weeklyLimit: null, monthlyLimit: null });
-    setDailyVal('');
-    setWeeklyVal('');
-    setMonthlyVal('');
-  }
 
   return {
-    dailyVal,
-    setDailyVal,
-    weeklyVal,
-    setWeeklyVal,
-    monthlyVal,
-    setMonthlyVal,
+    caps,
     aiKey,
     setAiKey,
     showKey,
@@ -68,7 +90,5 @@ export function useSettingsForm({ limits, onChangeLimits, aiConfig, onChangeAiCo
     changeProvider,
     saveAiKey,
     clearAiKey,
-    saveLimits,
-    clearLimits,
   };
 }

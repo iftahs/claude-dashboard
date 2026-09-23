@@ -39,8 +39,16 @@ services:
       # Optional: `npm run docker:up` writes CODEX_DIR_HOST=~/.codex into .env when
       # that folder exists; blank it to opt out. Unset, it falls back to .claude,
       # which holds no rollout-*.jsonl files → zero codex events, container still
-      # boots. Only sessions/**/rollout-*.jsonl, session_index.jsonl and auth.json
-      # (for the live limits call) are ever read.
+      # boots. What is ever read:
+      #   - sessions/**/rollout-*.jsonl and session_index.jsonl (usage, threads);
+      #   - auth.json (only for the live limits call — the token never leaves the server);
+      #   - config.toml, allowlisted keys only (model, reasoning effort, approval /
+      #     sandbox / personality / service tier, plugin enabled flags, marketplace
+      #     and MCP server NAMES plus the MCP command's program name, trusted-project
+      #     COUNTS) — never MCP env vars, args, headers or tokens, nor project paths;
+      #   - skills/*/SKILL.md and skills/.system/*/SKILL.md (folder names only);
+      #   - plans/**/*.md (first heading, size, age);
+      #   - automations/*/automation.toml (name, status, schedule — never the prompt).
       - "${CODEX_DIR_HOST:-${CLAUDE_DIR_HOST}}:/data/.codex:ro"
       # ~/.claude.json, read-only — the Workspace tab lists the MCP servers
       # configured in it. Optional: CLAUDE_JSON_HOST is written to .env

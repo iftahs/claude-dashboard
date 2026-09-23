@@ -16,7 +16,8 @@ import {
 } from './insights.ts';
 import { buildContributors } from './contributors.ts';
 import { getCommandUsage } from './history.ts';
-import { getWorkspaceTasks, getInventory } from './workspace.ts';
+import { getWorkspaceTasks, getInventory, workspaceScope, type WorkspaceScope } from './workspace.ts';
+import { readCodexConfig } from './codex-config.ts';
 import { getLiveSubagents } from './subagents-live.ts';
 import { fetchCodexUsage, fetchCodexProfile } from './codex-live.ts';
 import { getLiveCodexAgents } from './codex-agents-live.ts';
@@ -31,7 +32,7 @@ import { buildSessionRows, buildSessionSummary, legacyProjectPaths, searchSessio
 import { readTranscript } from './transcript.ts';
 import { getAgentDetail } from './workflow-agent-detail.ts';
 import { runAi, runAiStream, resolveBackend, AiUnavailableError, AiTokenRejectedError, AiCallError, type AiCreds } from './ai.ts';
-import { buildAiPayload, buildChatUserMessage, CHAT_SYSTEM, buildSectionUserMessage, SECTION_SYSTEM, SUGGEST_SYSTEM, buildSuggestMessage, type AiScope, type ChatTurn } from './ai-context.ts';
+import { buildAiPayload, buildChatUserMessage, chatSystem, buildSectionUserMessage, sectionSystem, suggestSystem, buildSuggestMessage, type AiScope, type ChatTurn } from './ai-context.ts';
 import { routeDatasets } from './ai-router.ts';
 import { getVersionInfo, isDocker } from './version.ts';
 import { allowedHosts, checkRequest, publicSettings } from './http-guard.ts';
@@ -1029,7 +1030,7 @@ app.post('/api/ai/chat', async (req, res) => {
     res.setHeader('X-AI-Route', route.via);
     res.setHeader('X-AI-Datasets', route.ids.join(','));
     await runAiStream(
-      { system: CHAT_SYSTEM, user: buildChatUserMessage(payload, question, history), maxTokens: 1200 },
+      { system: chatSystem(scope.source), user: buildChatUserMessage(payload, question, history), maxTokens: 1200 },
       creds,
       {
         onStart: (backend) => res.setHeader('X-AI-Backend', backend),
@@ -1062,9 +1063,11 @@ app.post('/api/ai/insight', async (req, res) => {
       });
       return;
     }
+    // The platform the panel shows, when the client says; absent → platform-neutral wording.
+    const source = req.body?.source === undefined ? undefined : parseSource(req.body.source);
     const { text, backend } = await runAi(
       {
-        system: SECTION_SYSTEM,
+        system: sectionSystem(source),
         user: buildSectionUserMessage(section, data),
         maxTokens: 400,
       },
@@ -1086,9 +1089,10 @@ app.post('/api/ai/suggestions', async (req, res) => {
     }
     const creds = parseAiCreds(req.body?.config);
     // Overview only: the chips just need the catalog to know what is askable.
-    const payload = await buildAiPayload(parseAiScope(req.body), [], { redact: shouldRedact(creds) });
+    const scope = parseAiScope(req.body);
+    const payload = await buildAiPayload(scope, [], { redact: shouldRedact(creds) });
     const { text } = await runAi(
-      { system: SUGGEST_SYSTEM, user: buildSuggestMessage(payload, history), maxTokens: 200 },
+      { system: suggestSystem(scope.source), user: buildSuggestMessage(payload, history), maxTokens: 200 },
       creds,
     );
     res.json(wrap({ suggestions: parseSuggestions(text) }, Date.now()));
@@ -1112,20 +1116,38 @@ app.get('/api/ai/context', async (req, res) => {
 });
 
 // ---------------------------------------------------------------------------
-// Workspace: tasks + plans, and plugin / MCP inventory.
+// Workspace: tasks + plans, the plugin / MCP / skill inventory, and the Codex
+// config profile. ?source=claude|codex|all (Code/Cowork read as claude). With
+// no ?source= they stay Claude-only — what these routes returned before Codex.
 // ---------------------------------------------------------------------------
 
-app.get('/api/workspace/tasks', async (_req, res) => {
+function parseWorkspaceScope(raw: unknown): WorkspaceScope {
+  return raw === undefined ? 'claude' : workspaceScope(parseSource(raw));
+}
+
+app.get('/api/workspace/tasks', async (req, res) => {
   try {
-    res.json(wrap(await getWorkspaceTasks(), Date.now()));
+    res.json(wrap(await getWorkspaceTasks(parseWorkspaceScope(req.query.source)), Date.now()));
   } catch (e) {
     res.status(500).json({ error: String(e) });
   }
 });
 
-app.get('/api/workspace/inventory', async (_req, res) => {
+app.get('/api/workspace/inventory', async (req, res) => {
   try {
-    res.json(wrap(await getInventory(), Date.now()));
+    res.json(wrap(await getInventory(parseWorkspaceScope(req.query.source)), Date.now()));
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+// The Codex counterpart of /api/config's settings block: allowlisted config.toml
+// keys (see server/codex-config.ts — never env, args, tokens or project paths),
+// how Codex is signed in, and the data dir the dashboard reads.
+app.get('/api/codex/config', async (_req, res) => {
+  try {
+    const [config, authMode] = await Promise.all([readCodexConfig(), readCodexAuthMode()]);
+    res.json(wrap({ ...config, authMode, dir: codexDir() }, Date.now()));
   } catch (e) {
     res.status(500).json({ error: String(e) });
   }
