@@ -1,4 +1,4 @@
-import type { TypeRow } from './types';
+import type { HistoryUnit, TypeRow } from './types';
 
 /** The Agents tab's history window. /api/insights/subagents clamps days to 1–90. */
 export const AGENT_HISTORY_DAYS = 30;
@@ -35,11 +35,16 @@ export function topTypes(byType: Record<string, number>, n: number): { rows: Typ
   return { rows, rest: Math.max(0, entries.length - n) };
 }
 
+export function historyUnit(platform: 'claude' | 'codex'): HistoryUnit {
+  return platform === 'codex' ? 'thread' : 'session';
+}
+
 /** InfoTip copy per platform — what a "spawn" is differs, the stats do not. */
 export function historyHelp(platform: 'claude' | 'codex', days: number): string {
   const what =
     platform === 'codex'
       ? `Subagent threads Codex spawned over the last ${days} days — one Guardian auto-review per approval verdict, plus delegated agents`
       : `Subagents Claude Code spawned (Agent/Task calls) over the last ${days} days`;
-  return `${what}: how many, how many per session that delegated, the share of sessions that delegated at all, and which types did the work.`;
+  const unit = historyUnit(platform);
+  return `${what}: how many, how many per ${unit} that delegated, the share of ${unit}s that delegated at all, and which types did the work.`;
 }

@@ -11,7 +11,7 @@ import type { SessionHistoryTableProps } from './types';
 import type { SessionMeta } from '@/types';
 import {
   ITEMS_PER_PAGE, durationCell, exportJson, exportRows, formatDate, matchesQuery, sessionHeadline, sessionLabel,
-  sessionTokens, sinceLabel,
+  sessionTokens, sinceLabel, singularNoun,
 } from './utils';
 
 export function SessionHistoryTable({
@@ -51,8 +51,8 @@ export function SessionHistoryTable({
       <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between flex-none">
         <div>
           <h3 className="flex items-center gap-1.5 text-sm font-bold uppercase tracking-wider text-zinc-300">
-            Session History
-            <InfoTip text="Every session on record — start time, project, title (or first prompt), active time and effective tokens. Duration is active time: the sum of each turn from prompt to answer; hover it for the wall-clock span, which includes idle time. Click a row for its summary and full transcript. Search matches titles, prompts and project names; export the list with the button." />
+            {singularNoun(noun, true)} History
+            <InfoTip text={`Every ${singularNoun(noun)} on record — start time, project, title (or first prompt), active time and effective tokens. Duration is active time: the sum of each turn from prompt to answer; hover it for the wall-clock span, which includes idle time. Click a row for its summary and full transcript. Search matches titles, prompts and project names; export the list with the button.`} />
           </h3>
           <p className="text-xs text-zinc-500 mt-0.5">
             {sessions.length} {noun}
@@ -87,6 +87,7 @@ export function SessionHistoryTable({
         days={periodDays}
         onJump={jumpToSession}
         showSourceBadge={!hideSourceBadge}
+        noun={noun}
       />
 
       <div className="flex-1 overflow-x-auto">
@@ -95,7 +96,7 @@ export function SessionHistoryTable({
             <tr className="border-b border-white/10 text-zinc-500 font-semibold uppercase tracking-wider">
               <th className="py-2.5">Start Time</th>
               <th className="py-2.5">Project</th>
-              <th className="py-2.5">{noun === 'threads' ? 'Thread' : 'Session'}</th>
+              <th className="py-2.5">{singularNoun(noun, true)}</th>
               <th className="py-2.5 text-right">Duration</th>
               <th className="py-2.5 text-right">Tokens</th>
             </tr>
@@ -207,6 +208,7 @@ export function SessionHistoryTable({
             session={modalSession}
             transcript={transcriptStates.get(modalSession.session_id)}
             onFetchTranscript={getTranscript}
+            noun={noun}
           />
         )}
       </Modal>

@@ -1,4 +1,5 @@
 import type { SessionTranscript } from '@/types';
+import type { SessionNoun } from '../types';
 
 export interface TranscriptState {
   data: SessionTranscript | null;
@@ -10,4 +11,5 @@ export interface TranscriptPaneProps {
   sessionId: string;
   onFetch: (id: string) => void;
   state: TranscriptState | undefined;
+  noun: SessionNoun;
 }

@@ -311,3 +311,18 @@ test('review ids are unique per verdict, so merge dedups a rollout seen twice', 
   assert.equal(insights.taskSpawns.length, 3);
   assert.equal(insights.toolCalls.filter((t) => t.name === GUARDIAN_DENY_TOOL).length, 1);
 });
+
+test('an attachment manifest is stripped: the typed request is the first prompt and the searchable text', async () => {
+  const turnId = '66666666-6666-4666-8666-666666666666';
+  const manifest = '# Files mentioned by the user:\n\n## shot.png: C:/tmp/shot.png\n\n## My request for Codex:\n';
+  const userMessage = (n: number, content: object[]) =>
+    line(n, 'event_msg', { type: 'item_completed', turn_id: turnId, item: { type: 'UserMessage', id: `u${n}`, content } });
+  const rows = await parse(PARENT, [
+    line(0, 'session_meta', { id: PARENT, cwd: 'C:/work/demo', thread_source: 'user', source: 'vscode' }),
+    line(1, 'event_msg', { type: 'task_started', turn_id: turnId }),
+    userMessage(2, [{ type: 'text', text: manifest }, { type: 'local_image', path: 'C:/tmp/shot.png' }]),
+    userMessage(3, [{ type: 'text', text: `${manifest}Align the header` }]),
+  ]);
+  assert.equal(rows.sessions[0].firstPrompt, 'Align the header');
+  assert.deepEqual(rows.corpus.flatMap((c) => c.snippets), ['Align the header']);
+});

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { appendFileSync, mkdirSync, mkdtempSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
@@ -51,6 +51,36 @@ async function stateFrom(lines: string[]) {
 }
 
 const T0 = Date.parse('2026-09-23T10:00:00.000Z');
+
+test('a line split across two reads is parsed once, when it completes', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'codex-agents-'));
+  try {
+    const file = join(dir, 'rollout-2026-09-23T10-00-00-0199aaaa-bbbb-4ccc-8ddd-eeeeffff9999.jsonl');
+    const done = taskComplete(T0 + 4000) + '\n';
+    writeFileSync(file, [sessionMeta(T0, 'u1'), taskStarted(T0 + 1000)].join('\n') + '\n' + done.slice(0, 60));
+    const st = newThreadState(file);
+    await ingestRollout(st, statSync(file).size);
+    assert.equal(st.openTurnId, TURN);
+    appendFileSync(file, done.slice(60));
+    await ingestRollout(st, statSync(file).size);
+    assert.equal(st.openTurnId, null);
+    assert.equal(st.lastTaskCompleteTs, T0 + 4000);
+    assert.equal(st.offset, statSync(file).size);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('the fallback title skips the attachment manifest and keeps the typed request', async () => {
+  const manifest = '# Files mentioned by the user:\n\n## shot.png: C:\\tmp\\shot.png\n\n## My request for Codex:\n';
+  const userMessage = (at: number, content: object[]) => item(at, { type: 'UserMessage', id: `u${at}`, content });
+  const st = await stateFrom([
+    sessionMeta(T0, 'u1'),
+    userMessage(T0 + 1000, [{ type: 'text', text: manifest }, { type: 'local_image', path: 'C:\\tmp\\shot.png' }]),
+    userMessage(T0 + 2000, [{ type: 'text', text: `${manifest}Align   the\nheader` }]),
+  ]);
+  assert.equal(st.firstUserText, 'Align the header');
+});
 
 test('subagent kinds and card names', () => {
   assert.equal(codexSubagentKind({ subagent: 'review' }), 'review');

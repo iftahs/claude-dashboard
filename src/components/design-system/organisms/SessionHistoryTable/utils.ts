@@ -1,7 +1,14 @@
 import type { SessionMeta, UsageSource } from '@/types';
 import { codexProjectLabel, projectName } from '@/lib/project';
+import type { SessionNoun } from './types';
 
 export const ITEMS_PER_PAGE = 5;
+
+/** 'session' / 'thread' ('Session' / 'Thread' when `capital`). */
+export function singularNoun(noun: SessionNoun, capital = false): string {
+  const one = noun === 'threads' ? 'thread' : 'session';
+  return capital ? one[0].toUpperCase() + one.slice(1) : one;
+}
 
 export function formatDate(dateStr: string): string {
   try {

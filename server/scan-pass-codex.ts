@@ -96,6 +96,7 @@ import {
   type TurnRow,
   type UsageRow,
 } from './scan-pass.ts';
+import { stripAttachmentManifest } from './transcript.ts';
 
 /** item_completed payloads can carry base64 images; anything above this is skipped unparsed. */
 const MAX_LINE_BYTES = 2 * 1024 * 1024;
@@ -114,8 +115,6 @@ const ITEM_RE = /"item":\{"type":"([A-Za-z]+)"/;
 /** item_completed kinds that never yield a row — rejected from the header, before JSON.parse. */
 const SKIP_ITEMS = new Set(['Reasoning', 'AgentMessage', 'FunctionCallOutput', 'ContextCompaction']);
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-/** The desktop app's injected attachment manifest — never a user-typed prompt. */
-const ATTACHMENT_MANIFEST_RE = /^#\s*Files mentioned by the user:/i;
 
 /** parsed_cmd[0].type → dashboard tool name; anything else is a shell command. */
 const COMMAND_NAMES: Record<string, string> = { read: 'Read', search: 'Grep', list_files: 'LS' };
@@ -520,17 +519,12 @@ export async function parseCodexFileRows(file: ScannedFile): Promise<FileRows> {
         const content = Array.isArray(it.content) ? it.content : [];
         for (const c of content) {
           if (c?.type !== 'text' || typeof c.text !== 'string') continue;
-          const t: string = c.text;
+          const t = stripAttachmentManifest(c.text);
           if (!firstPrompt) {
             const trimmed = t.trim();
-            // Codex prepends an attachment manifest ("# Files mentioned by the
-            // user:") as its own text entry when files are dropped into the chat —
-            // injected context, like Claude's '<...>' blocks, not the prompt.
-            if (trimmed && !trimmed.startsWith('<') && !ATTACHMENT_MANIFEST_RE.test(trimmed)) {
-              firstPrompt = trimmed.slice(0, 200);
-            }
+            if (trimmed && !trimmed.startsWith('<')) firstPrompt = trimmed.slice(0, 200);
           }
-          addCorpus(t.slice(0, 200));
+          if (t) addCorpus(t.slice(0, 200));
         }
         return;
       }

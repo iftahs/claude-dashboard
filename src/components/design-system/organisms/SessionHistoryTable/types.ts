@@ -1,5 +1,7 @@
 import type { SessionMeta } from '@/types';
 
+export type SessionNoun = 'sessions' | 'threads';
+
 export interface SessionHistoryTableProps {
   sessions: SessionMeta[];
   /** Start of the span the list covers (the oldest session), for the "since …" label. */
@@ -11,5 +13,5 @@ export interface SessionHistoryTableProps {
    *  already (the Codex platform), noise rather than information. */
   hideSourceBadge?: boolean;
   /** "threads" under the Codex platform, "sessions" otherwise. */
-  noun?: string;
+  noun?: SessionNoun;
 }

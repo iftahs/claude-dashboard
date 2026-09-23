@@ -15,11 +15,10 @@
  *       .meta.json, with the run's journal.jsonl deciding running vs finished.
  */
 
-import { createReadStream } from 'node:fs';
-import { readdir, readFile, stat } from 'node:fs/promises';
+import { open, readdir, readFile, stat } from 'node:fs/promises';
 import { basename, dirname, join } from 'node:path';
 import { claudeDir } from './scan.ts';
-import { isRejectedToolResult, limitHitOf, userTurnRole } from './scan-pass.ts';
+import { isRejectedToolResult, limitHitOf, runPool, userTurnRole } from './scan-pass.ts';
 
 /**
  * Traffic-light status for an agent:
@@ -191,41 +190,107 @@ function num(v: unknown): number {
   return typeof v === 'number' && Number.isFinite(v) ? v : 0;
 }
 
-/**
- * Lines of a JSONL file, split on '\n' only. Node's readline also breaks on
- * U+2028/U+2029, which are legal inside JSON strings and shred those records
- * (see CLAUDE.md, "Split lines on \n"). A trailing '\r' is JSON whitespace.
- */
-async function* jsonlLines(file: string): AsyncGenerator<string> {
-  let carry = '';
-  for await (const chunk of createReadStream(file, { encoding: 'utf8' })) {
-    const parts = (carry + (chunk as string)).split('\n');
-    carry = parts.pop() ?? '';
-    for (const p of parts) yield p;
-  }
-  if (carry) yield carry;
+interface FileStat {
+  path: string;
+  mtime: number;
+  size: number;
 }
 
-async function listJsonl(dir: string): Promise<{ path: string; mtime: number; size: number }[]> {
-  let entries: { path: string; mtime: number; size: number }[] = [];
+const STAT_CONCURRENCY = 16;
+const READ_CONCURRENCY = 8;
+const READ_CHUNK = 1024 * 1024;
+
+async function walkJsonl(dir: string): Promise<string[]> {
   let dirents;
   try {
     dirents = await readdir(dir, { withFileTypes: true });
   } catch {
     return [];
   }
-  for (const d of dirents) {
-    const full = join(dir, d.name);
-    if (d.isDirectory()) {
-      entries = entries.concat(await listJsonl(full));
-    } else if (d.isFile() && d.name.endsWith('.jsonl')) {
-      try {
-        const s = await stat(full);
-        entries.push({ path: full, mtime: s.mtimeMs, size: s.size });
-      } catch { /* skip */ }
+  const parts = await Promise.all(
+    dirents.map(async (d) => {
+      const full = join(dir, d.name);
+      if (d.isDirectory()) return walkJsonl(full);
+      return d.isFile() && d.name.endsWith('.jsonl') ? [full] : [];
+    }),
+  );
+  return parts.flat();
+}
+
+/** Every .jsonl under `dir` in directory-walk order, stat'ed through a bounded pool. */
+async function listJsonl(dir: string): Promise<FileStat[]> {
+  const out: FileStat[] = (await walkJsonl(dir)).map((path) => ({ path, mtime: 0, size: -1 }));
+  await runPool(out, STAT_CONCURRENCY, async (f) => {
+    try {
+      const s = await stat(f.path);
+      f.mtime = s.mtimeMs;
+      f.size = s.size;
+    } catch { /* vanished — dropped below */ }
+  });
+  return out.filter((f) => f.size >= 0);
+}
+
+interface LineParser<R> {
+  /** Feed one line; false when it is not valid JSON. */
+  push(line: string): boolean;
+  /** The result so far, without disturbing the state later lines build on. */
+  finish(): R;
+}
+
+interface TailEntry<R> {
+  size: number;
+  mtime: number;
+  /** Bytes fed to the parser: every complete line, plus a last unterminated one only if it parsed. */
+  offset: number;
+  parser: LineParser<R>;
+}
+
+/** Feeds the lines in [from, size) to `push`, split on 0x0A bytes — never readline (see CLAUDE.md, "Split lines on \n"). */
+async function readLinesFrom(path: string, from: number, size: number, push: (line: string) => boolean): Promise<number> {
+  const fh = await open(path, 'r');
+  try {
+    const buf = Buffer.alloc(Math.min(READ_CHUNK, Math.max(1, size - from)));
+    let pos = from;
+    let offset = from;
+    let carry: Buffer[] = [];
+    while (pos < size) {
+      const { bytesRead } = await fh.read(buf, 0, Math.min(buf.length, size - pos), pos);
+      if (bytesRead === 0) break;
+      const chunk = buf.subarray(0, bytesRead);
+      let start = 0;
+      for (let nl = chunk.indexOf(0x0a); nl !== -1; nl = chunk.indexOf(0x0a, start)) {
+        const piece = chunk.subarray(start, nl);
+        push((carry.length ? Buffer.concat([...carry, piece]) : piece).toString('utf8'));
+        carry = [];
+        start = nl + 1;
+        offset = pos + start;
+      }
+      if (start < bytesRead) carry.push(Buffer.from(chunk.subarray(start)));
+      pos += bytesRead;
     }
+    // A last line still being written does not parse; it is read again once it grows.
+    if (carry.length && push(Buffer.concat(carry).toString('utf8'))) offset = pos;
+    return offset;
+  } finally {
+    await fh.close();
   }
-  return entries;
+}
+
+/** Transcripts are append-only: a grown file feeds its cached parser only the new bytes; a shrunk or rewritten one starts over. */
+async function tailParse<R>(cache: Map<string, TailEntry<R>>, f: FileStat, create: () => LineParser<R>): Promise<R> {
+  const prev = cache.get(f.path);
+  if (prev && prev.size === f.size && prev.mtime === f.mtime) return prev.parser.finish();
+  const entry = prev && f.size > prev.size ? prev : { size: 0, mtime: 0, offset: 0, parser: create() };
+  cache.delete(f.path); // a read that fails part-way must not leave a half-fed parser behind
+  entry.offset = await readLinesFrom(f.path, entry.offset, f.size, (line) => entry.parser.push(line));
+  entry.size = f.size;
+  entry.mtime = f.mtime;
+  cache.set(f.path, entry);
+  return entry.parser.finish();
+}
+
+function evictExcept<R>(cache: Map<string, TailEntry<R>>, keep: ReadonlySet<string>): void {
+  for (const path of cache.keys()) if (!keep.has(path)) cache.delete(path);
 }
 
 /** Fallback working directory decoded from the encoded project folder name (lossy: '-' vs separators). */
@@ -355,7 +420,7 @@ export function parseMainLines(lines: Iterable<string>): ParsedMain {
 }
 
 /** Line-at-a-time main-transcript parser, so a 50 MB transcript is never held in memory whole. */
-function createMainParser(): { push: (line: string) => void; finish: () => ParsedMain } {
+function createMainParser(): LineParser<ParsedMain> {
   const spawns: SpawnRec[] = [];
   const results = new Map<string, ResultRec>();
   const notifications: Array<{ agentId: string; ts: number }> = [];
@@ -381,25 +446,26 @@ function createMainParser(): { push: (line: string) => void; finish: () => Parse
   };
   // Same keep-max dedup rule as scan.ts — streaming writes duplicate usage rows.
   const usageByKey = new Map<string, number>();
+  let keylessTokens = 0;
   let dequeued = false;
 
-  const push = (line: string): void => {
-    if (!line || line.length < 2) return;
+  const push = (line: string): boolean => {
+    if (!line || line.length < 2) return false;
     let obj: any;
-    try { obj = JSON.parse(line); } catch { return; }
+    try { obj = JSON.parse(line); } catch { return false; }
 
     // Title records carry no timestamp — read before the timestamp skip; last wins.
     if (obj.type === 'ai-title' && typeof obj.aiTitle === 'string' && obj.aiTitle) {
       main.title = obj.aiTitle;
-      return;
+      return true;
     }
     if (obj.type === 'custom-title' && typeof obj.customTitle === 'string' && obj.customTitle) {
       main.customTitle = obj.customTitle;
-      return;
+      return true;
     }
 
     const ts = Date.parse(obj.timestamp ?? '');
-    if (Number.isNaN(ts)) return;
+    if (Number.isNaN(ts)) return true;
     if (ts < main.firstTs) main.firstTs = ts;
     if (ts > main.lastTs) main.lastTs = ts;
     if (typeof obj.gitBranch === 'string' && obj.gitBranch) main.gitBranch = obj.gitBranch;
@@ -414,7 +480,7 @@ function createMainParser(): { push: (line: string) => void; finish: () => Parse
         const m = obj.content.match(/<task-id>([a-z0-9]+)<\/task-id>[\s\S]*?<status>completed<\/status>/);
         if (m) notifications.push({ agentId: m[1], ts });
       }
-      return;
+      return true;
     }
 
     if (obj.type === 'assistant') {
@@ -436,7 +502,7 @@ function createMainParser(): { push: (line: string) => void; finish: () => Parse
         const prev = usageByKey.get(key) ?? 0;
         if (eff > prev) usageByKey.set(key, eff);
       } else {
-        main.effectiveTokens += eff;
+        keylessTokens += eff;
       }
       if (obj.message?.model && obj.message.model !== '<synthetic>') main.model = obj.message.model;
     }
@@ -511,22 +577,21 @@ function createMainParser(): { push: (line: string) => void; finish: () => Parse
         }
       }
     }
+    return true;
   };
 
   const finish = (): ParsedMain => {
-    for (const eff of usageByKey.values()) main.effectiveTokens += eff;
-    usageByKey.clear();
-    if (main.firstTs === Infinity) main.firstTs = 0;
-    return { spawns, results, notifications, main };
+    let effectiveTokens = keylessTokens;
+    for (const eff of usageByKey.values()) effectiveTokens += eff;
+    return {
+      spawns: [...spawns],
+      results: new Map(results),
+      notifications: [...notifications],
+      main: { ...main, effectiveTokens, firstTs: main.firstTs === Infinity ? 0 : main.firstTs },
+    };
   };
 
   return { push, finish };
-}
-
-async function parseFileForAgentSpawns(file: string): Promise<ParsedMain> {
-  const p = createMainParser();
-  for await (const l of jsonlLines(file)) p.push(l);
-  return p.finish();
 }
 
 /**
@@ -591,55 +656,65 @@ interface SidechainInfo {
   sessionFile: string;
 }
 
-async function parseSidechainFile(file: string, agentId: string, mtime: number): Promise<SidechainInfo> {
-  let effectiveTokens = 0;
-  let firstTs = Infinity;
-  let lastTs = 0;
-  let model = 'unknown';
-  let firstUserText = '';
-  let cwd = '';
+interface SidechainParse {
+  effectiveTokens: number;
+  firstTs: number;
+  lastTs: number;
+  model: string;
+  firstUserText: string;
+  cwd: string;
+}
 
-  for await (const line of jsonlLines(file)) {
-    if (!line || line.length < 2) continue;
-    let obj: any;
-    try { obj = JSON.parse(line); } catch { continue; }
+function createSidechainParser(): LineParser<SidechainParse> {
+  const s: SidechainParse = { effectiveTokens: 0, firstTs: Infinity, lastTs: 0, model: 'unknown', firstUserText: '', cwd: '' };
+  return {
+    push(line) {
+      if (!line || line.length < 2) return false;
+      let obj: any;
+      try { obj = JSON.parse(line); } catch { return false; }
 
-    const ts = Date.parse(obj.timestamp ?? '');
-    if (Number.isNaN(ts)) continue;
-    if (ts < firstTs) firstTs = ts;
-    if (ts > lastTs) lastTs = ts;
-    if (typeof obj.cwd === 'string' && obj.cwd) cwd = obj.cwd;
+      const ts = Date.parse(obj.timestamp ?? '');
+      if (Number.isNaN(ts)) return true;
+      if (ts < s.firstTs) s.firstTs = ts;
+      if (ts > s.lastTs) s.lastTs = ts;
+      if (typeof obj.cwd === 'string' && obj.cwd) s.cwd = obj.cwd;
 
-    if (!firstUserText && obj.type === 'user' && obj.message) {
-      const c = obj.message.content;
-      if (typeof c === 'string') firstUserText = c.slice(0, 150);
-      else if (Array.isArray(c)) {
-        for (const b of c) {
-          if (b?.type === 'text' && typeof b.text === 'string') { firstUserText = b.text.slice(0, 150); break; }
+      if (!s.firstUserText && obj.type === 'user' && obj.message) {
+        const c = obj.message.content;
+        if (typeof c === 'string') s.firstUserText = c.slice(0, 150);
+        else if (Array.isArray(c)) {
+          for (const b of c) {
+            if (b?.type === 'text' && typeof b.text === 'string') { s.firstUserText = b.text.slice(0, 150); break; }
+          }
         }
       }
-    }
 
-    if (obj.type === 'assistant' && obj.message?.usage) {
-      const usage = obj.message.usage;
-      effectiveTokens += num(usage.input_tokens) + num(usage.output_tokens) + num(usage.cache_creation_input_tokens);
-      if (obj.message?.model && obj.message.model !== 'unknown' && obj.message.model !== '<synthetic>') model = obj.message.model;
-    }
-  }
+      if (obj.type === 'assistant' && obj.message?.usage) {
+        const usage = obj.message.usage;
+        s.effectiveTokens += num(usage.input_tokens) + num(usage.output_tokens) + num(usage.cache_creation_input_tokens);
+        if (obj.message?.model && obj.message.model !== 'unknown' && obj.message.model !== '<synthetic>') s.model = obj.message.model;
+      }
+      return true;
+    },
+    finish: () => ({ ...s, firstTs: s.firstTs === Infinity ? 0 : s.firstTs }),
+  };
+}
 
+async function parseSidechainFile(f: FileStat, agentId: string): Promise<SidechainInfo> {
+  const p = await tailParse(sidechainCache, f, createSidechainParser);
   return {
     agentId,
-    path: file,
-    effectiveTokens,
-    firstTs: firstTs === Infinity ? 0 : firstTs,
-    lastTs,
-    model,
-    firstUserText,
-    projectPath: cwd || projectPathFromFile(file),
-    mtime,
-    meta: await readSidechainMeta(file),
-    workflowRun: workflowRunOf(file),
-    sessionFile: sessionFileOfSidechain(file),
+    path: f.path,
+    effectiveTokens: p.effectiveTokens,
+    firstTs: p.firstTs,
+    lastTs: p.lastTs,
+    model: p.model,
+    firstUserText: p.firstUserText,
+    projectPath: p.cwd || projectPathFromFile(f.path),
+    mtime: f.mtime,
+    meta: await readSidechainMeta(f.path),
+    workflowRun: workflowRunOf(f.path),
+    sessionFile: sessionFileOfSidechain(f.path),
   };
 }
 
@@ -672,8 +747,19 @@ function workflowAgentDescription(sc: SidechainInfo): string {
 // Main function
 // ---------------------------------------------------------------------------
 
-/** Exported with an injectable clock for the unit tests. */
-export async function computeLiveSubagents(now: number = Date.now()): Promise<LiveSubagentsData> {
+/** Per-file parser state kept between ticks, so only appended bytes are read. */
+const mainCache = new Map<string, TailEntry<ParsedMain>>();
+const sidechainCache = new Map<string, TailEntry<SidechainParse>>();
+let computeQueue: Promise<unknown> = Promise.resolve();
+
+/** Exported with an injectable clock for the unit tests. Runs one at a time, since the caches are fed incrementally. */
+export function computeLiveSubagents(now: number = Date.now()): Promise<LiveSubagentsData> {
+  const run = computeQueue.then(() => computeLive(now));
+  computeQueue = run.catch(() => undefined);
+  return run;
+}
+
+async function computeLive(now: number): Promise<LiveSubagentsData> {
   const THIRTY_MIN = 30 * 60_000;
   const COMPLETED_WINDOW = 30 * 60_000; // recently-finished subagents linger ~30 min (mirrors the CLI Background-tasks "Finished" list)
   const BG_COMPLETED_WINDOW = 60 * 60_000; // outer cap for spawn age + sidechain enrichment
@@ -685,15 +771,25 @@ export async function computeLiveSubagents(now: number = Date.now()): Promise<Li
   const MAX_FILE = 50 * 1024 * 1024;
 
   // Sidechain transcripts modified in the last hour — model/token enrichment + activity signal.
-  const sidechains = new Map<string, SidechainInfo>();
+  const scFiles: Array<{ f: FileStat; agentId: string }> = [];
   for (const f of allFiles) {
     // Widen to the background window so finished background tasks keep their
     // token/model enrichment for up to an hour.
     if (now - f.mtime >= BG_COMPLETED_WINDOW || f.size > MAX_FILE || !isSidechainPath(f.path)) continue;
     const agentId = agentIdFromFileName(f.path);
     if (!agentId) continue;
-    sidechains.set(agentId, await parseSidechainFile(f.path, agentId, f.mtime));
+    scFiles.push({ f, agentId });
   }
+  const scParsed: Array<SidechainInfo | undefined> = [];
+  await runPool([...scFiles.keys()], READ_CONCURRENCY, async (i) => {
+    try {
+      scParsed[i] = await parseSidechainFile(scFiles[i].f, scFiles[i].agentId);
+    } catch { /* vanished / unreadable this tick */ }
+  });
+  // Filled in walk order: the prompt-prefix fallback below takes the first match.
+  const sidechains = new Map<string, SidechainInfo>();
+  for (const sc of scParsed) if (sc) sidechains.set(sc.agentId, sc);
+  evictExcept(sidechainCache, new Set(scFiles.map((x) => x.f.path)));
   const byToolUseId = new Map<string, SidechainInfo>();
   for (const sc of sidechains.values()) if (sc.meta?.toolUseId) byToolUseId.set(sc.meta.toolUseId, sc);
 
@@ -726,15 +822,18 @@ export async function computeLiveSubagents(now: number = Date.now()): Promise<Li
   const bumpRunning = (parent: string) => runningChildren.set(parent, (runningChildren.get(parent) ?? 0) + 1);
   const parsedParents: Array<{ path: string; mtime: number; parsed: ParsedMain; project: string }> = [];
 
-  for (const path of parentPaths) {
-    const pf = fileByPath.get(path);
-    if (!pf) continue;
-    let parsed: ParsedMain;
+  const parentFiles = [...parentPaths].flatMap((p) => fileByPath.get(p) ?? []);
+  const parsedByPath = new Map<string, ParsedMain>();
+  await runPool(parentFiles, READ_CONCURRENCY, async (pf) => {
     try {
-      parsed = await parseFileForAgentSpawns(pf.path);
-    } catch {
-      continue; // vanished / unreadable this tick
-    }
+      parsedByPath.set(pf.path, await tailParse(mainCache, pf, createMainParser));
+    } catch { /* vanished / unreadable this tick */ }
+  });
+  evictExcept(mainCache, parentPaths);
+
+  for (const pf of parentFiles) {
+    const parsed = parsedByPath.get(pf.path);
+    if (!parsed) continue;
     const project = parsed.main.cwd || projectPathFromFile(pf.path);
     parsedParents.push({ path: pf.path, mtime: pf.mtime, parsed, project });
     const notifiedAt = new Map(parsed.notifications.map((n) => [n.agentId, n.ts]));

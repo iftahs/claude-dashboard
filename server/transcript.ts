@@ -165,8 +165,16 @@ const CODEX_ITEMS = new Set([
 ]);
 /** The desktop app's injected attachment manifest — never something the user typed. */
 const ATTACHMENT_MANIFEST_RE = /^#\s*Files mentioned by the user:/i;
+const REQUEST_HEADING_RE = /^##\s*My request(?: for Codex)?:[ \t]*\n?/im;
 const COMMAND_NAMES: Record<string, string> = { read: 'Read', search: 'Grep', list_files: 'LS' };
 const CHANGE_NAMES: Record<string, string> = { add: 'Write', update: 'Edit', delete: 'Delete' };
+
+/** The typed request after the desktop app's attachment manifest, which shares its text entry ('' if none). */
+export function stripAttachmentManifest(text: string): string {
+  if (!ATTACHMENT_MANIFEST_RE.test(text.trimStart())) return text;
+  const m = REQUEST_HEADING_RE.exec(text);
+  return m ? text.slice(m.index + m[0].length).trim() : '';
+}
 
 /** Text entries of a Codex message's `content` (`text` on user messages, `Text` on agent ones). */
 function codexText(content: unknown, skipManifest: boolean): string {
@@ -174,12 +182,21 @@ function codexText(content: unknown, skipManifest: boolean): string {
   const parts: string[] = [];
   for (const c of content) {
     if (!c || typeof c !== 'object' || String(c.type).toLowerCase() !== 'text') continue;
-    const t = str(c.text);
+    const t = skipManifest ? stripAttachmentManifest(str(c.text)) : str(c.text);
     if (!t.trim()) continue;
-    if (skipManifest && ATTACHMENT_MANIFEST_RE.test(t.trim())) continue;
     parts.push(t);
   }
   return parts.join('\n\n').slice(0, TEXT_CAP);
+}
+
+/** A user message that carried files or images (a manifest, or image / local_image entries). */
+function codexHasAttachment(content: unknown): boolean {
+  if (!Array.isArray(content)) return false;
+  return content.some((c) => {
+    if (!c || typeof c !== 'object') return false;
+    const type = String(c.type).toLowerCase();
+    return type.includes('image') || (type === 'text' && ATTACHMENT_MANIFEST_RE.test(str(c.text).trimStart()));
+  });
 }
 
 /** The tool chip for a Codex tool item, or null when the item is not a tool. */
@@ -281,10 +298,10 @@ export function codexTranscriptBuilder(): TranscriptBuilder {
 
       switch (it.type) {
         case 'UserMessage': {
-          const text = codexText(it.content, true);
-          if (!text) return;
-          push({ role: 'user', ts, text, tools: [] }, turnId);
+          // A new prompt always closes the previous answer, even one with no text to show.
           current = -1;
+          const text = codexText(it.content, true) || (codexHasAttachment(it.content) ? '[attachment]' : '');
+          if (text) push({ role: 'user', ts, text, tools: [] }, turnId);
           return;
         }
         case 'AgentMessage': {

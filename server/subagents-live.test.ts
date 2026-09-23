@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
+import { appendFileSync, mkdirSync, mkdtempSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
@@ -266,6 +266,53 @@ test('workflow agents nest under their session, which shows as delegating; a fin
     assert.equal(finished.traffic, 'finished');
 
     assert.deepEqual(data.counts, { running: 2, waiting: 0, finished: 1, yourTurn: 1 });
+  } finally {
+    if (prevDir === undefined) delete process.env.CLAUDE_DIR;
+    else process.env.CLAUDE_DIR = prevDir;
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('growing transcripts are read incrementally: appends count once, a torn last line waits for its newline', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'subagents-live-'));
+  const prevDir = process.env.CLAUDE_DIR;
+  try {
+    process.env.CLAUDE_DIR = root;
+    const now = Date.now();
+    const proj = join(root, 'projects', 'E--dev-my-app');
+    const scDir = join(proj, 'sess-1', 'subagents');
+    mkdirSync(scDir, { recursive: true });
+    const sess = join(proj, 'sess-1.jsonl');
+    const side = join(scDir, 'agent-b1.jsonl');
+    const sideLine = (at: number) =>
+      JSON.stringify({
+        type: 'assistant',
+        timestamp: iso(at),
+        message: { id: `s${at}`, model: 'claude-sonnet-5', content: [], usage: { input_tokens: 100, output_tokens: 20 } },
+      });
+
+    // Tick 1: a prompt, an Agent spawn with no result yet, and the next reply torn mid-line.
+    const spawn = assistant(now - 50_000, 'tool_use', [toolUse('tu1', 'Agent', { description: 'dig', subagent_type: 'Explore', prompt: 'look' })]);
+    const reply = assistant(now - 20_000, 'end_turn') + '\n';
+    writeFileSync(sess, [prompt(now - 60_000), spawn].join('\n') + '\n' + reply.slice(0, 40));
+    writeFileSync(side, sideLine(now - 40_000) + '\n');
+    writeFileSync(join(scDir, 'agent-b1.meta.json'), JSON.stringify({ agentType: 'Explore', description: 'dig', toolUseId: 'tu1' }));
+    let data = await computeLiveSubagents(now);
+    assert.equal(data.mainAgents.find((m) => m.key === sess)?.effectiveTokens, 15);
+    assert.equal(data.running.find((r) => r.key === 'tu1')?.effectiveTokens, 120);
+
+    // Tick 2: the torn line completes; the spawn's result and more subagent work arrive.
+    appendFileSync(sess, reply.slice(40) + toolResult(now - 10_000, 'tu1', 'done') + '\n');
+    appendFileSync(side, sideLine(now - 30_000) + '\n');
+    data = await computeLiveSubagents(now);
+    assert.equal(data.mainAgents.find((m) => m.key === sess)?.effectiveTokens, 30);
+    assert.equal(data.running.length, 0);
+    assert.equal(data.recentlyCompleted.find((c) => c.key === 'tu1')?.effectiveTokens, 240);
+
+    // A file rewritten shorter is parsed again from the start.
+    writeFileSync(sess, [prompt(now - 5_000), assistant(now - 4_000, 'end_turn')].join('\n') + '\n');
+    data = await computeLiveSubagents(now);
+    assert.equal(data.mainAgents.find((m) => m.key === sess)?.effectiveTokens, 15);
   } finally {
     if (prevDir === undefined) delete process.env.CLAUDE_DIR;
     else process.env.CLAUDE_DIR = prevDir;

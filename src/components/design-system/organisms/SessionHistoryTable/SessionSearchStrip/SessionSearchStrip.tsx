@@ -1,10 +1,11 @@
 import { Badge } from '@/components/design-system/atoms/Badge/Badge';
 import { codexProjectLabel } from '@/lib/project';
 import { useSearch } from '@/hooks/useSearch';
+import { singularNoun } from '../utils';
 import type { SessionSearchStripProps } from './types';
 
 /** Full-text transcript matches for the table's search box, scoped to the selected platform. */
-export function SessionSearchStrip({ query, days, onJump, showSourceBadge }: SessionSearchStripProps) {
+export function SessionSearchStrip({ query, days, onJump, showSourceBadge, noun }: SessionSearchStripProps) {
   const { results, loading } = useSearch(query, days);
 
   if (query.length < 3) return null;
@@ -28,7 +29,7 @@ export function SessionSearchStrip({ query, days, onJump, showSourceBadge }: Ses
   return (
     <div className="mb-3 rounded-xl bg-ink-700/40 border border-white/10 overflow-hidden">
       <div className="px-3 py-2 border-b border-white/10 text-xs font-semibold text-zinc-400">
-        Found in {results.length} session transcript{results.length !== 1 ? 's' : ''}
+        Found in {results.length} {singularNoun(noun)} transcript{results.length !== 1 ? 's' : ''}
       </div>
       <div className="divide-y divide-white/10">
         {results.slice(0, 8).map((r) => {

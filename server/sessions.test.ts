@@ -14,7 +14,9 @@ import { parseSessionIndex } from './codex-titles.ts';
 import {
   buildSessionRows, buildSessionSummary, legacyProjectPaths, median, searchSessions,
 } from './sessions.ts';
-import { capTurns, claudeTranscriptBuilder, codexTranscriptBuilder, readTranscript, type TranscriptTurn } from './transcript.ts';
+import {
+  capTurns, claudeTranscriptBuilder, codexTranscriptBuilder, readTranscript, stripAttachmentManifest, type TranscriptTurn,
+} from './transcript.ts';
 
 // Synthetic fixtures only — never real transcripts.
 const TMP = mkdtempSync(join(tmpdir(), 'dash-sessions-'));
@@ -331,6 +333,41 @@ test('Codex transcript: user / agent messages, tool chips, model join, compactio
   assert.equal(turns[2].tools[0].brief, 'declined · E:\\x\\a.ts (+1 more)');
   assert.equal(turns[1].model, 'gpt-6-astra');
   assert.equal(turns[0].model, undefined, 'user turns carry no model');
+});
+
+test('stripAttachmentManifest keeps only the typed request after the desktop app manifest', () => {
+  const manifest = '# Files mentioned by the user:\n\n## shot.png: C:\\tmp\\shot.png\n\n';
+  assert.equal(stripAttachmentManifest(`${manifest}## My request for Codex:\nFix the header\nand the footer\n`), 'Fix the header\nand the footer');
+  assert.equal(stripAttachmentManifest(`${manifest}## My request: Rename it`), 'Rename it');
+  assert.equal(stripAttachmentManifest(`${manifest}## My request for Codex:\n`), '', 'an image-only prompt has no request');
+  assert.equal(stripAttachmentManifest('# Files mentioned by the user:\n- a.png'), '');
+  assert.equal(stripAttachmentManifest('Plain prompt ## My request: stays'), 'Plain prompt ## My request: stays');
+});
+
+test('Codex transcript: an attachment prompt keeps its request, and its tools never join the previous answer', () => {
+  const manifest = '# Files mentioned by the user:\n\n## shot.png: C:\\tmp\\shot.png\n\n## My request for Codex:\n';
+  const { turns } = feed(codexTranscriptBuilder(), [
+    item(T + 1, 'turn-1', { type: 'UserMessage', content: [{ type: 'text', text: 'First prompt' }] }),
+    item(T + 2, 'turn-1', { type: 'AgentMessage', content: [{ type: 'Text', text: 'First answer' }] }),
+    item(T + 3, 'turn-2', { type: 'UserMessage', content: [{ type: 'text', text: `${manifest}Fix the header` }] }),
+    item(T + 4, 'turn-2', { type: 'CommandExecution', parsed_cmd: [{ type: 'unknown', cmd: 'npm test' }], status: 'completed' }),
+    item(T + 5, 'turn-3', {
+      type: 'UserMessage',
+      content: [{ type: 'text', text: manifest }, { type: 'local_image', path: 'C:\\tmp\\shot.png' }],
+    }),
+    item(T + 6, 'turn-3', { type: 'FileChange', changes: { 'E:\\x\\a.ts': { type: 'update' } }, status: 'completed' }),
+  ]);
+  assert.deepEqual(
+    turns.map((t) => [t.role, t.text, t.tools.map((x) => x.name)]),
+    [
+      ['user', 'First prompt', []],
+      ['assistant', 'First answer', []],
+      ['user', 'Fix the header', []],
+      ['assistant', '', ['Bash']],
+      ['user', '[attachment]', []],
+      ['assistant', '', ['Edit']],
+    ],
+  );
 });
 
 test('Claude transcript keeps this session only and skips tool_result-only user lines', () => {

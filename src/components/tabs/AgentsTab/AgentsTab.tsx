@@ -9,7 +9,7 @@ import {
   toDisplayAgents,
 } from '@/components/design-system/organisms/AgentActivity/utils';
 import { AgentHistoryStrip } from '@/components/design-system/organisms/AgentHistoryStrip/AgentHistoryStrip';
-import { AGENT_HISTORY_DAYS, historyHelp } from '@/components/design-system/organisms/AgentHistoryStrip/utils';
+import { AGENT_HISTORY_DAYS, historyHelp, historyUnit } from '@/components/design-system/organisms/AgentHistoryStrip/utils';
 import { PLATFORM_NOUN, titleScope } from '@/lib/platform';
 import { useLiveData } from '@/hooks/useLiveData';
 import { usePolling } from '@/hooks/usePolling';
@@ -61,6 +61,7 @@ export function AgentsTab() {
             error={claudeHistory.error}
             title={historyTitle('claude')}
             help={historyHelp('claude', AGENT_HISTORY_DAYS)}
+            unit={historyUnit('claude')}
             days={AGENT_HISTORY_DAYS}
             stacked={sideBySide}
           />
@@ -72,6 +73,7 @@ export function AgentsTab() {
             error={codexHistory.error}
             title={historyTitle('codex')}
             help={historyHelp('codex', AGENT_HISTORY_DAYS)}
+            unit={historyUnit('codex')}
             days={AGENT_HISTORY_DAYS}
             stacked={sideBySide}
           />

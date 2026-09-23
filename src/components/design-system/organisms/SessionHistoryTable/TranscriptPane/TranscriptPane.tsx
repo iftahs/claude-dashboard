@@ -1,9 +1,10 @@
 import { useEffect } from 'react';
 import { TranscriptTurn } from '../TranscriptTurn/TranscriptTurn';
+import { singularNoun } from '../utils';
 import type { TranscriptPaneProps } from './types';
 
 /** The lazily fetched transcript of one session (Claude transcript or Codex rollout — same shape). */
-export function TranscriptPane({ sessionId, onFetch, state }: TranscriptPaneProps) {
+export function TranscriptPane({ sessionId, onFetch, state, noun }: TranscriptPaneProps) {
   useEffect(() => {
     onFetch(sessionId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -32,14 +33,14 @@ export function TranscriptPane({ sessionId, onFetch, state }: TranscriptPaneProp
     );
   }
   if (turns.length === 0) {
-    return <div className="py-4 text-xs italic text-zinc-600">No messages recorded for this session.</div>;
+    return <div className="py-4 text-xs italic text-zinc-600">No messages recorded for this {singularNoun(noun)}.</div>;
   }
 
   return (
     <div className="flex flex-col gap-3 pt-2">
       {truncated && (
         <div className="text-xs text-amber-400/70 bg-amber-500/5 border border-amber-500/10 rounded-lg px-3 py-1.5">
-          Long session — middle messages omitted. Showing {turns.length} of {totalTurns} messages.
+          Long {singularNoun(noun)} — middle messages omitted. Showing {turns.length} of {totalTurns} messages.
         </div>
       )}
       {turns.map((turn, i) => (

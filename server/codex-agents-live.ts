@@ -47,6 +47,7 @@ import {
   type MainAgent,
   type RecentlyCompletedSubagent,
 } from './subagents-live.ts';
+import { stripAttachmentManifest } from './transcript.ts';
 
 // ---------------------------------------------------------------------------
 // Thresholds — the main-session ones (MAIN_ACTIVE, MAIN_LINGER, ACTIVE_WINDOW)
@@ -114,7 +115,7 @@ interface ThreadMeta {
 
 export interface ThreadState {
   path: string;
-  /** Bytes consumed up to the end of the last complete line. */
+  /** Bytes consumed, including the carried partial line. */
   offset: number;
   /** Trailing partial line carried between reads (byte-level, so multi-byte chars are safe). */
   carry: Buffer;
@@ -354,8 +355,10 @@ function processLine(state: ThreadState, line: Buffer, oversized: boolean): void
         const content = item.content;
         if (!state.firstUserText && item.type === 'UserMessage' && Array.isArray(content)) {
           for (const c of content) {
-            if (c?.type === 'text' && typeof c.text === 'string' && c.text.trim()) {
-              state.firstUserText = c.text.replace(/\s+/g, ' ').trim().slice(0, 80);
+            if (c?.type !== 'text' || typeof c.text !== 'string') continue;
+            const text = stripAttachmentManifest(c.text).replace(/\s+/g, ' ').trim();
+            if (text) {
+              state.firstUserText = text.slice(0, 80);
               break;
             }
           }
@@ -410,6 +413,7 @@ export async function ingestRollout(state: ThreadState, size: number): Promise<v
         } else {
           state.carry = Buffer.concat([state.carry, rest]);
         }
+        state.offset = pos + bytesRead;
       }
       pos += bytesRead;
     }

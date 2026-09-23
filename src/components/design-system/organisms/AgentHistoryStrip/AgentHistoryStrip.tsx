@@ -22,7 +22,7 @@ function MiniStat({ label, value, sub }: MiniStatProps) {
  * and the busiest subagent types — so the tab says something useful when no agent is
  * running. One component for both platforms; the Agents tab renders one per platform.
  */
-export function AgentHistoryStrip({ data, loading, error, title, help, days, stacked = false }: AgentHistoryStripProps) {
+export function AgentHistoryStrip({ data, loading, error, title, help, days, stacked = false, unit }: AgentHistoryStripProps) {
   const { rows, rest } = topTypes(data?.byType ?? {}, 4);
   const layout = stacked ? 'grid gap-4' : 'grid gap-4 sm:grid-cols-2';
 
@@ -52,11 +52,11 @@ export function AgentHistoryStrip({ data, loading, error, title, help, days, sta
         <div className={layout}>
           <div className="grid grid-cols-3 gap-2">
             <MiniStat label="Spawns" value={compact(data.spawns)} sub={`last ${days} days`} />
-            <MiniStat label="Avg per session" value={data.avgPerSession.toFixed(1)} sub="sessions that delegated" />
+            <MiniStat label={`Avg per ${unit}`} value={data.avgPerSession.toFixed(1)} sub={`${unit}s that delegated`} />
             <MiniStat
               label="Delegation rate"
               value={`${Math.round(data.delegationRate * 100)}%`}
-              sub="of sessions"
+              sub={`of ${unit}s`}
             />
           </div>
           <div className="min-w-0 space-y-2">

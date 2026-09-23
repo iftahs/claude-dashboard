@@ -2,11 +2,12 @@ import { useState } from 'react';
 import { compact, toolLabel } from '@/lib/format';
 import { InfoTip } from '@/components/design-system/atoms/InfoTip/InfoTip';
 import { TranscriptPane } from '../TranscriptPane/TranscriptPane';
-import { formatDurationMs, prLabel, sessionTokens } from '../utils';
+import { formatDurationMs, prLabel, sessionTokens, singularNoun } from '../utils';
 import type { SessionDetailProps } from './types';
 
 /** The session modal body: summary, tool breakdown, PRs and the collapsible transcript. */
-export function SessionDetail({ session: s, transcript, onFetchTranscript }: SessionDetailProps) {
+export function SessionDetail({ session: s, transcript, onFetchTranscript, noun }: SessionDetailProps) {
+  const one = singularNoun(noun);
   const [transcriptOpen, setTranscriptOpen] = useState(false);
   const prs = s.pr_urls ?? [];
   const wall = formatDurationMs((s.duration_minutes ?? 0) * 60_000);
@@ -25,7 +26,9 @@ export function SessionDetail({ session: s, transcript, onFetchTranscript }: Ses
       )}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <div className="space-y-2.5">
-          <span className="text-xs font-bold uppercase tracking-wider text-zinc-500 block">Session Summary</span>
+          <span className="text-xs font-bold uppercase tracking-wider text-zinc-500 block">
+            {singularNoun(noun, true)} Summary
+          </span>
           <div className="space-y-1.5 text-zinc-400">
             <div className="flex items-center gap-1">
               Turns:{' '}
@@ -34,7 +37,7 @@ export function SessionDetail({ session: s, transcript, onFetchTranscript }: Ses
                   ? `${s.turn_count} turn${s.turn_count !== 1 ? 's' : ''} · ${s.assistant_message_count} model responses`
                   : `${s.user_message_count} user / ${s.assistant_message_count} agent`}
               </span>
-              <InfoTip text="A turn is one prompt and the work it triggered, up to the answer. Model responses count every API response in the session, subagents included — each tool round-trip is one. Counted the same way on every platform." />
+              <InfoTip text={`A turn is one prompt and the work it triggered, up to the answer. Model responses count every API response in the ${one}, subagents included — each tool round-trip is one. Counted the same way on every platform.`} />
             </div>
             <div>
               Time:{' '}
@@ -127,7 +130,7 @@ export function SessionDetail({ session: s, transcript, onFetchTranscript }: Ses
               ))}
             </div>
           ) : (
-            <div className="text-zinc-600 italic">No tools were invoked in this session</div>
+            <div className="text-zinc-600 italic">No tools were invoked in this {one}</div>
           )}
         </div>
       </div>
@@ -144,7 +147,7 @@ export function SessionDetail({ session: s, transcript, onFetchTranscript }: Ses
           )}
         </button>
         {transcriptOpen && (
-          <TranscriptPane sessionId={s.session_id} onFetch={onFetchTranscript} state={transcript} />
+          <TranscriptPane sessionId={s.session_id} onFetch={onFetchTranscript} state={transcript} noun={noun} />
         )}
       </div>
     </div>

@@ -12,7 +12,11 @@ export interface AgentHistoryStripProps {
   days: number;
   /** Stack the stats above the by-type bars — for a half-width slot (the Both view's side-by-side strips). */
   stacked?: boolean;
+  /** What one conversation is called on this platform. */
+  unit: HistoryUnit;
 }
+
+export type HistoryUnit = 'session' | 'thread';
 
 export interface MiniStatProps {
   label: string;
