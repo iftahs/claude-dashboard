@@ -37,8 +37,10 @@ import type { UsageSource } from './scan.ts';
  *   5: a declined Codex item is never a success or a git commit/push candidate,
  *      and is a rejection only when the turn's approvals reviewer is the user;
  *      a non-guardian Codex subagent thread is one spawn of its own kind.
+ *   6: history rows (limit hits, Codex rate-limit snapshots, line changes, PR links,
+ *      turns, titles), effort / reasoning tokens, session cwd / client / repo URL.
  */
-const SCHEMA_VERSION = 5;
+const SCHEMA_VERSION = 6;
 
 export function cacheDir(): string {
   return process.env.DASHBOARD_CACHE_DIR || join(homedir(), '.claude-dashboard-cache');
