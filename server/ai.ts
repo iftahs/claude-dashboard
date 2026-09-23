@@ -7,10 +7,12 @@
  * runs in Docker, where the CLI is absent, so the API paths are the common case.
  *
  * Prompts are passed to the CLI via stdin (no shell, injection-safe, no temp
- * file — works with the read-only ~/.claude Docker mount).
+ * file — works with the read-only ~/.claude Docker mount), and the CLI runs with
+ * no tools, MCP servers, hooks or project context (see printArgs).
  */
 
 import { execFile, spawn } from 'node:child_process';
+import { tmpdir } from 'node:os';
 import { readCredentials, oauthHeaders, expiredTokenMessage } from './scan.ts';
 
 export type AiProvider = 'claude' | 'openai' | 'gemini';
@@ -79,15 +81,26 @@ function cliInvocation(args: string[]): { file: string; args: string[] } {
 }
 
 /**
+ * cmd.exe looks for `claude` in the current directory before PATH. The print
+ * calls run in os.tmpdir(), where any download or extractor can leave files, so
+ * that lookup is switched off: only the CLI on PATH is ever launched.
+ */
+function cliEnv(): NodeJS.ProcessEnv {
+  return process.platform === 'win32' ? { ...process.env, NoDefaultCurrentDirectoryInExePath: '1' } : process.env;
+}
+
+/**
  * `claude --version` succeeds within a few seconds. Cached 5 min. Works on the
  * host and inside Docker when the image was built with WITH_CLAUDE_CLI=1; when
- * the CLI is absent the probe just fails fast (ENOENT) and caches false.
+ * the CLI is absent the probe just fails fast (ENOENT) and caches false. A CLI
+ * that rejected a tool-disabling flag stays unavailable until a restart.
  */
 export async function claudeCliAvailable(): Promise<boolean> {
+  if (cliCannotDisableTools) return false;
   if (cliProbe && Date.now() - cliProbe.at < CLI_PROBE_TTL) return cliProbe.ok;
   const { file, args } = cliInvocation(['--version']);
   const ok = await new Promise<boolean>((resolve) => {
-    execFile(file, args, { timeout: 4000, windowsHide: true }, (err) => resolve(!err));
+    execFile(file, args, { timeout: 4000, windowsHide: true, env: cliEnv() }, (err) => resolve(!err));
   });
   cliProbe = { ok, at: Date.now() };
   return ok;
@@ -132,23 +145,52 @@ function callProvider(creds: AiCreds, input: AiCallInput): Promise<string> {
 
 // ── CLI ──────────────────────────────────────────────────────────────────────
 
-// `claude -p` saves every session as a transcript under <config>/projects — on
-// the host that is ~/.claude/projects, the very folder this dashboard scans, so
+// `claude -p` is a full agent by default: every built-in tool, every configured
+// MCP server, the user's hooks and permission allow-list (auto mode included),
+// and the CLAUDE.md of its working directory. The prompt carries repo-derived
+// strings (branch names, file paths, task subjects) and client-supplied section
+// data, so text planted in a cloned repo could steer it into reading or sending
+// files with no human in the loop. AI Insights only needs a completion:
+//   --tools ""           no built-in tools (the CLI's documented "disable all";
+//                        the empty arg survives Windows' `cmd /c` + .cmd shim);
+//   --strict-mcp-config  no MCP servers — none are passed via --mcp-config;
+//   --safe-mode          no hooks, CLAUDE.md, plugins or skills;
+//   cwd = os.tmpdir()    no project to discover.
+// Not --bare: it forces ANTHROPIC_API_KEY auth and would break OAuth logins.
+//
+// `claude -p` also saves every session as a transcript under <config>/projects —
+// on the host that is ~/.claude/projects, the very folder this dashboard scans, so
 // each AI Insights call would come back as Claude Code usage (and a session).
-// --no-session-persistence (print mode only) skips the write. A CLI old enough
-// to predate the flag rejects it as an unknown option: drop it and retry once.
+// --no-session-persistence (print mode only) skips the write.
+//
+// A CLI too old for a flag rejects it as an unknown option. An OPTIONAL flag is
+// dropped for good and the call retried. A REQUIRED one fails closed: the CLI
+// backend is disabled for the life of the process rather than run with tools.
 const NO_PERSIST = '--no-session-persistence';
-let cliNoPersist = true;
+const SAFE_MODE = '--safe-mode';
+const REQUIRED_FLAGS = ['--tools', '--strict-mcp-config'];
+const optionalFlags = new Set([NO_PERSIST, SAFE_MODE]);
+let cliCannotDisableTools = false;
 
 function printArgs(model: string): string[] {
-  return ['--print', ...(cliNoPersist ? [NO_PERSIST] : []), '--model', model, '--output-format', 'text'];
+  return ['--print', ...optionalFlags, '--tools', '', '--strict-mcp-config', '--model', model, '--output-format', 'text'];
 }
 
-/** True (and the flag is dropped for good) when this call's CLI rejected it. */
-function rejectedNoPersist(args: string[], stderr: string): boolean {
-  if (!args.includes(NO_PERSIST) || !/unknown option.*--no-session-persistence/i.test(stderr)) return false;
-  cliNoPersist = false;
-  return true;
+/**
+ * Classify a failed call. 'retry' — the CLI rejected an optional flag, now
+ * dropped for good. AiUnavailableError — it rejected a required one. null —
+ * any other failure.
+ */
+function unknownOption(args: string[], stderr: string): 'retry' | AiUnavailableError | null {
+  const flag = /unknown option '?(--[\w-]+)/i.exec(stderr)?.[1];
+  if (!flag || !args.includes(flag)) return null;
+  if (optionalFlags.delete(flag)) return 'retry';
+  if (!REQUIRED_FLAGS.includes(flag)) return null;
+  cliCannotDisableTools = true;
+  return new AiUnavailableError(
+    `The installed claude CLI does not support ${flag}, so AI Insights cannot run it without tools. ` +
+      'Update Claude Code, or set ANTHROPIC_API_KEY.',
+  );
 }
 
 function runViaCli(input: AiCallInput, model: string): Promise<string> {
@@ -157,16 +199,23 @@ function runViaCli(input: AiCallInput, model: string): Promise<string> {
     const child = execFile(
       file,
       args,
-      { timeout: CALL_TIMEOUT_MS, maxBuffer: 8 * 1024 * 1024, windowsHide: true },
+      { timeout: CALL_TIMEOUT_MS, maxBuffer: 8 * 1024 * 1024, windowsHide: true, cwd: tmpdir(), env: cliEnv() },
       (err, stdout, stderr) => {
-        if (err && rejectedNoPersist(args, String(stderr))) return resolve(runViaCli(input, model));
-        if (err) return reject(new AiCallError(`claude CLI failed: ${stderr || err.message}`));
+        if (err) {
+          const bad = unknownOption(args, String(stderr));
+          if (bad === 'retry') return resolve(runViaCli(input, model));
+          return reject(bad ?? new AiCallError(`claude CLI failed: ${stderr || err.message}`));
+        }
         const out = String(stdout).trim();
         out ? resolve(out) : reject(new AiCallError('Empty CLI response'));
       },
     );
     // Prompt via stdin — never interpolated into a shell, so transcript-derived
-    // text can't break out, and there's no arg-length cap or temp file.
+    // text can't break out, and there's no arg-length cap or temp file. A CLI that
+    // rejects a flag exits without reading it; the resulting EPIPE is not the
+    // failure worth reporting (the exit code and stderr are), and unhandled it
+    // would take the server down.
+    child.stdin?.on('error', () => {});
     child.stdin?.end(`${input.system}\n\n${input.user}`);
   });
 }
@@ -456,7 +505,7 @@ async function callGeminiStream(apiKey: string, input: AiCallInput, model: strin
 function runViaCliStream(input: AiCallInput, model: string, onDelta: (t: string) => void): Promise<void> {
   return new Promise((resolve, reject) => {
     const { file, args } = cliInvocation(printArgs(model));
-    const child = spawn(file, args, { windowsHide: true });
+    const child = spawn(file, args, { windowsHide: true, cwd: tmpdir(), env: cliEnv() });
     let any = false;
     let err = '';
     let settled = false;
@@ -488,11 +537,13 @@ function runViaCliStream(input: AiCallInput, model: string, onDelta: (t: string)
     child.on('error', (e) => settle(() => reject(new AiCallError(`claude CLI failed: ${e.message}`))));
     child.on('close', (code) =>
       settle(() => {
-        if (code !== 0 && !any && rejectedNoPersist(args, err)) runViaCliStream(input, model, onDelta).then(resolve, reject);
-        else if (code !== 0 && !any) reject(new AiCallError(`claude CLI failed: ${err || `exit ${code}`}`));
-        else resolve();
+        if (code === 0 || any) return resolve();
+        const bad = unknownOption(args, err);
+        if (bad === 'retry') runViaCliStream(input, model, onDelta).then(resolve, reject);
+        else reject(bad ?? new AiCallError(`claude CLI failed: ${err || `exit ${code}`}`));
       }),
     );
+    child.stdin.on('error', () => {}); // EPIPE from a CLI that exited early — see runViaCli
     child.stdin.end(`${input.system}\n\n${input.user}`);
   });
 }
