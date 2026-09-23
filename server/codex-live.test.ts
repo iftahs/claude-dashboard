@@ -43,6 +43,58 @@ test('a trailing premium snapshot is skipped for the codex one before it', () =>
   assert.equal(snap.error, undefined);
 });
 
+/** The task_complete Codex writes when a turn is refused at a usage limit (message text made up). */
+function usageLimitHit(atMs: number): string {
+  return JSON.stringify({
+    timestamp: new Date(atMs).toISOString(),
+    type: 'event_msg',
+    payload: {
+      type: 'task_complete', turn_id: 't1', last_agent_message: null,
+      error: { message: "You've hit your usage limit.", codex_error_info: 'usage_limit_exceeded' },
+    },
+  });
+}
+
+test('a usage-limit error after a 99% snapshot is a reached limit', () => {
+  const snapAt = NOW - 5 * 60_000;
+  const lines = [
+    tokenCount(snapAt, codexLimits(fiveHour(99), weekly(60))),
+    tokenCount(snapAt + 10, premiumLimits()),
+    usageLimitHit(snapAt + 20),
+    '',
+  ];
+  const snap = snapshotFromLines(lines, NOW);
+  assert.equal(snap?.limitReached, true);
+  assert.equal(snap?.fiveHour?.usedPct, 100, 'the window that refused reads full');
+  assert.equal(snap?.weekly?.usedPct, 60);
+
+  // Without the error the same snapshot is merely close to the limit.
+  assert.equal(snapshotFromLines(lines.slice(0, 2), NOW)?.limitReached, false);
+  // Only the event counts, not a record that merely carries the same key/value.
+  const lookalike = JSON.stringify({
+    timestamp: new Date(snapAt + 20).toISOString(),
+    type: 'response_item',
+    payload: { type: 'message', codex_error_info: 'usage_limit_exceeded' },
+  });
+  assert.equal(snapshotFromLines([lines[0], lookalike], NOW)?.limitReached, false);
+  // An error older than the snapshot is history, not the current state.
+  assert.equal(snapshotFromLines([usageLimitHit(snapAt - 60_000), lines[0]], NOW)?.limitReached, false);
+});
+
+test('a usage-limit error whose binding window has since reset is not a reached limit', () => {
+  const snapAt = NOW - 6 * HOUR;
+  // The 5-hour window was the fuller one and reset an hour ago; the weekly is still open.
+  const lapsedFiveHour = { used_percent: 99, window_minutes: 300, resets_at: sec(NOW - HOUR) };
+  const snap = snapshotFromLines(
+    [tokenCount(snapAt, codexLimits(lapsedFiveHour, weekly(40))), usageLimitHit(snapAt + 1000)],
+    NOW,
+  );
+  assert.ok(snap);
+  assert.equal(snap.limitReached, false);
+  assert.deepEqual(snap.fiveHour, { usedPct: 0, windowSec: 18000, resetsAt: null });
+  assert.equal(snap.weekly?.usedPct, 40);
+});
+
 test('only premium snapshots → null; a missing limit_id counts as codex', () => {
   assert.equal(snapshotFromLines([tokenCount(NOW, premiumLimits())], NOW), null);
 
