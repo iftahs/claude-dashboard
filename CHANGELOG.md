@@ -5,6 +5,20 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.27] - 2026-09-15
+
+### Fixed
+- Claude Mythos 5.1 was priced off the shared `/mythos/` row, which bills cache reads at
+  $1/MTok. Anthropic prices Mythos 5.1 cache hits at $0.25/MTok (0.025× base input, the
+  same footnote that covers Fable 5.1), so cached-heavy Mythos 5.1 sessions were
+  overstated 4× on that component. It now has its own pricing row, above the generic one
+  so Mythos 5 and Mythos Preview keep the 0.1× rate, plus a Cost Calculation row.
+
+### Changed
+- The mythos palette step is split by generation, matching what fable already does:
+  Mythos 5.1 takes the canonical mythos red (#b93b3f) and the superseded Mythos 5 steps
+  aside to #8e2a2f, so the two are separable in one chart (ΔE 10.0 normal / 8.3 protan).
+
 ## [0.1.26] - 2026-09-08
 
 ### Added
