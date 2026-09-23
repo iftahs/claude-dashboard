@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef } from 'react';
 import { untilFull } from '../lib/format';
 import { limitReadings, resolveLimitAlerts, type LimitReading } from '../lib/limits';
+import { isFiniteNumber, readAlertMemory, writeAlertMemory } from '../lib/alert-memory';
 import { useConfigMode } from './useConfigMode';
 import { useLiveData } from './useLiveData';
 
@@ -30,6 +31,18 @@ function playChime() {
   }
 }
 
+const FIRED_KEY = 'claude-dashboard-limit-alerts-fired';
+
+interface Fired {
+  resetsAt: number | null;
+  level: number;
+}
+
+function isFired(v: unknown): v is Fired {
+  const o = v as Partial<Fired> | null;
+  return !!o && typeof o === 'object' && isFiniteNumber(o.level) && (o.resetsAt === null || isFiniteNumber(o.resetsAt));
+}
+
 /** A new window has a reset at least one window-length later; half of that tolerates API jitter. */
 function sameWindow(a: number | null, b: number | null, windowMs: number): boolean {
   return a === null || b === null || Math.abs(a - b) < windowMs / 2;
@@ -57,14 +70,15 @@ function message(r: LimitReading, level: number): { title: string; body: string 
  * Each threshold (Settings → `limitAlerts`, default 70 / 90 %) fires once per
  * window, plus once when the limit is reached; tracking resets when the window
  * rolls over (a reset time a window-length later) or its % falls well below the
- * lowest threshold.
+ * lowest threshold. What fired is kept in localStorage, so a reload or a second
+ * tab doesn't alert again for the same window.
  */
 export function useLimitAlerts() {
   const { liveUsage, codexLive } = useLiveData();
   const { isApi, settings } = useConfigMode();
   const config = resolveLimitAlerts((settings as { limitAlerts?: unknown }).limitAlerts);
   const thresholdKey = config.thresholds.join(',');
-  const fired = useRef<Record<string, { resetsAt: number | null; level: number }>>({});
+  const fired = useRef<Record<string, Fired> | null>(null);
 
   const readings = useMemo(
     () => limitReadings(isApi ? null : liveUsage.data, codexLive.data),
@@ -82,22 +96,34 @@ export function useLimitAlerts() {
     if (!('Notification' in window) || Notification.permission !== 'granted') return;
     const levels = [...config.thresholds, 100];
     const rearmBelow = Math.max(0, config.thresholds[0] - 20);
+    const state = (fired.current ??= readAlertMemory(FIRED_KEY, isFired));
+    let changed = false;
 
     for (const r of readings) {
-      const prev = fired.current[r.key];
+      const prev = state[r.key];
       let level = prev && sameWindow(prev.resetsAt, r.resetsAt, r.windowMs) ? prev.level : 0;
       if (r.pct < rearmBelow) level = 0;
       const pct = r.reached ? 100 : r.pct;
       // Only the highest newly crossed threshold alerts (opening at 95% says "90%", not "70%" and "90%").
       const crossed = levels.filter((t) => pct >= t && level < t).pop();
       if (crossed !== undefined) {
-        level = crossed;
-        const { title, body } = message(r, crossed);
-        new Notification(title, { body, icon: '/favicon.ico', tag: `${r.key}-${crossed}` });
-        if (config.mode === 'sound') playChime();
+        const other = readAlertMemory(FIRED_KEY, isFired)[r.key];
+        if (other && sameWindow(other.resetsAt, r.resetsAt, r.windowMs) && other.level >= crossed) {
+          level = other.level; // another tab already alerted
+        } else {
+          level = crossed;
+          const { title, body } = message(r, crossed);
+          new Notification(title, { body, icon: '/favicon.ico', tag: `${r.key}-${crossed}` });
+          if (config.mode === 'sound') playChime();
+        }
       }
-      fired.current[r.key] = { resetsAt: r.resetsAt ?? prev?.resetsAt ?? null, level };
+      const next = { resetsAt: r.resetsAt ?? prev?.resetsAt ?? null, level };
+      if (!prev || prev.level !== next.level || prev.resetsAt !== next.resetsAt) {
+        state[r.key] = next;
+        changed = true;
+      }
     }
+    if (changed) writeAlertMemory(FIRED_KEY, state);
     // thresholdKey stands in for config.thresholds, a new array every render.
   }, [readings, config.mode, thresholdKey]);
 }

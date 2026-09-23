@@ -32,7 +32,7 @@ export const CLAUDE_GAUGE_LABELS: BlockGaugeLabels = {
   apiBadge: 'Current 5-hour session · estimated from local logs',
   liveBadge: 'Live from Claude.ai',
   livePulse: true,
-  expiredBadge: '⚠️ Token expired — run any Claude Code cmd to refresh',
+  expiredBadge: '⚠️ Token expired — hover for the fix',
   offlineBadge: '⚠️ Local logs only (hover for details)',
   connectingBadge: 'Local logs (connecting to Claude.ai...)',
   current: 'This session',

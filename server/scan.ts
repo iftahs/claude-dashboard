@@ -1,3 +1,4 @@
+import { existsSync } from 'node:fs';
 import { readdir, readFile, writeFile, rename } from 'node:fs/promises';
 import { homedir, platform } from 'node:os';
 import { join } from 'node:path';
@@ -274,16 +275,28 @@ export async function readAccountCredentials(): Promise<CapturedToken[]> {
 }
 
 /**
- * User-facing "token expired" advice differs by runtime: on the host, running
- * any Claude Code command refreshes the Keychain/.credentials.json in place —
- * but the Docker container reads a host-written snapshot, so only re-syncing
- * that file helps. Keep the word "expired" in both: the frontend classifies
- * this state by matching it.
+ * User-facing "token expired" advice. On the host, any Claude Code command
+ * refreshes the token in place. In Docker it depends on the host OS (HOST_OS
+ * from docker:up, else whether the macOS Keychain snapshot exists): a Mac must
+ * re-sync that snapshot, elsewhere Claude Code rewrites the mounted
+ * `.credentials.json`. Keep the word "expired" in every variant: the frontend
+ * classifies this state by matching it.
  */
+export function expiredTokenAdvice(docker: boolean, hostOs: string | undefined, macCache: boolean): string {
+  if (!docker) return 'OAuth token expired — run any Claude Code command in your terminal to refresh it automatically.';
+  if (hostOs === 'darwin' || (!hostOs && macCache)) {
+    return 'OAuth token expired — the cached token the container reads is stale. On your Mac run `npm run token-sync`, or `npm run docker:up` (which installs the auto-refresh agent).';
+  }
+  if (hostOs) {
+    return 'OAuth token expired — run any Claude Code command (e.g. `claude`) on this computer; it rewrites ~/.claude/.credentials.json, which the container re-reads on the next poll (no rebuild needed).';
+  }
+  return 'OAuth token expired — run any Claude Code command (e.g. `claude`) on this computer; it rewrites ~/.claude/.credentials.json, which the container re-reads on the next poll. On a Mac, run `npm run token-sync` instead (or `npm run docker:up`, which installs the auto-refresh agent).';
+}
+
 export function expiredTokenMessage(): string {
-  return isDocker()
-    ? 'OAuth token expired — the cached token the container reads is stale. On your Mac run `npm run token-sync`, or `npm run docker:up` (which installs the auto-refresh agent).'
-    : 'OAuth token expired — run any Claude Code command in your terminal to refresh it automatically.';
+  const docker = isDocker();
+  const macCache = docker && existsSync(join(claudeDir(), '.dashboard-oauth-cache.json'));
+  return expiredTokenAdvice(docker, process.env.HOST_OS?.trim() || undefined, macCache);
 }
 
 export async function readStatsSummary(): Promise<any> {

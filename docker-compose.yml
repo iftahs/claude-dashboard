@@ -98,6 +98,8 @@ services:
       # host's zone into .env as TZ (only if absent); the default below applies
       # when it is unset or blank.
       - TZ=${TZ:-Asia/Jerusalem}
+      # Host OS (written by `npm run docker:up`), so the "token expired" advice fits it.
+      - HOST_OS=${HOST_OS:-}
     # Always available: restarts on crash and on machine reboot
     # (as long as Docker Desktop is set to start at login).
     restart: unless-stopped

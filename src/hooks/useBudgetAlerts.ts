@@ -9,9 +9,22 @@ import { useLiteLlmActual } from './useLiteLlmActual';
 import { hasCaps, usePlatformLimits, type CapPlatform } from './useLimits';
 import { buildBudgetRows, type BudgetPeriod } from '@/lib/budget';
 import { coverageDays } from '@/lib/coverage';
+import { isFiniteNumber, readAlertMemory, writeAlertMemory } from '@/lib/alert-memory';
 import type { WeeklyData } from '@/types';
 
 const THRESHOLDS = [70, 90, 100] as const;
+
+const FIRED_KEY = 'claude-dashboard-budget-alerts-fired';
+
+interface Fired {
+  window: number;
+  level: number;
+}
+
+function isFired(v: unknown): v is Fired {
+  const o = v as Partial<Fired> | null;
+  return !!o && typeof o === 'object' && isFiniteNumber(o.window) && isFiniteNumber(o.level);
+}
 
 /** The 7-day window the budget rows need; alerts are not a 5 s concern, so a separate poll runs at 30 s. */
 const WEEKLY_7D = '/api/usage/weekly?days=7';
@@ -68,7 +81,8 @@ interface PlatformRows {
  * platform has a cap and alerts are on. Fires a browser notification (and
  * optional chime) the first time spend crosses 70 / 90 / 100% of a cap, once per
  * threshold per calendar window; tracking resets when the period rolls over (a
- * new resetsAt). 'off' is a no-op. Same permission-request pattern as useLimitAlerts.
+ * new resetsAt), and what fired persists across reloads and tabs like
+ * useLimitAlerts'. 'off' is a no-op. Same permission-request pattern as useLimitAlerts.
  */
 export function useBudgetAlerts(mode: Settings['budgetAlert']) {
   const [caps] = usePlatformLimits();
@@ -118,7 +132,7 @@ export function useBudgetAlerts(mode: Settings['budgetAlert']) {
   ]);
 
   // `${platform}:${period}` → { window: resetsAt of the window we last alerted in, level: highest threshold fired }
-  const fired = useRef<Record<string, { window: number; level: number }>>({});
+  const fired = useRef<Record<string, Fired> | null>(null);
 
   useEffect(() => {
     if (mode === 'off') return;
@@ -129,6 +143,8 @@ export function useBudgetAlerts(mode: Settings['budgetAlert']) {
   useEffect(() => {
     if (mode === 'off') return;
     if (!('Notification' in window) || Notification.permission !== 'granted') return;
+    const state = (fired.current ??= readAlertMemory(FIRED_KEY, isFired));
+    let changed = false;
 
     for (const { platform, rows } of perPlatform) {
       // Claude-only installs keep the original wording; with Codex the platform is named.
@@ -137,9 +153,14 @@ export function useBudgetAlerts(mode: Settings['budgetAlert']) {
         if (r.pct == null) continue; // no cap configured
 
         const id = `${platform}:${r.key}`;
-        const prev = fired.current[id];
+        const prev = state[id];
         // Reset the high-water mark when this period rolls into a new window.
         let level = prev && prev.window === r.resetsAt ? prev.level : 0;
+        const nextThreshold = THRESHOLDS.find((t) => t > level);
+        if (nextThreshold !== undefined && r.pct >= nextThreshold) {
+          const other = readAlertMemory(FIRED_KEY, isFired)[id];
+          if (other && other.window === r.resetsAt) level = Math.max(level, other.level); // another tab already alerted
+        }
 
         for (const t of THRESHOLDS) {
           if (r.pct >= t && level < t) {
@@ -161,9 +182,11 @@ export function useBudgetAlerts(mode: Settings['budgetAlert']) {
         }
 
         if (!prev || prev.window !== r.resetsAt || level !== prev.level) {
-          fired.current[id] = { window: r.resetsAt, level };
+          state[id] = { window: r.resetsAt, level };
+          changed = true;
         }
       }
     }
+    if (changed) writeAlertMemory(FIRED_KEY, state);
   }, [perPlatform, mode, codexAvailable]);
 }

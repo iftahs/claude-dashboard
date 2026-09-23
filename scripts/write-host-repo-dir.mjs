@@ -13,6 +13,9 @@
  *   TZ               — the host's IANA time zone, so the container's day
  *                      buckets start at the user's midnight. SET ONLY IF
  *                      ABSENT, like CODEX_DIR_HOST.
+ *   HOST_OS          — the host's process.platform, so the container's
+ *                      "token expired" advice fits the host (the Keychain
+ *                      sync is macOS-only).
  *
  * Runs on the host from the repo root (npm lifecycle guarantees cwd). Upserts
  * only these lines; never touches anything else in .env.
@@ -51,5 +54,6 @@ if (existsSync(join(codexHome, 'sessions'))) setIfAbsent('CODEX_DIR_HOST', codex
 // IANA name on every OS (ICU maps Windows zones); skip it when unresolvable.
 const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
 if (tz && tz !== 'Etc/Unknown') setIfAbsent('TZ', tz);
+upsert('HOST_OS', process.platform);
 
 writeFileSync(envPath, content);

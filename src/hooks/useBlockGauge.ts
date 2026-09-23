@@ -72,11 +72,11 @@ export function useBlockGauge({
   const now = Date.now();
   const hasLive = !isApi && !!live;
 
-  // Without live data the local block drives the numbers, so an expired one must
-  // read as ended, not as the last session's tokens against the 6M guess. The
-  // client-clock check covers a server block memoised before it expired. Once it
-  // has ended, that block is the previous one.
-  const blockEnded = !hasLive && !!block && (!block.isActive || block.resetsAt <= now);
+  // An expired local block must read as ended, live reading or not (a live window
+  // with no reset, or a Codex block that fell back to the local anchor), not as
+  // the last session's tokens. The client-clock check covers a server block
+  // memoised before it expired. Once it has ended, that block is the previous one.
+  const blockEnded = !!block && (!block.isActive || block.resetsAt <= now);
   const current = blockEnded ? null : block?.totals;
   const previous = blockEnded ? block?.totals : block?.prevTotals;
   const effective = current?.effectiveTokens ?? 0;

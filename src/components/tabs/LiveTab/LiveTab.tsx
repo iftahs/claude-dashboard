@@ -25,6 +25,7 @@ import { useCostMetrics } from '@/hooks/useCostMetrics';
 import { useLiteLlmActual } from '@/hooks/useLiteLlmActual';
 import { usePolling } from '@/hooks/usePolling';
 import { useSource } from '@/hooks/useSource';
+import { usePlatformLimits } from '@/hooks/useLimits';
 import type { AccountsLiveData, CodexBlock } from '@/types';
 import type { ClaudeGaugeProps, CodexGaugeProps, LiveTabProps, SideBySideProps } from './types';
 
@@ -138,6 +139,7 @@ export function LiveTab({ limits }: LiveTabProps) {
   const { configData, isApi, weekStart } = useConfigMode();
   const { costPerDay, coverageDays } = useCostMetrics();
   const { litellmActual } = useLiteLlmActual();
+  const [platformCaps] = usePlatformLimits();
 
   // Live plan/limits per logged-in account (only polled while the Live tab is
   // mounted, and not under Codex, where the Claude plan card never renders).
@@ -174,12 +176,27 @@ export function LiveTab({ limits }: LiveTabProps) {
   });
 
   // ── Per-platform slots ────────────────────────────────────────────────────
+  // Each gauge compares its own platform's spend, so it takes that platform's cap, not Both's sum.
   const claudeGauge = showClaude && (
-    <ClaudeGauge costPerDay={claudeCostPerDay} dailyLimit={limits.dailyLimit} todayActualCost={litellmActual?.today ?? null} />
+    <ClaudeGauge
+      costPerDay={claudeCostPerDay}
+      dailyLimit={platformCaps.claude.dailyLimit}
+      todayActualCost={litellmActual?.today ?? null}
+    />
   );
   const codexGauge = showCodex && (
-    <CodexGauge block={codexBlock} costPerDay={codexCostPerDay} dailyLimit={limits.dailyLimit} />
+    <CodexGauge block={codexBlock} costPerDay={codexCostPerDay} dailyLimit={platformCaps.codex?.dailyLimit ?? null} />
   );
+
+  // Under Both liveWeekly also counts Codex; the Claude card's offline weekly % must not.
+  const bs = liveWeekly.data?.bySource;
+  const claudeWeekly =
+    platform === 'both' && liveWeekly.data && bs
+      ? {
+          ...liveWeekly.data,
+          totals: { ...liveWeekly.data.totals, effectiveTokens: bs.code.effectiveTokens + bs.cowork.effectiveTokens },
+        }
+      : liveWeekly.data;
 
   // Subscription rate-limit bars — only meaningful with a plan. With more than one
   // logged-in account, show each account's limits side-by-side.
@@ -190,7 +207,7 @@ export function LiveTab({ limits }: LiveTabProps) {
       ) : (
         <PlanUsage
           block={recent.data?.activeBlock ?? null}
-          weekly={liveWeekly.data}
+          weekly={claudeWeekly}
           liveUsage={liveUsage.data}
           weekStart={weekStart}
           tier={configData.subscriptionType ?? configData.rateLimitTier ?? null}
