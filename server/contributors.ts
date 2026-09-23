@@ -12,11 +12,8 @@
 // that an MCP server's cost covers the whole session tail once its results are in
 // context. Context (>150k), 8h-session and 4+-parallel thresholds are the CLI's.
 //
-// Codex gets the same panel with two differences. Its shares are of EFFECTIVE
-// TOKENS, not cost: the Guardian auto-review model is priced at $0, so a
-// cost-weighted breakdown would make every auto-review invisible even though it
-// spends the plan's limit. And the copy talks about threads and auto-reviews, not
-// Claude Code's sessions, subagents and slash commands.
+// Codex gets the same panel weighted by EFFECTIVE TOKENS, not cost — the Guardian
+// auto-review model is priced at $0, so cost-weighting would hide it even though it spends the plan limit.
 
 import type { UsageEvent } from './scan.ts';
 import { estimateCost } from './pricing.ts';
@@ -66,7 +63,6 @@ function platformOf(events: UsageEvent[]): Platform {
   return events.length > 0 && events.every((e) => e.source === 'codex') ? 'codex' : 'claude';
 }
 
-/** Per-platform wording of the headline behaviours. */
 const COPY: Record<Platform, Record<BehaviourKey, { headline: (p: number) => string; body: string }>> = {
   claude: {
     subagent_heavy: { headline: (p) => `${p}% of your usage came from subagent-heavy sessions`, body: 'Each subagent runs its own requests. Be deliberate about spawning them — and consider configuring a cheaper model for simpler subagents.' },

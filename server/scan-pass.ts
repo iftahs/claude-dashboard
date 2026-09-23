@@ -31,15 +31,7 @@ import { parseCodexFileRows } from './scan-pass-codex.ts';
 /** Measured optimum on an NVMe SSD: 1→4.28s, 8→3.11s, 16→3.27s, 24→3.74s. */
 export const PARSE_CONCURRENCY = 8;
 
-/**
- * Files above this size feed usage rows only, not insights. It was 5 MB (inherited
- * from insights-scan.ts), which silently dropped the longest sessions from the
- * Sessions and Insights tabs. Every file is read whole for its usage rows anyway;
- * parsing the rest of a big one costs CPU once (the row cache keeps the result) and
- * adds rows that grow with tool calls, not bytes. Measured on 31 files over 5 MB
- * (largest 24 MB): +0.3s once, ~1 MB more retained heap, ~5 MB more in the SQLite
- * cache. The cap now only guards against pathological transcripts.
- */
+/** Files above this size feed usage rows only, not insights — the cap only guards against pathological transcripts. */
 export const INSIGHTS_MAX_FILE_BYTES = 64 * 1024 * 1024;
 
 /** Per-session search-corpus cap applied at parse time (and again globally in merge.ts). */
@@ -142,9 +134,7 @@ export interface SessionPartialRow {
   repoUrl?: string;
 }
 
-// Per-item rows added for history features. Each carries its own identity so
-// merge.ts can dedup across files (a resumed transcript repeats earlier lines);
-// never pre-sum these per file.
+// Per-item rows added for history features; each carries its own identity so merge.ts can dedup across files — never pre-sum these per file.
 
 /** A request the provider refused for a usage limit. */
 export interface LimitHitRow {
@@ -386,11 +376,7 @@ function toolResultText(content: unknown): string {
   return text;
 }
 
-/**
- * How Claude Code words a call the permission layer refused, as opposed to one
- * that ran and failed. Anchored at the start: a failed command whose output merely
- * quotes one of these (or says "Permission denied" from the OS) must not count.
- */
+/** How Claude Code words a permission refusal vs a run-and-failed call; anchored at the start so output that merely quotes one of these doesn't count. */
 const REJECTION_PATTERNS: RegExp[] = [
   /^The user doesn['’]t want to proceed with this tool use\b/, // declined at the prompt
   /^Permission for this tool use was denied\b/, // the same decline, as a subagent sees it
@@ -400,12 +386,7 @@ const REJECTION_PATTERNS: RegExp[] = [
   /^Claude requested permissions to .+ but you haven['’]t granted it yet\b/, // no prompt available
 ];
 
-/**
- * Whether a tool_result is a permission rejection. Only an is_error result can be:
- * the old test ran /reject|doesn't want to proceed|denied/ over every result, so a
- * successful Read of a file that mentions "reject" counted as a rejection, and
- * those false positives outnumbered real declines by more than 30 to 1.
- */
+/** Whether a tool_result is a permission rejection — only an is_error result can be. */
 export function isRejectedToolResult(block: any): boolean {
   if (!block || block.is_error !== true) return false;
   if (block.rejected === true) return true;
@@ -413,16 +394,9 @@ export function isRejectedToolResult(block: any): boolean {
   return REJECTION_PATTERNS.some((re) => re.test(text));
 }
 
-// ---------------------------------------------------------------------------
-// History-row helpers (Claude transcripts). Exported for the unit tests.
-// ---------------------------------------------------------------------------
+// History-row helpers (Claude transcripts) — exported for the unit tests.
 
-/**
- * A turn is clamped at this length. Its end is the last assistant line or tool result
- * before the next prompt, so the idle gap between turns never counts; the cap only
- * bounds a turn that sat on something for hours (a permission prompt left overnight,
- * a machine asleep mid-turn), where the gap is not work either.
- */
+/** A turn is clamped at this length — bounds a turn that sat on something for hours (an overnight permission prompt, a sleeping machine), which is not work either. */
 export const TURN_CAP_MS = 6 * 60 * 60 * 1000;
 
 function countTextLines(s: string): number {
@@ -432,13 +406,7 @@ function countTextLines(s: string): number {
   return s.endsWith('\n') ? n - 1 : n;
 }
 
-/**
- * Lines added/removed by one Edit/MultiEdit/Write result (`toolUseResult`), or null
- * when the result is not a file edit. `structuredPatch` hunks carry only body lines
- * (' ', '+', '-', '\'), never '@@'/'+++' headers, so the first character decides.
- * A Write that creates a file has an empty patch; its content lines are all added.
- * Counts only: the patch text itself is never kept.
- */
+/** Lines added/removed by one edit result, or null when not a file edit; structuredPatch hunks carry only body lines, so the first character decides. Counts only, never the patch text. */
 export function countPatchLines(tur: any): { added: number; removed: number } | null {
   if (!tur || typeof tur !== 'object' || Array.isArray(tur)) return null;
   const patch: unknown[] | null = Array.isArray(tur.structuredPatch) ? tur.structuredPatch : null;
@@ -575,14 +543,7 @@ function epochMs(v: unknown): number | null {
   return null;
 }
 
-/**
- * Whether an assistant line is a request refused for a usage limit, and which one.
- * Current Claude Code flags it (`isApiErrorMessage`, `error: 'rate_limit'`, status 429,
- * `quotaLimits{rateLimitType, resetsAt (epoch s)}`); older lines only carry the
- * `<synthetic>` "You've hit your session limit · resets 4am (Europe/London)" text,
- * whose wall-clock reset is resolved against the line's own timestamp.
- * `family` names the capped model family of a per-model limit ('fable', 'opus'…).
- */
+/** Whether an assistant line is a usage-limit refusal: flagged fields on current builds, else `<synthetic>` text whose wall-clock reset is resolved against the line's own timestamp. */
 export function limitHitOf(
   obj: any,
   ts: number,
@@ -619,19 +580,11 @@ export function limitHitOf(
 }
 
 /**
- * What a user line means for turn timing:
- *  - 'prompt': starts a turn — typed input, or input Claude Code injects the same way
- *    (a scheduled task, a background-task notification, a slash command)
- *  - 'work': part of the running turn — a tool result, or the marker left when the
- *    user interrupts it (the turn ran until then)
- *  - null: neither — meta lines, compaction summaries, a local command's echoed
- *    output. These can be written long after a turn ended, so they never extend one.
- *
- * `dequeued` is true when this is the first user line after a queue-operation `dequeue`
- * (attachments may sit between, an assistant line may not): that is Claude Code
- * delivering queued input, which starts a turn even when it is flagged isMeta (a
- * scheduled wake-up, a message from another session). Without this, a turn cut off by
- * a limit refusal swallowed the idle hours until the next delivered input.
+ * 'prompt' starts a turn (typed or injected input); 'work' continues one (a tool
+ * result, an interrupt marker); null extends nothing (meta/compaction lines can be
+ * written long after a turn ended). `dequeued`: the first user line after a queue
+ * `dequeue` starts a turn even when flagged isMeta, so a limit refusal doesn't
+ * swallow the idle time until the next delivered input.
  */
 export function userTurnRole(obj: any, dequeued = false): 'prompt' | 'work' | null {
   if (obj?.type !== 'user' || obj.message?.role !== 'user') return null;
@@ -675,8 +628,7 @@ export async function parseFileRows(file: ScannedFile): Promise<FileRows> {
   const { path, source, mtimeMs, size } = file;
   const insightsSkipped = size > INSIGHTS_MAX_FILE_BYTES;
 
-  // History rows. Limit hits come from every file (merge.ts reads them even for files
-  // over INSIGHTS_MAX_FILE_BYTES); the rest only from insight-eligible files.
+  // History rows: limit hits come from every file (merge.ts reads them even over INSIGHTS_MAX_FILE_BYTES); the rest only from insight-eligible files.
   const limitHits: LimitHitRow[] = [];
   const lineChanges: LineChangeRow[] = [];
   const prLinks: PrLinkRow[] = [];
@@ -718,16 +670,12 @@ export async function parseFileRows(file: ScannedFile): Promise<FileRows> {
   // tool_use id -> lines estimated from an edit's input, used when its result has no patch.
   const inputEdits = new Map<string, { filePath: string | null; added: number; removed: number }>();
 
-  // Turn timing: main-session files only (a subagent's prompts are its parent's tool
-  // calls). A turn runs from a prompt to the last assistant line or tool result before
-  // the next prompt; lines older than the prompt (history a resumed transcript repeats
-  // out of order) or from another session never extend it.
+  // Turn timing (main-session files only): a turn runs prompt → last assistant/tool-result line before the next prompt; older or other-session lines never extend it.
   const trackTurns = !fileIsSidechain && !insightsSkipped;
   let turn: { key: string; ts: number; sessionId: string; endTs: number; firstReplyTs: number | null } | null = null;
   let dequeued = false; // the next user line is queued input being delivered
   const finishTurn = () => {
-    // A prompt nothing answered (a local slash command, a request refused for a
-    // limit) is not a turn.
+    // A prompt nothing answered (a local slash command, a limit refusal) is not a turn.
     if (turn && turn.firstReplyTs !== null) {
       turns.push({
         key: turn.key, ts: turn.ts, sessionId: turn.sessionId, source,
@@ -791,8 +739,7 @@ export async function parseFileRows(file: ScannedFile): Promise<FileRows> {
       continue;
     }
 
-    // Session titles carry no timestamp, so they are read before the timestamp gate.
-    // `seq` (line order) is what lets merge.ts pick the latest one.
+    // Session titles carry no timestamp, so they are read before the timestamp gate; `seq` (line order) lets merge.ts pick the latest one.
     if (obj.type === 'custom-title' || obj.type === 'ai-title') {
       const custom = obj.type === 'custom-title';
       const title = custom ? obj.customTitle : obj.aiTitle;
@@ -872,8 +819,7 @@ export async function parseFileRows(file: ScannedFile): Promise<FileRows> {
         const key = typeof obj.uuid === 'string' && obj.uuid ? obj.uuid : `${sessionId}|${ts}`;
         if (!seenLimitKeys.has(key)) {
           seenLimitKeys.add(key);
-          // The refusal itself is a `<synthetic>` line; the model it refused is the one
-          // the session was last answered by — unless a per-model cap names another family.
+          // The refusal itself is a `<synthetic>` line; the model it refused is the one the session was last answered by, unless a per-model cap names another family.
           const last = lastModel.get(sessionId) ?? '';
           limitHits.push({
             key, ts, sessionId, source, kind: hit.kind,
@@ -888,8 +834,7 @@ export async function parseFileRows(file: ScannedFile): Promise<FileRows> {
 
     // ---- insight rows (files <= INSIGHTS_MAX_FILE_BYTES only) ----
     const sm = sessionRow(sessionId, ts, gitBranch);
-    // First value wins. The cwd is a real host path only for Claude Code; a Cowork
-    // cwd is inside its sandbox, like its projectPath.
+    // First value wins. The cwd is a real host path only for Claude Code; a Cowork cwd is sandbox-internal, like its projectPath.
     if (!sm.cwd && source === 'code' && typeof obj.cwd === 'string') sm.cwd = obj.cwd;
     if (!sm.client && typeof obj.entrypoint === 'string') sm.client = obj.entrypoint;
     if (!sm.clientVersion && typeof obj.version === 'string') sm.clientVersion = obj.version;
@@ -986,8 +931,7 @@ export async function parseFileRows(file: ScannedFile): Promise<FileRows> {
         }
       }
 
-      // Structured side of a tool result: file edits and git operations. Keyed by the
-      // tool_use id, since a resumed transcript repeats the same result in a new file.
+      // Structured side of a tool result: file edits and git operations, keyed by tool_use id since a resumed transcript repeats the same result in a new file.
       const tur = obj.toolUseResult;
       if (tur && typeof tur === 'object' && !Array.isArray(tur)) {
         const change = resultId ? countPatchLines(tur) : null;

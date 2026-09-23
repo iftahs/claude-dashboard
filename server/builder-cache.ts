@@ -6,20 +6,8 @@
  *
  * Correctness rests on two invariants:
  *  - the builders are pure functions of (events|insights, now, params);
- *  - the key bundles every param AND a validity token (eventsFingerprint() /
- *    insightsFingerprint(), i.e. data.ts::dataFingerprint).
- * Callers pin `now` to the scan's `computedAt`. The token covers the data and the
- * minute computedAt falls in, not computedAt itself, so a hit can be built from a
- * `now` up to a minute old: windows slide once a minute rather than once per 5s
- * rescan. (Keyed on the data alone, as it once was, an idle dashboard served
- * windows frozen at the last file write.) When the token flips (a file changed,
- * or a new minute began), the prior entry for that key is overwritten in place.
- *
- * Keys are builders × params × sources. index.ts parses every numeric param with
- * intParam() (integer, clamped), which bounds that product, but a sweep of every
- * range × source still reaches thousands of keys — so the map is also capped at
- * MEMO_MAX. A rebuilt entry moves to the back of the Map's insertion order and
- * the front one is evicted, so the keys the open tabs keep polling survive.
+ *  - the key bundles every param AND a validity token (data fingerprint + the current minute, so windows still slide while idle).
+ * Keys are builders × params × sources — bounded by intParam()'s clamps, but a full range sweep can still reach thousands, so the map also evicts LRU past MEMO_MAX.
  */
 
 interface Entry {
@@ -32,7 +20,6 @@ export const MEMO_MAX = 256;
 
 const store = new Map<string, Entry>();
 
-/** Number of memoised outputs held right now (tests). */
 export function memoSize(): number {
   return store.size;
 }

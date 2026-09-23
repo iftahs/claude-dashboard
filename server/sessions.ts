@@ -1,20 +1,14 @@
 /**
  * sessions.ts — pure builders behind the Sessions tab routes in index.ts:
- * `/api/sessions` (the history table), `/api/sessions/summary` (its StatCard
- * row), `/api/search` (transcript search) and the legacy-path map `/api/projects`
- * returns for the tag-key migration. No I/O: callers pass the scan output, the
- * legacy sidecars and the Codex title index in.
+ * `/api/sessions`, `/api/sessions/summary`, `/api/search`, and the legacy-path
+ * map `/api/projects` returns for the tag-key migration. No I/O.
  *
- * Both platforms get the same fields with the same meaning:
- *  - `turn_count` — user turns that got an answer (Claude: prompt → last reply,
- *    Codex: task_complete), the TurnRows merge.ts dedups. `user_message_count` is
- *    kept for the CSV export but counts every Claude user line, tool results included.
- *  - `assistant_message_count` — distinct model responses (Claude message ids,
- *    Codex response ids), subagents included on both.
- *  - `active_ms` — the sum of those turns' durations; `duration_minutes` stays the
- *    wall-clock span first → last record, idle days included.
- *  - `lines_added` / `lines_removed` / `pr_urls` — merge.ts history rows.
- *  - `title` — Claude's custom / AI title, Codex's session_index.jsonl name.
+ * Both platforms share fields: `turn_count` counts answered user turns (from
+ * merge.ts's deduped TurnRows); `assistant_message_count` counts distinct model
+ * responses, subagents included; `active_ms` sums those turns' durations while
+ * `duration_minutes` is the wall-clock span; `lines_added`/`lines_removed`/
+ * `pr_urls` come from merge.ts history rows; `title` is Claude's custom/AI title
+ * or Codex's session_index.jsonl name.
  */
 import { sourceMatches, type SourceFilter } from './aggregate.ts';
 import { codexTitleOf } from './codex-titles.ts';
@@ -98,8 +92,7 @@ export function buildSessionRows(
     t.cacheRead += e.cacheReadTokens;
   }
 
-  // Tool counts from main-thread calls; modified files from every write, subagents
-  // included — the same scope as the line counts they sit next to.
+  // Tool counts from main-thread calls; modified files from every write (subagents included), the same scope as the line counts beside them.
   const toolCounts = new Map<string, Record<string, number>>();
   const files = new Map<string, Set<string>>();
   const addFile = (sessionId: string, fp: string | null) => {
@@ -171,8 +164,7 @@ export function buildSessionRows(
     });
   }
 
-  // Older sessions whose transcripts are gone but whose legacy sidecar survives
-  // stay listed, so the history never regresses. Sidecars are Claude Code only.
+  // Older sessions whose transcripts are gone but whose legacy sidecar survives stay listed, so the history never regresses (sidecars are Claude Code only).
   if (source === 'all' || source === 'code' || source === 'claude') {
     const listed = new Set(rows.map((r) => r.session_id));
     for (const s of sidecar) {
@@ -214,10 +206,6 @@ export function buildSessionRows(
   rows.sort((a, b) => Date.parse(b.start_time) - Date.parse(a.start_time));
   return rows;
 }
-
-// ---------------------------------------------------------------------------
-// Summary row
-// ---------------------------------------------------------------------------
 
 export interface SessionSummaryPart {
   sessions: number;
@@ -293,14 +281,10 @@ export function buildSessionSummary(rows: SessionRow[], turns: TurnRow[]): Sessi
   };
 }
 
-// ---------------------------------------------------------------------------
-// Transcript search
-// ---------------------------------------------------------------------------
-
 export interface SearchHit {
   sessionId: string;
   source: UsageSource;
-  /** Last path segment of the project — what the old strip showed. */
+  /** Last path segment of the project. */
   project: string;
   projectPath: string;
   title?: string;
@@ -326,11 +310,7 @@ function localDate(ms: number): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
-/**
- * Sessions whose prompts (or title) mention `q`, most matches first. Scoped like
- * the table — same platform/surface, main sessions only — so every hit is a row
- * the strip can open.
- */
+/** Sessions whose prompts (or title) mention `q`, most matches first — scoped like the table so every hit is a row the strip can open. */
 export function searchSessions(
   insights: InsightsData,
   q: string,
@@ -371,16 +351,7 @@ export function searchSessions(
   return hits.slice(0, limit);
 }
 
-// ---------------------------------------------------------------------------
-// Tag-key migration
-// ---------------------------------------------------------------------------
-
-/**
- * Project path → the other paths the same project was filed under before the
- * cwd-based derivation (project-path.ts): the lossy folder decode of a Claude
- * session's directory, and a legacy sidecar path in its raw form. The UI keys
- * user tags by project path, so it moves tags stored under these onto the new one.
- */
+/** Project path → the legacy paths (folder decode, raw sidecar path) the same project was filed under before cwd-based derivation — lets the UI move tags stored under those onto the new path. */
 export function legacyProjectPaths(insights: InsightsData, sidecar: any[]): Map<string, string[]> {
   const out = new Map<string, Set<string>>();
   const add = (path: string, legacy: string) => {

@@ -12,9 +12,7 @@
  * also persisted (event-store.ts), which is what makes a container restart cheap:
  * without it every restart re-parsed the entire corpus from scratch.
  *
- * With DASHBOARD_RETAIN_HISTORY=1 the rows of files that vanish (Claude Code's
- * cleanup deletes transcripts after ~30 days) are archived instead of dropped and
- * keep feeding the merge, after every live file. See event-store.ts.
+ * With DASHBOARD_RETAIN_HISTORY=1, rows of vanished files are archived instead of dropped and keep feeding the merge (see event-store.ts).
  */
 import { existsSync, readdirSync } from 'node:fs';
 import { basename, dirname, join } from 'node:path';
@@ -29,10 +27,7 @@ import {
 
 const TTL_MS = 5000;
 
-/**
- * The time resolution of the memo token (see dataFingerprint): memoised builder
- * output never trails the scan clock by more than this.
- */
+/** Memo-token resolution (see dataFingerprint) — memoised output never trails the scan clock by more than this. */
 const MEMO_BUCKET_MS = 60_000;
 
 interface CachedFile {
@@ -44,23 +39,14 @@ interface CachedFile {
 /** path -> parsed rows for that exact file version. */
 const rowCache = new Map<string, CachedFile>();
 
-/**
- * path -> archived (slim) rows of a file that vanished. Loaded from the store once
- * per process, only when retention is on; empty otherwise.
- */
+/** path -> archived (slim) rows of a vanished file; loaded from the store once per process, only when retention is on. */
 const archive = new Map<string, ArchivedFile>();
 let archiveLoaded = false;
 /** Bumped on every change to `archive`; folded into the fingerprint. */
 let archiveGen = 0;
 /** The archived files that merge (count) and their reduction, for one archive state. */
 let archiveMerge: { key: string; count: number; reduced: ReducedArchive | null } | null = null;
-/**
- * Vanished paths that could not be archived yet because their root looked
- * unmounted or empty (see classifyGone). Their rows stay in rowCache and in the
- * store — out of the merge, which only reads listed files — and are archived on
- * the first rescan where the root looks healthy, or simply come back if the files
- * do. Only paths new to this set count as a removal for the merge-reuse check.
- */
+/** Vanished paths whose root looked unmounted/empty (see classifyGone) — held out of the merge until archivable or the files return. */
 const pendingGone = new Set<string>();
 
 let events: UsageEvent[] = [];
@@ -131,14 +117,7 @@ function hash53(s: string, seed = 0): number {
   return 4294967296 * (2097151 & h2) + (h1 >>> 0);
 }
 
-/**
- * Whether the last merge result is still exact. mergeRows is a pure reduction of
- * (rows in listing order, session metas), so with no file re-parsed, added or
- * removed, the same fingerprint and the same sidecars it would rebuild the same
- * events and insights, yet with the dashboard open every 5s rescan used to pay
- * for a full-corpus merge even when idle. The fingerprint check also covers a
- * merge that threw after the row cache had already taken new rows.
- */
+/** mergeRows is a pure reduction, so with nothing reparsed/added/removed and the same fingerprint+sidecars, the last merge is still exact. */
 export function canReuseMerge(
   prev: MergeBasis | null,
   next: MergeBasis,
@@ -155,10 +134,7 @@ export function canReuseMerge(
   );
 }
 
-// ---------------------------------------------------------------------------
-// History archive helpers — pure (the filesystem check is injectable) so the
-// rules below are testable without a real ~/.claude.
-// ---------------------------------------------------------------------------
+// History archive helpers — pure (the filesystem check is injectable) so the rules below are testable without a real ~/.claude.
 
 type Exists = (p: string) => boolean;
 type ListDir = (p: string) => string[];
@@ -187,14 +163,7 @@ export function platformHome(root: ScanRoot, exists: Exists = existsSync, list: 
   return false;
 }
 
-/**
- * A root counts as present when its directory exists AND the current listing has
- * at least one file from it, or when it is a real platform home (so a user who
- * deleted every rollout keeps the history). The existence check alone is not
- * enough: with CODEX_DIR_HOST= (the Docker opt-out) compose mounts ~/.claude at the
- * codex path, and ~/.claude/sessions exists, so the codex root "exists" while
- * holding no rollouts.
- */
+/** Present when its dir has a listed file, or is a real platform home — dir existing alone isn't enough (the opt-out mount makes ~/.claude 'exist' at the codex path too). */
 function rootPresent(
   root: ScanRoot,
   listedBySource: Map<UsageSource, number>,
@@ -216,12 +185,7 @@ function nameKey(source: UsageSource, path: string): string {
   return `${source}|${basename(path)}`;
 }
 
-/**
- * Sources whose archived rows may join the merge. Claude Code always; Cowork and
- * Codex only while their root is present, so opting a platform out (e.g.
- * CODEX_DIR_HOST=) hides its archived history too instead of resurrecting a
- * platform switcher for data the user chose not to mount. Hidden rows stay stored.
- */
+/** Claude Code always; Cowork/Codex only while their root is present, so opting a platform out hides its archived history too (rows stay stored). */
 export function archiveSources(
   roots: ScanRoot[],
   files: ScannedFile[],
@@ -237,17 +201,7 @@ export function archiveSources(
 /** What to do with a vanished file's rows while retention is on. */
 export type GoneAction = 'archive' | 'wait' | 'drop';
 
-/**
- * Per vanished path:
- *  - 'archive' — it sits under the configured root of its own source and that
- *    root is present (see rootPresent): a real deletion, e.g. Claude Code cleanup.
- *  - 'wait'    — its root is configured but looks unmounted or emptied. That makes
- *    every file vanish at once; archiving would freeze a snapshot of data that is
- *    about to come back, so the rows are held (pendingGone) and decided later.
- *  - 'drop'    — no configured root contains it any more (CLAUDE_DIR pointed
- *    elsewhere), or the same file is live at another path (a renamed project
- *    folder): not a deletion. Dropped as without retention.
- */
+/** 'archive': a real deletion under a present root; 'wait': the root looks unmounted, so rows are held until it's healthy again; 'drop': no configured root contains it, or it moved. */
 export function classifyGone(
   gone: { path: string; source: UsageSource }[],
   roots: ScanRoot[],
@@ -266,13 +220,7 @@ export function classifyGone(
   return out;
 }
 
-/**
- * The archived files that merge, after every live file, by archive time. Several
- * session fields are first-file-wins (projectPath, firstPrompt, file, …), so a live
- * file must always beat an archived copy of the same session. A file live again,
- * here or moved, never merges from the archive — that would double every per-file
- * counter (turns, errors, …) — nor does one outside its source's configured root.
- */
+/** Archived files merge after every live file (first-file-wins fields must favor live) and never include a file that is live again, here or moved, or outside its source's root. */
 export function archivedForMerge(
   files: ScannedFile[],
   archived: Iterable<ArchivedFile>,
@@ -299,10 +247,7 @@ export function archiveSig(gen: number, includedCount: number, allowed: Set<Usag
   return hash53(`${gen}|${includedCount}|${[...allowed].sort().join(',')}|${rootSig}`);
 }
 
-/**
- * The memo token for data fingerprint `fp` observed at `now`: the fingerprint plus
- * the minute `now` falls in. See dataFingerprint for why time is part of it.
- */
+/** Memo token for fingerprint `fp` at `now`: the fingerprint plus the minute it falls in (see dataFingerprint). */
 export function memoToken(fp: number, now: number): number {
   return hash53(`${fp}|${Math.floor(now / MEMO_BUCKET_MS)}`);
 }
@@ -336,9 +281,7 @@ async function rescan(): Promise<void> {
   const roots = scanRoots();
   const live = new Set(files.map((f) => f.path));
 
-  // A file that is back on disk leaves the archive: its live rows supersede the
-  // archived copy (e.g. an archive made while a volume was not mounted). So does
-  // one live again at another path (a renamed project folder).
+  // A file back on disk (here or at a new path) leaves the archive — its live rows supersede the archived copy.
   if (archive.size) {
     const liveNames = new Set(files.map((f) => nameKey(f.source, f.path)));
     const back: string[] = [];
@@ -364,9 +307,7 @@ async function rescan(): Promise<void> {
     void persistRows(parsed);
   }
 
-  // Files that disappeared. Without retention their rows are dropped, so deletions
-  // take effect. With it they are archived (slim) — unless their root looks
-  // unmounted or empty, in which case they wait in pendingGone (see there).
+  // Files that disappeared: dropped (no retention), archived (slim), or held in pendingGone if their root looks unmounted.
   for (const path of pendingGone) if (live.has(path)) pendingGone.delete(path);
   const gone: string[] = [];
   for (const path of rowCache.keys()) if (!live.has(path)) gone.push(path);
@@ -405,8 +346,7 @@ async function rescan(): Promise<void> {
       }
       if (toArchive.length) {
         archiveGen++;
-        // Prune the cache rows only once the archive write is durable: if it fails,
-        // the next start finds them in the store again and retries.
+        // Prune cache rows only once the archive write is durable — a failure lets the next start retry from the store.
         void archiveRows(toArchive, archivedAt).then((durable) => {
           if (durable) return pruneRows(toArchive.map((r) => r.path));
         });
@@ -436,9 +376,7 @@ async function rescan(): Promise<void> {
     archiveMerge = null;
   }
   const included = archiveMerge?.count ?? 0;
-  // The archive is part of the data: fold it into the fingerprint (and with it the
-  // memo token) so archiving, un-archiving and forgetting invalidate memoised
-  // builder output. With nothing archived the token is exactly what it was.
+  // Fold the archive into the fingerprint so archiving, un-archiving or forgetting it invalidates memoised builder output.
   const fp = aSig ? hash53(`${fingerprintOf(files)}|${aSig}`) : fingerprintOf(files);
 
   const sessionMetas = await readSessionMetas();
@@ -446,9 +384,7 @@ async function rescan(): Promise<void> {
   const reused = canReuseMerge(mergedFrom, basis, stale.length, removed);
 
   if (!reused) {
-    // Merge in the same deterministic order the files were listed in — several
-    // session fields are "first file wins" and would otherwise flap between runs —
-    // then the archive, which must never win over a live file.
+    // Merge live files in listing order (first-file-wins fields would otherwise flap), then the archive, which must never win over a live file.
     const liveRows: FileRows[] = [];
     for (const f of files) {
       const hit = rowCache.get(f.path);
@@ -461,8 +397,7 @@ async function rescan(): Promise<void> {
     mergedFrom = basis;
   }
   fingerprint = fp;
-  // Refreshed even when the merge is reused: it is the `now` every builder is
-  // pinned to, and the TTL in ensureFresh() runs off it.
+  // Refreshed even when the merge is reused — it's the `now` every builder pins to, and ensureFresh()'s TTL runs off it.
   computedAt = Date.now();
 
   lastStats = {
@@ -516,13 +451,7 @@ export async function getInsights(): Promise<{ insights: InsightsData; computedA
 /**
  * Validity token for memoised builder output (builder-cache.ts). Never rescans.
  *
- * The builders read `now` as well as the data: hourly buckets, "last N days"
- * cut-offs, today's day bucket. The file fingerprint alone only moves when a file
- * changes, so while nothing was being written every cached window froze at the
- * last write: the hourly chart stopped sliding and today's bucket never appeared
- * after midnight. Folding in the minute of computedAt, the same `now` the routes
- * pass to the builders, bounds that lag to a minute for one rebuild per key per
- * minute.
+ * Folds in the minute of `computedAt` (the builders' `now`) so memoised windows keep sliding while idle, bounded to a minute of lag.
  */
 export function dataFingerprint(): number {
   return memoToken(fingerprint, computedAt);
@@ -546,11 +475,7 @@ export interface ArchiveSummary {
   bytes: number;
 }
 
-/**
- * What the history archive holds. Read from the store even with retention off, so
- * an archive left from an earlier opt-in stays visible (and forgettable). Falls
- * back to the in-memory copy when the store is unavailable.
- */
+/** Read from the store even with retention off, so an archive left from an earlier opt-in stays visible; falls back to the in-memory copy when the store is unavailable. */
 export async function archiveSummary(): Promise<ArchiveSummary> {
   const enabled = retentionEnabled();
   const stats = await archiveStats();
@@ -565,11 +490,7 @@ export async function archiveSummary(): Promise<ArchiveSummary> {
   return { enabled, files: archive.size, oldestTs, bytes };
 }
 
-/**
- * Delete the history archive, in memory and on disk, and force the next read to
- * re-merge without it. Waits out an in-flight scan first so that scan cannot
- * re-add what was just forgotten. Resolves false when the store could not delete it.
- */
+/** Waits out an in-flight scan first, so it cannot re-add what was just forgotten; resolves false when the store could not delete it. */
 export async function forgetArchivedHistory(): Promise<boolean> {
   if (inflight) await inflight;
   archive.clear();

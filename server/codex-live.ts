@@ -285,10 +285,8 @@ let usageCache: { data: CodexLiveData; fetchedAt: number } | null = null;
 
 /**
  * Current Codex plan limits. Live from ChatGPT when the stored token works;
- * otherwise the newest local `token_count` snapshot (origin 'passive', with a
- * `warning` describing why live failed — never `error`, which the UI reads as
- * "nothing to show"). Auth problems (expired, 401/403) throw — those need the
- * user, not a stale snapshot.
+ * otherwise the newest local snapshot (origin 'passive', with a `warning` — never
+ * `error`, which the UI reads as "nothing to show"); auth problems (expired, 401/403) throw.
  */
 export async function fetchCodexUsage(): Promise<CodexLiveData> {
   if (usageCache && Date.now() - usageCache.fetchedAt < USAGE_TTL_MS) return usageCache.data;
@@ -402,11 +400,7 @@ function hasLapsed(w: any, now: number): boolean {
   return resetsMs > 0 && now >= resetsMs;
 }
 
-/**
- * One snapshot window → CodexWindow; null only when the plan has no such window.
- * A lapsed window has emptied since the snapshot, so it reads 0% with no reset
- * time ("resets on next msg") instead of its stale percentage.
- */
+/** null only when the plan has no such window; a lapsed one reads 0% with no reset time instead of its stale percentage. */
 function passiveWindow(w: any, now: number): CodexWindow | null {
   if (!w || typeof w !== 'object') return null;
   const windowSec = num(w.window_minutes) * 60;
@@ -423,11 +417,7 @@ function passiveWindow(w: any, now: number): CodexWindow | null {
 /** Only a JSON key/value pair spells it with bare quotes; inside message text they are escaped. */
 const USAGE_LIMIT_MARK = '"codex_error_info":"usage_limit_exceeded"';
 
-/**
- * True for the `task_complete` (or `error`) event Codex writes when a turn is
- * refused at a usage limit. Parsed in full: the string gate alone would also
- * match any other record that happens to carry the pair.
- */
+/** True for the task_complete/error event Codex writes on a usage-limit refusal; parsed in full since the string gate alone can false-match. */
 function isUsageLimitError(line: string): boolean {
   let o: any;
   try { o = JSON.parse(line); } catch { return false; }
@@ -436,19 +426,7 @@ function isUsageLimitError(line: string): boolean {
   return p.error?.codex_error_info === 'usage_limit_exceeded' || p.codex_error_info === 'usage_limit_exceeded';
 }
 
-/**
- * The newest `token_count.rate_limits` for the Codex plan among rollout lines →
- * CodexLiveData, or null. Records for another bucket (`limit_id` 'premium') are
- * skipped and the search goes on backwards: their windows are null, and they are
- * written milliseconds before a usage-limit error — exactly when this fallback is
- * read — so taking one would show empty bars at a limit hit. No `limit_id` (older
- * CLIs) means the Codex bucket.
- *
- * The last Codex snapshot before a limit hit usually reads 98-99%, not 100, and
- * rate_limit_reached_type is always null — so the hit itself is the signal: a
- * usage-limit error written AFTER the snapshot means its fullest window ran out,
- * for as long as that window has not reset.
- */
+/** Newest Codex-bucket rate_limits snapshot; a usage-limit error found after it means treat its fullest window as exhausted (real snapshots read 98-99%, never 100). */
 export function snapshotFromLines(lines: string[], now: number): CodexLiveData | null {
   // Walking backwards, every line visited before the chosen snapshot is newer than it.
   let limitHitAfter = false;
@@ -469,8 +447,7 @@ export function snapshotFromLines(lines: string[], now: number): CodexLiveData |
     if (typeof rl.limit_id === 'string' && rl.limit_id !== 'codex') continue;
 
     const raw = [rl.primary, rl.secondary];
-    // The window a later usage-limit error refers to: the fullest one. Once it has
-    // reset, the error says nothing about now.
+    // The window a later usage-limit error refers to: the fullest one — once it has reset, the error says nothing about now.
     const binding = raw
       .filter((w) => passiveWindow(w, now) !== null)
       .sort((a, b) => num(b.used_percent) - num(a.used_percent))[0];
@@ -483,9 +460,7 @@ export function snapshotFromLines(lines: string[], now: number): CodexLiveData |
       if (pw) windows.push(pw);
     }
     const { fiveHour, weekly } = assignWindows(windows);
-    // A "reached" flag only means something while the window it refers to hasn't
-    // lapsed. rate_limit_reached_type has been null in every snapshot seen so far,
-    // so an open window at 100% counts as reached too.
+    // A "reached" flag only holds while its window hasn't lapsed; rate_limit_reached_type is always null in practice, so an open window at 100% counts too.
     const open = raw.filter((w) => passiveWindow(w, now) !== null && !hasLapsed(w, now));
     const c = rl.credits;
     const snapshotTs = Date.parse(obj.timestamp ?? '');

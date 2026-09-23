@@ -1,22 +1,16 @@
 /**
  * transcript.ts — the session modal's turn-by-turn transcript, for both platforms.
  *
- * `/api/sessions/:id/transcript` reads one file on demand and returns the same
- * Turn shape whatever wrote it:
- *  - Claude Code / Cowork transcripts: `user` / `assistant` lines of this session
- *    (tool_result-only user lines are skipped; tool_use blocks become tool chips).
- *  - Codex rollouts: `{timestamp, type, payload}` envelopes, where the conversation
- *    lives in `event_msg/item_completed` items — UserMessage (minus the desktop app's
- *    attachment manifest), AgentMessage / Plan (assistant text), and CommandExecution
- *    / FileChange / McpToolCall / web search as tool chips on the assistant turn they
- *    follow. The model comes from the turn's `turn_context` (joined at the end,
- *    since a turn's items can precede its context line).
+ * `/api/sessions/:id/transcript` reads one file on demand and returns the same Turn
+ * shape whatever wrote it: Claude/Cowork `user`/`assistant` lines (tool_use blocks
+ * become tool chips), or Codex `event_msg/item_completed` items — UserMessage,
+ * AgentMessage/Plan (text), and CommandExecution/FileChange/McpToolCall/web search as
+ * tool chips on the assistant turn they follow. Model comes from `turn_context`,
+ * joined at the end since a turn's items can precede its context line.
  *
- * Lines are split on '\n' only — never readline, which treats U+2028/U+2029 (legal
- * inside JSON strings) as line breaks. Codex lines go through the same cheap header
- * prefilter as scan-pass-codex.ts: `compacted` history replays (1–4 MB) are counted
- * from the header and never parsed, and item kinds without text (Reasoning, …) are
- * skipped before JSON.parse. Text is capped per turn; nothing here is persisted.
+ * Split on '\n' only — never readline (legal U+2028/U+2029 inside JSON strings).
+ * Codex lines share scan-pass-codex.ts's cheap header prefilter. Text is capped per
+ * turn; nothing here is persisted.
  */
 import { createReadStream } from 'node:fs';
 import type { UsageSource } from './scan.ts';
@@ -67,10 +61,6 @@ function str(v: unknown): string {
 function brief(v: unknown): string {
   return str(v).replace(/\s+/g, ' ').trim().slice(0, BRIEF_CAP);
 }
-
-// ---------------------------------------------------------------------------
-// Claude Code / Cowork
-// ---------------------------------------------------------------------------
 
 export function claudeTranscriptBuilder(sessionId: string): TranscriptBuilder {
   const turns: TranscriptTurn[] = [];
@@ -144,10 +134,6 @@ export function claudeTranscriptBuilder(sessionId: string): TranscriptBuilder {
     finish: () => ({ turns, compactions }),
   };
 }
-
-// ---------------------------------------------------------------------------
-// Codex rollouts
-// ---------------------------------------------------------------------------
 
 const CODEX_HEADER_RE =
   /^\{"timestamp":"([^"]+)",(?:"ordinal":\d+,)?"type":"(session_meta|turn_context|event_msg|compacted)"/;
@@ -335,10 +321,6 @@ export function codexTranscriptBuilder(): TranscriptBuilder {
     },
   };
 }
-
-// ---------------------------------------------------------------------------
-// File reading
-// ---------------------------------------------------------------------------
 
 /** Lines of a file, split on '\n' only. */
 export async function* readLines(file: string): AsyncGenerator<string> {

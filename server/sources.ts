@@ -14,11 +14,7 @@ interface SurfaceCount {
   lastTs: number;
 }
 
-/**
- * GET /api/sources. Per-surface lifetime event counts gate the Cowork and Codex UI
- * (`available`) and drive the dashboard's empty state and default platform. The
- * dirs label the sidebar with the folder behind whatever platform is on screen.
- */
+/** GET /api/sources. Per-surface counts gate the Cowork/Codex UI (`available`) and drive the empty state and default platform; dirs label the sidebar. */
 export interface SourcesSummary extends SourceDirs {
   code: SurfaceCount;
   cowork: SurfaceCount & { available: boolean };

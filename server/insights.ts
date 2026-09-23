@@ -1,19 +1,12 @@
 /**
  * insights.ts
  * Pure builder functions (no I/O) for the analytics/insights endpoints.
- * All functions take (d: InsightsData, days: number, now?: number). `now` defaults to
- * Date.now(); the /api/insights routes pass the scan's computedAt so memoised output
- * (builder-cache.ts) runs on the same clock as the envelope and the usage builders.
+ * All functions take (d: InsightsData, days: number, now?: number); `now` defaults
+ * to Date.now(), but the routes pass computedAt so memoised output shares its clock.
  *
- * Every builder serves both platforms from the same rows (the Insights tab renders
- * one grid for Claude, Codex and Both). Two platform rules live here rather than in
- * the UI, so the endpoints, the AI payload and the tab agree:
- *  - A REJECTION is never a failure. `rejected` results (a declined permission
- *    prompt, a declined Codex item, a guardian deny) are counted apart from
- *    `is_error` ones everywhere: error rate, categories, per-tool and MCP errors.
- *  - Codex edits never RETRY: a patch applies, fails or is declined, and the next
- *    patch is a new decision — so buildRetries measures Claude edits only and
- *    reports how many Codex edits it left out.
+ * Two platform rules live here, not the UI: a REJECTION is never a failure (kept
+ * apart from `is_error` everywhere), and Codex edits never RETRY (buildRetries
+ * measures Claude edits only).
  */
 
 import type { InsightsData, SessionMetaRecord, ToolCallRecord, ToolResultRecord } from './insights-scan.ts';
@@ -78,20 +71,13 @@ function lastSegment(p: string): string {
   return p.split(/[\\/]/).filter(Boolean).pop() ?? '';
 }
 
-/**
- * The repository a Claude Code worktree (`<repo>/.claude/worktrees/<name>/…`)
- * belongs to, or null for any other path. A worktree's own folder name is a
- * throwaway id, never the project.
- */
+/** The repo a Claude Code worktree (`<repo>/.claude/worktrees/<name>/…`) belongs to, or null otherwise — its own folder name is a throwaway id, never the project. */
 export function worktreeRepo(p: string): string | null {
   const m = /^(.*?)[\\/]\.claude[\\/]worktrees[\\/][^\\/]+/i.exec(p);
   return m ? lastSegment(m[1]) || null : null;
 }
 
-/**
- * A session's project label: the real working directory when the log recorded one
- * (Claude `cwd`), else the decoded project path. Codex projectPath already is its cwd.
- */
+/** Project label: the real cwd when the log recorded one, else the decoded project path (Codex's projectPath already is its cwd). */
 function projectName(sm: SessionMetaRecord): string {
   const p = sm.cwd || sm.projectPath;
   return worktreeRepo(p) ?? (lastSegment(p) || 'unknown');
@@ -114,12 +100,7 @@ function sessionsInWindow(d: InsightsData, from: number): SessionMetaRecord[] {
   return out;
 }
 
-/**
- * Could this session have committed? A git branch or remote in the log, or any git
- * commit / push / PR it ran. The git activity matters for Codex: its chat threads
- * start in scratch folders (no session_meta.git) and still commit into a repo
- * elsewhere, so branch/remote alone would drop exactly the sessions that landed.
- */
+/** Could this session have committed? A git branch/remote, or any commit/push/PR — activity matters for Codex, whose scratch-folder threads still commit into a real repo. */
 export function hasRepo(sm: SessionMetaRecord): boolean {
   return !!(sm.gitBranch || sm.repoUrl || sm.gitCommits > 0 || sm.gitPushes > 0 || sm.prUrls.length > 0);
 }
@@ -149,14 +130,7 @@ const CODEX_COMMAND_TOOLS = new Set(['Bash', 'Read', 'Grep', 'LS']);
 /** Tool names a Codex FileChange maps onto (scan-pass-codex CHANGE_NAMES). */
 const CODEX_PATCH_TOOLS = new Set(['Edit', 'Write', 'Delete']);
 
-/**
- * The category of a FAILED call (rejections never get here). Text patterns come
- * first, most specific to least; when none matches, the call itself decides:
- *  - a Codex command only fails with a non-zero exit (its error text is the
- *    command's stderr/stdout, which rarely says "exit code"),
- *  - a Codex patch that failed to apply carries no text at all,
- *  - an MCP call's error is the server's own message.
- */
+/** Category of a FAILED call (rejections never reach here); text patterns first (most to least specific), then the call itself when none match. */
 export function classifyError(
   text: string,
   tool?: Pick<ToolCallRecord, 'name' | 'source' | 'mcpServer'>,
@@ -297,8 +271,7 @@ export function buildRetries(d: InsightsData, days: number, now = Date.now()) {
   for (const tc of d.toolCalls) {
     if (tc.ts < from) continue;
     if (!editWriteTools.has(tc.name)) continue;
-    // A Codex patch applies, fails or is declined; the next patch is a new decision,
-    // never a retry of this one. Counting them would pin the rate at 100%.
+    // A Codex patch applies, fails or is declined — the next patch is a new decision, never a retry of this one (counting them would pin the rate at 100%).
     if (tc.source === 'codex') {
       codexEdits++;
       continue;
@@ -317,8 +290,7 @@ export function buildRetries(d: InsightsData, days: number, now = Date.now()) {
   let wastedTokens = 0;
   let wastedCost = 0;
 
-  // We don't have a per-turn assistant token timeline from the insights rows, so
-  // wastedTokens is approximated as sm.effectiveTokens / sm.assistantMsgs per error.
+  // No per-turn assistant token timeline in the insights rows, so wastedTokens approximates sm.effectiveTokens / sm.assistantMsgs per error.
   for (const [sessionId, calls] of sessionCalls) {
     const sm = d.sessionsMeta.get(sessionId);
     const avgTokensPerTurn = sm && sm.assistantMsgs > 0 ? sm.effectiveTokens / sm.assistantMsgs : 0;
@@ -430,8 +402,7 @@ export function buildBranches(d: InsightsData, days: number, now = Date.now(), l
     if (sm.lastTs < from) continue;
     if (!sm.gitBranch) continue;
 
-    // The remote names the repo when the log has one (Codex session_meta.git);
-    // a Codex thread's cwd is often a scratch folder, not the repository.
+    // The remote names the repo when the log has one (Codex session_meta.git) — a Codex thread's cwd is often a scratch folder, not the repository.
     const repo = (sm.repoUrl && repoNameFromUrl(sm.repoUrl)) || projectName(sm);
     const key = `${repo}\u0000${sm.gitBranch}`;
 
@@ -626,9 +597,7 @@ export function buildRejections(d: InsightsData, days: number, now = Date.now())
     if (isRejected) {
       total++;
       entry.rejections++;
-      // Codex's guardian decided (its deny is a GuardianReview call); everything
-      // else is a person declining a prompt — Claude's permission prompts and
-      // Codex items declined under the 'user' approvals reviewer.
+      // Codex's guardian decided (its deny is a GuardianReview call); everything else is a person declining a prompt.
       if (tc.name === GUARDIAN_DENY_TOOL) guardianDenials++;
       else userDeclines++;
     }
@@ -739,11 +708,7 @@ function normPath(p: string): string {
   return p.replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase();
 }
 
-/**
- * Every working directory the logs know (Claude `cwd`, decoded project paths,
- * Codex thread cwds). Pass the UNSCOPED data: a Codex thread that edits a repo
- * from a scratch folder is labelled by the repo a Claude session ran in.
- */
+/** Every known working directory (cwd, decoded project paths); pass UNSCOPED data — a Codex scratch-folder thread is labelled by the repo a Claude session ran in. */
 export function knownProjectRoots(d: InsightsData): string[] {
   const roots = new Set<string>();
   for (const sm of d.sessionsMeta.values()) {
@@ -774,13 +739,7 @@ function indexRoots(paths: string[]): RootEntry[] {
     .filter((r) => r.name);
 }
 
-/**
- * The project a file belongs to: the session's own folder when the file sits in
- * it, else the deepest known root that contains it, else '' (no label beats the
- * name of the scratch folder a Codex chat happened to start in). Inside a container
- * folder the label is the folder right below it — the project the file is in — and
- * inside a Claude Code worktree it is the worktree's repository.
- */
+/** The session's own folder if the file is in it, else the deepest known root containing it, else '' — inside a container folder, the label is the folder right below it. */
 function churnProject(filePath: string, projectPath: string, roots: RootEntry[]): string {
   const wt = worktreeRepo(filePath);
   if (wt) return wt;
@@ -875,12 +834,7 @@ function bucketIndex(ms: number): number {
   return i === -1 ? LATENCY_BUCKETS.length - 1 : i;
 }
 
-/**
- * Turn latency from the deduped turn rows: Claude turns are derived (prompt → last
- * reply before the next prompt, capped at 6 h), Codex turns are `task_complete`'s
- * own duration. Both carry a time to first token. The histogram keeps the two
- * platforms apart so a Both view can stack them instead of blending them.
- */
+/** Claude turns are derived (prompt → last reply, capped at 6h); Codex turns are task_complete's own duration. Histogram keeps platforms apart so Both can stack, not blend. */
 export function buildTurnLatency(d: InsightsData, days: number, now = Date.now()) {
   const from = cutoff(days, now);
   const all = { dur: [] as number[], ttft: [] as number[] };
@@ -989,11 +943,7 @@ export function buildKpis(d: InsightsData, days: number, now = Date.now()): Insi
   };
 }
 
-/**
- * The KPI row for the scope `d` covers, plus the same figures per platform so a
- * Both view can show Claude and Codex side by side. A platform with no call and no
- * session in the window is null.
- */
+/** Plus the same figures per platform for a Both view; a platform with no call and no session in the window is null. */
 export function buildInsightsSummary(d: InsightsData, days: number, now = Date.now()) {
   const empty = (k: InsightKpis) => k.totalCalls === 0 && k.sessions === 0;
   const claude = buildKpis(scopeInsights(d, 'claude'), days, now);

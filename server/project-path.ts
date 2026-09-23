@@ -1,19 +1,15 @@
 /**
  * project-path.ts — the one derivation of a session's project path.
  *
- * Claude Code files every transcript under `projects/<encoded cwd>/`, where the
- * encoding replaces every non-alphanumeric character with '-'. Decoding that
- * folder name is lossy: `E:\dev-projects\iftah.dev` and `E:\dev-projects-iftah-dev`
- * both encode to `E--dev-projects-iftah-dev`, and the decoder can only guess the
- * second. Codex, meanwhile, records the real cwd — so under *Both* the same repo
- * showed up as two projects, and tags, costs and rollups never met.
+ * Claude Code files every transcript under `projects/<encoded cwd>/`, replacing
+ * every non-alphanumeric char with '-' — a lossy encoding (`E:\dev-projects\iftah.dev`
+ * and `E:\dev-projects-iftah-dev` both encode the same way, so decoding can only guess).
  *
- * Every Claude Code transcript line also carries the real `cwd`. That is now the
- * source of truth (merge.ts for events/sessions/tool rows, workflows.ts and
- * subagents-live.ts for live runs); the folder decode is only the fallback, and it
- * stays exported because the tags the UI stored before this change are keyed by it.
+ * Every transcript line also carries the real `cwd`, which is now the source of
+ * truth (merge.ts, workflows.ts, subagents-live.ts); the folder decode stays only
+ * as the fallback, exported because older UI tags are keyed by it.
  *
- * Cowork is untouched: its cwd is a path inside the sandbox and stays blank.
+ * Cowork is untouched: its cwd is a sandbox-internal path and stays blank.
  */
 import { open } from 'node:fs/promises';
 
@@ -50,13 +46,7 @@ export function legacyProjectPathFromFile(file: string): string {
 /** Claude Code's `--worktree` checkouts: `<repo>/.claude/worktrees/<name>[/…]`. */
 const WORKTREE_RE = /^(.+?)[\\/]\.claude[\\/]worktrees[\\/][^\\/]+(?:[\\/].*)?$/;
 
-/**
- * A real project path in the one form every surface shares: Windows drive paths
- * with backslashes and a lower-case drive letter (what the folder decoder and the
- * Codex parser produce), no trailing separator, and a Claude Code worktree folded
- * into the repo it was checked out from — it is the same project, and its
- * throwaway folder name would otherwise show up as a project of its own.
- */
+/** Canonical form every surface shares: lower-case drive letter, backslashes, no trailing separator, and a Claude Code worktree folded into its repo (else its throwaway folder name would be its own project). */
 export function normalizeProjectPath(p: string): string {
   if (!p) return '';
   let out = p.trim();
@@ -95,12 +85,7 @@ export function firstCwdIn(text: string): string {
   }
 }
 
-/**
- * The main session transcript of a file under `…/projects/<enc>/<session>/…`
- * (a subagent transcript, a workflow journal, …): `…/projects/<enc>/<session>.jsonl`.
- * A file directly in `projects/<enc>/` is its own session transcript. null when the
- * path has no `projects/<enc>` segment.
- */
+/** The main session transcript of a file under `…/projects/<enc>/<session>/…`; null when the path has no `projects/<enc>` segment. */
 export function sessionTranscriptFor(file: string): string | null {
   // Greedy prefix: the LAST `projects` segment, like the folder decoder.
   const m = /^(.*[\\/]projects[\\/][^\\/]+)([\\/])([^\\/]+)/.exec(file);
@@ -119,12 +104,7 @@ const CHUNK = 64 * 1024;
 const CWD_CACHE_MAX = 4096;
 const cwdCache = new Map<string, string>();
 
-/**
- * The first `cwd` recorded in a Claude Code transcript — the directory the
- * session started in, which a session never changes. Cached per path, including
- * the empty answer for a transcript with none; a missing file is not cached, so
- * it resolves once the transcript appears.
- */
+/** The first `cwd` recorded in a transcript (a session never changes it). Cached per path, including the empty answer; a missing file is not cached, so it resolves once it appears. */
 export async function transcriptCwd(file: string): Promise<string> {
   const hit = cwdCache.get(file);
   if (hit !== undefined) return hit;
@@ -160,12 +140,7 @@ export async function transcriptCwd(file: string): Promise<string> {
   return cwd;
 }
 
-/**
- * The project path for any Claude Code file under `…/projects/<enc>/<session>/…`:
- * the session transcript's cwd, else the file's own first cwd (a subagent
- * transcript carries one), else the legacy folder decode. Same result as
- * merge.ts derives for the session's events, so live panels and history agree.
- */
+/** The session transcript's cwd, else the file's own first cwd, else the legacy folder decode — same result merge.ts derives, so live panels and history agree. */
 export async function projectPathForFile(file: string): Promise<string> {
   const transcript = sessionTranscriptFor(file);
   let cwd = transcript ? await transcriptCwd(transcript) : '';

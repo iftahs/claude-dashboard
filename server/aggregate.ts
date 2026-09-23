@@ -60,13 +60,7 @@ function effectiveOf(e: UsageEvent): number {
   return e.inputTokens + e.outputTokens + e.cacheCreateTokens;
 }
 
-/**
- * Local midnight of every calendar day from `from`'s day up to (not including) `to`.
- * Built with calendar arithmetic rather than +24 h steps: a DST day is 23 or 25 h
- * long, so fixed steps drift to 23:00/01:00 and then repeat or skip a date.
- * A non-finite bound yields []: with NaN every `s` is NaN, `s >= to` is never
- * true, and the loop would push until the process ran out of memory.
- */
+/** Calendar arithmetic, not +24h steps — a DST day is 23/25h and fixed steps would drift, skip or repeat a date. */
 export function localDayStarts(from: number, to: number): number[] {
   if (!Number.isFinite(from) || !Number.isFinite(to) || to <= from) return [];
   const d = new Date(from);
@@ -91,8 +85,7 @@ function floorIndex(starts: number[], t: number): number {
 }
 
 function bucketize(events: UsageEvent[], from: number, to: number, width: number): Bucket[] {
-  // Day-wide buckets start at each local midnight (TZ- and DST-aware), so an event
-  // lands on its local calendar date; narrower ones align to epoch multiples.
+  // Day-wide buckets start at local midnight (TZ/DST-aware) so events land on their local calendar date; narrower ones align to epoch multiples.
   let starts: number[];
   if (width === DAY) {
     starts = localDayStarts(from, to);
@@ -132,9 +125,7 @@ function modelShares(events: UsageEvent[]): ModelShare[] {
     }
     add(t, e);
   }
-  // Ranked by effective tokens — the unit every share in the UI is labelled in.
-  // Total tokens are dominated by cheap cache reads and once put a model with a
-  // third of the effective volume at the top of the ranking.
+  // Ranked by effective tokens, not total — cache reads dominate raw totals and would skew the ranking.
   return [...map.entries()]
     .map(([model, t]) => ({ model, ...t }))
     .filter((m) => m.totalTokens > 0 && m.model !== '<synthetic>')
@@ -160,7 +151,6 @@ function sourceSplit(events: UsageEvent[]): SourceSplit {
   return split;
 }
 
-/** Codex usage split by thread kind — the Codex counterpart of the Code / Cowork split. */
 export interface CodexSplit {
   /** User threads (every rollout that is not a guardian review). */
   threads: TokenTotals;
@@ -168,7 +158,6 @@ export interface CodexSplit {
   guardian: TokenTotals;
 }
 
-/** A Codex event that ran as a guardian auto-review rather than as the thread itself. */
 export function isGuardianReview(e: UsageEvent): boolean {
   return e.attributionAgent === 'guardian_review';
 }
@@ -203,11 +192,7 @@ export function filterSource(events: UsageEvent[], source: SourceFilter): UsageE
   return events.filter((e) => sourceMatches(e.source, source));
 }
 
-/**
- * May `stats-cache.json` backfill this filter's activity heatmap? Claude Code alone
- * writes that file, so it only applies when the filter includes Code — otherwise a
- * Codex or Cowork heatmap would show Code's history as its own.
- */
+/** True only when the filter includes Code — a Codex/Cowork heatmap would otherwise show Code's history as its own. */
 export function statsCacheApplies(source: SourceFilter): boolean {
   return source === 'all' || source === 'claude' || source === 'code';
 }
@@ -232,10 +217,7 @@ function nextMondayReset(now: number): number {
   return d.getTime();
 }
 
-/**
- * Split one session's events (ascending) into consecutive 5h windows: a window
- * opens at a message and the first message at or after its end opens the next.
- */
+/** Splits one session's ascending events into consecutive 5h windows; the first message at/after a window's end opens the next. */
 function rollingWindows(sessionEvents: UsageEvent[]): UsageEvent[][] {
   const out: UsageEvent[][] = [];
   let cur: UsageEvent[] = [];
@@ -253,12 +235,7 @@ function rollingWindows(sessionEvents: UsageEvent[]): UsageEvent[][] {
 }
 
 /** Use the most recent sessionId to anchor the block — mirrors how Anthropic
- *  counts: a 5h window starts at the session's first message, and the first
- *  message after it expires starts the next one. The window ROLLS inside the
- *  session, so one that runs past 5h moves on to a fresh block instead of
- *  reading as ended while it is still sending messages. prevTotals is the
- *  window before the current one: earlier in this session, or else the
- *  previous session's last window.
+ *  counts: the window ROLLS inside the session; prevTotals is the window right before it.
  *
  *  NOTE: Claude.ai sessions are server-side only and NOT in local logs.
  *  This shows the current Claude Code session window. */
@@ -285,11 +262,9 @@ function computeActiveBlock(events: UsageEvent[], now: number): ActiveBlock {
   const resetsAt = blockStart + BLOCK_MS;
   const isActive = now < resetsAt;
 
-  // Previous block = the window before this one in the same session; for the
-  // session's first window, the last window of the session just before it.
+  // Previous block = the window before this one, or — for a session's first window — the previous session's last window.
   let previous: UsageEvent[] = windows.length > 1 ? windows[windows.length - 2] : [];
   if (windows.length === 1 && currentSessionId) {
-    // Find last event not in current session
     let prevId = '';
     for (let i = events.length - 1; i >= 0; i--) {
       if (events[i].sessionId !== currentSessionId) {
@@ -330,8 +305,6 @@ export function buildRecent(events: UsageEvent[], now: number, hours = 5) {
   };
 }
 
-// ── Codex block ─────────────────────────────────────────────────────────────
-
 /** One Codex rate-limit window as /api/codex/live reports it (structural, so this module stays I/O-free). */
 export interface CodexWindowInput {
   windowSec: number;
@@ -339,29 +312,13 @@ export interface CodexWindowInput {
   resetsAt: string | null;
 }
 
-/** The Codex counterpart of `ActiveBlock`, plus how its window was placed. */
 export interface CodexBlock extends ActiveBlock {
   windowSec: number;
-  /**
-   * 'live' / 'passive': the window is the provider's own (start = reset − length),
-   * read live or from the newest rollout snapshot. 'local': no reset time was known,
-   * so windows roll from the first Codex event, one opening at the first event at
-   * or after the previous one's end.
-   */
+  /** 'live'/'passive': the provider's own window (start = reset − length). 'local': no reset known, so windows roll from the first Codex event. */
   anchor: 'live' | 'passive' | 'local';
 }
 
-/**
- * Codex's current rate-limit window and the local usage inside it. Codex limits are
- * account-wide, not per thread, so the window is the provider's when a reset time
- * is known — the 5-hour one, else the weekly one (the 'go' plan has only that) —
- * and the rows count every Codex event in it; `prevTotals` is the equally long
- * stretch just before. Without a reset time (offline with no usable snapshot) the
- * windows are reconstructed locally from the event stream.
- *
- * `events` must be Codex-only and ascending. The Claude block (computeActiveBlock)
- * never sees Codex events, and this never sees Claude ones.
- */
+/** `events` must be Codex-only and ascending — uses the provider's reset window when known, else rolls locally from the event stream. */
 export function computeCodexBlock(
   events: UsageEvent[],
   live: { fiveHour: CodexWindowInput | null; weekly: CodexWindowInput | null; origin: 'live' | 'passive' } | null,
@@ -406,13 +363,7 @@ export function computeCodexBlock(
   return blockOf(current, previous, start, 'local');
 }
 
-// ── Limit hits ──────────────────────────────────────────────────────────────
-
-/**
- * One stretch of being refused by a usage limit: the first refused request, every
- * retry until that limit lifted, and when it lifted. Retries while blocked are one
- * episode, not many — 51 refused requests in one evening are one wall hit.
- */
+/** Retries while an episode is still blocked count as one episode, not many separate hits. */
 export interface LimitHitEpisode {
   /** First refused request (epoch ms). */
   start: number;
@@ -442,11 +393,7 @@ export interface LimitHitsSummary {
 
 const LIMIT_EPISODES_MAX = 50;
 
-/**
- * Group refused requests into episodes per (platform, limit kind — and model, for a
- * per-model cap): a refusal joins the open episode until that episode's reset
- * time, or, when no reset was recorded, until an hour after its latest refusal.
- */
+/** Groups refusals into episodes per (platform, kind[, model]); a refusal joins the open episode until its reset time, or an hour after the latest refusal if none was recorded. */
 export function buildLimitHits(hits: LimitHitRow[], now: number, days: number): LimitHitsSummary {
   const sorted = [...hits].sort((a, b) => a.ts - b.ts);
   const open = new Map<string, LimitHitEpisode>();
@@ -516,8 +463,7 @@ export function buildWeekly(events: UsageEvent[], now: number, days = 7) {
     bySource: sourceSplit(windowEvents),
     codexSplit: codexSplit(windowEvents),
     cacheEfficiency,
-    // Earliest event in the (source-filtered) history, so the UI can tell "history
-    // starts inside this window" from "quiet previous period". Events arrive sorted.
+    // Earliest event in the filtered history — lets the UI tell "history starts here" from "quiet period". Events arrive sorted.
     firstEventTs: events.length ? events[0].ts : null,
   };
 }
@@ -560,11 +506,7 @@ export interface DailyActivity {
 }
 
 export interface ActivityOptions {
-  /**
-   * Bucket by UTC day instead of the local calendar day, to line up with a
-   * server-side series that is keyed by UTC date (Codex's profile `dailyUsage`).
-   * The stats-cache fallback is skipped: its dates are local days.
-   */
+  /** Buckets by UTC day to match a server-side series keyed by UTC date (Codex's `dailyUsage`); the stats-cache fallback (local days) is skipped. */
   utc?: boolean;
 }
 
@@ -616,8 +558,7 @@ export function buildActivity(events: UsageEvent[], now: number, days: number, s
     a.messageCount += 1;
     a.toolCallCount += e.tools.length;
   }
-  // Emit one entry per calendar day in [from, now] (inclusive, hence now + 1),
-  // including empty days.
+  // Inclusive of `now`, hence the `+ 1` below.
   const out: DailyActivity[] = [];
   for (const t of utc ? utcDayStarts(from, now + 1) : localDayStarts(from, now + 1)) {
     const key = keyOf(t);
@@ -649,10 +590,6 @@ export function buildActivity(events: UsageEvent[], now: number, days: number, s
   return { rangeFrom: from, rangeTo: now, utc, dailyActivity: out };
 }
 
-// ---------------------------------------------------------------------------
-// Lifetime activity summary (Trends "Activity summary" row)
-// ---------------------------------------------------------------------------
-
 export interface UsageSummary {
   /** Earliest / latest event in the scoped history; null when there is none. */
   firstEventTs: number | null;
@@ -665,7 +602,6 @@ export interface UsageSummary {
   /** Consecutive active local days ending today — or yesterday, while today has none yet. */
   currentStreakDays: number;
   longestStreakDays: number;
-  /** Local calendar days with at least one usage event. */
   activeDays: number;
   /** Local calendar days from the first event's day through today, inclusive. */
   spanDays: number;
@@ -682,13 +618,7 @@ function localMidnightBefore(d: Date, n: number): Date {
   return new Date(d.getFullYear(), d.getMonth(), d.getDate() - n);
 }
 
-/**
- * Lifetime figures over EVERY event of the (source-filtered) history: lifetime
- * tokens and cost, the peak day, active days and streaks. "Lifetime" only reaches
- * back as far as the transcripts on disk — Claude Code deletes old ones after
- * ~30 days unless the history archive is on — so the UI labels it "since <first
- * date>". Days are local calendar days, like the activity heatmap beside it.
- */
+/** "Lifetime" only reaches as far back as transcripts on disk — Claude Code deletes them after ~30 days unless the history archive is on. */
 export function buildUsageSummary(events: UsageEvent[], now: number): UsageSummary {
   const perDay = new Map<string, number>();
   let first = Infinity;
@@ -726,7 +656,6 @@ export function buildUsageSummary(events: UsageEvent[], now: number): UsageSumma
     if (!peakDay || v > peakDay.effectiveTokens) peakDay = { date, effectiveTokens: v };
   }
 
-  // Longest run of consecutive calendar dates among the active ones.
   const keys = [...perDay.keys()].sort();
   let longest = 1;
   let run = 1;
@@ -735,8 +664,7 @@ export function buildUsageSummary(events: UsageEvent[], now: number): UsageSumma
     if (run > longest) longest = run;
   }
 
-  // Current streak: walk back from today — from yesterday while today is still
-  // empty, since the streak is not broken until the day is over.
+  // Walk back from today (or yesterday, while today is still empty — the streak isn't broken until the day ends).
   const today = new Date(now);
   let back = perDay.has(localDateKey(localMidnightBefore(today, 0).getTime())) ? 0 : 1;
   let current = 0;
@@ -766,10 +694,6 @@ export interface UsageSummaryData extends UsageSummary {
   byPlatform?: { claude: UsageSummary; codex: UsageSummary };
 }
 
-// ---------------------------------------------------------------------------
-// Reasoning effort × model (Models "Reasoning effort" card)
-// ---------------------------------------------------------------------------
-
 /** Known effort levels, lowest first (Claude adds xhigh / max; Codex runs low–high). */
 export const EFFORT_ORDER = ['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'];
 /** Events whose log carries no effort (older Claude Code builds, older Codex rollouts). */
@@ -782,13 +706,7 @@ export interface EffortSlice {
   messages: number;
 }
 
-/**
- * Reasoning (Claude: thinking) tokens as a share of output. Only responses that
- * REPORT the split count: Claude logs `output_tokens_details` only on newer
- * builds, and an unreported message is unknown, not "0% thinking". `share` is
- * null when nothing in the window reports it; `coverage` is the fraction of the
- * window's output tokens the share is computed over.
- */
+/** `share` is null when nothing in the window reports reasoning tokens (older builds don't log the split); `coverage` is the fraction of output tokens it's computed over. */
 export interface ReasoningShare {
   outputTokens: number;
   reportedOutputTokens: number;
@@ -854,11 +772,7 @@ function reasoningShare(acc: ReasoningAcc): ReasoningShare {
   };
 }
 
-/**
- * Effective tokens and estimated cost by reasoning effort — overall and per model
- * — plus the reasoning share of output over the responses that report it. Same
- * shape for Claude and Codex, so one card serves both platforms.
- */
+/** Same shape for Claude and Codex (effort levels differ), so one card serves both platforms. */
 export function buildEffort(events: UsageEvent[], now: number, days: number): EffortData {
   const from = now - days * DAY;
   const overall = new Map<string, EffortSlice>();

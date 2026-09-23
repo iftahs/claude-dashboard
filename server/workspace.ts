@@ -1,17 +1,13 @@
 /**
  * workspace.ts — task + plan tracking and the plugin / MCP / skill inventory,
- * read directly from each platform's home folder (these sources are outside the
- * jsonl event stream). 60s caches, one per platform.
+ * read directly from each platform's home folder. 60s caches, one per platform.
  *
- *   Claude — ~/.claude: tasks/*, plans/*.md, plugins/*.json, settings.json,
- *            ~/.claude.json (MCP servers), skills/<name>/SKILL.md
- *   Codex  — ~/.codex:  plans/<thread>/<turn>/PLAN.md, config.toml (allowlisted
- *            keys only, see codex-config.ts), skills/[.system/]<name>/SKILL.md,
- *            automations/<name>/automation.toml (name, status, schedule)
+ * Claude — ~/.claude: tasks/*, plans/*.md, plugins/*.json, settings.json,
+ * ~/.claude.json (MCP servers), skills/<name>/SKILL.md. Codex — ~/.codex:
+ * plans/<thread>/<turn>/PLAN.md, config.toml (allowlisted, see codex-config.ts),
+ * skills/[.system/]<name>/SKILL.md, automations/<name>/automation.toml.
  *
- * Both platforms produce the same two shapes, so the Workspace tab renders the
- * same components whichever platform is selected. Every read is fail-soft: a
- * missing folder or unreadable file is "nothing there", never an error.
+ * Both platforms produce the same two shapes; every read is fail-soft.
  */
 
 import { open, readdir, readFile, stat } from 'node:fs/promises';
@@ -163,10 +159,7 @@ async function claudeTasks(now: number): Promise<WorkspaceTasksData> {
   return tasksData(items, byStatus, plans);
 }
 
-/**
- * Codex writes one PLAN.md per planning turn under ~/.codex/plans/<thread>/<turn>/.
- * Codex has no task tracker, so the task half is always empty.
- */
+/** Codex writes one PLAN.md per planning turn under ~/.codex/plans/<thread>/<turn>/; Codex has no task tracker, so the task half is always empty. */
 async function codexTasks(now: number): Promise<WorkspaceTasksData> {
   const plans: PlanItem[] = [];
   const root = join(codexDir(), 'plans');
@@ -230,8 +223,6 @@ export async function getWorkspaceTasks(
   return mergeTasks(claude, codex);
 }
 
-// ── Plugins, MCP, skills & automations inventory ──────────────────────────────
-
 export interface InventoryData {
   plugins: {
     name: string;
@@ -263,13 +254,7 @@ async function readJson(path: string): Promise<any> {
   }
 }
 
-/**
- * Where ~/.claude.json (the MCP server config) lives. On the host it sits beside
- * the .claude dir; in Docker that would be /data/.claude.json, which isn't
- * mounted — compose mounts the file on its own and points CLAUDE_JSON at it.
- * With CLAUDE_JSON_HOST unset, compose mounts a directory there instead, which
- * readJson treats as absent.
- */
+/** ~/.claude.json sits beside .claude on the host; in Docker compose mounts it separately via CLAUDE_JSON (unset CLAUDE_JSON_HOST mounts a directory there instead, which readJson treats as absent). */
 export function claudeJsonPath(dir: string, env: NodeJS.ProcessEnv = process.env): string {
   return env.CLAUDE_JSON?.trim() || join(dirname(dir), '.claude.json');
 }

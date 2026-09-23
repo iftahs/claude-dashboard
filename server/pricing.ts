@@ -13,15 +13,11 @@ const TABLE: Array<[RegExp, Price]> = [
   [/fable-5-1|fable-5\.1/i, { input: 10, output: 50, cacheWrite: 12.50, cacheRead: 0.25 }],
   // Claude Fable 5
   [/fable/i, { input: 10, output: 50, cacheWrite: 12.50, cacheRead: 1.0 }],
-  // Claude Mythos 5.1 — same 10/50 tier as Mythos 5, but cache reads are 0.025x base
-  // input ($0.25), the same footnote that covers Fable 5.1. Must stay above the generic
-  // /mythos/ row (first match wins) so Mythos 5 and Mythos Preview keep the 0.1x rate.
+  // Claude Mythos 5.1 — cache reads 0.25 vs 1.0; must stay above the generic /mythos/ row (first match wins).
   [/mythos-5-1|mythos-5\.1/i, { input: 10, output: 50, cacheWrite: 12.50, cacheRead: 0.25 }],
   // Claude Mythos 5 and Claude Mythos Preview
   [/mythos/i, { input: 10, output: 50, cacheWrite: 12.50, cacheRead: 1.0 }],
-  // Claude Opus 5.5 — 4 / 20, and cache reads are 0.05x base input ($0.20), not the
-  // standard 0.1x. Must stay above the /opus-5/ row below, which would otherwise match
-  // "opus-5-5" (first match wins).
+  // Claude Opus 5.5 — 4/20, cache read 0.20 (not the standard 0.1x); must stay above /opus-5/, which would otherwise match "opus-5-5" (first match wins).
   [/opus-5-5|opus-5\.5/i, { input: 4, output: 20, cacheWrite: 5, cacheRead: 0.2 }],
   // Claude Opus: 5 and 4.5, 4.6, 4.7, 4.8 are priced at 5 / 25
   [/opus-5|opus-4-[5-8]|opus-4\.[5-8]/i, { input: 5, output: 25, cacheWrite: 6.25, cacheRead: 0.5 }],
@@ -39,11 +35,8 @@ const TABLE: Array<[RegExp, Price]> = [
   // Legacy Claude Haiku (3.0) and generic fallback priced at 0.25 / 1.25
   [/haiku/i, { input: 0.25, output: 1.25, cacheWrite: 0.3125, cacheRead: 0.03 }],
 
-  // --- OpenAI Codex (GPT) — the ChatGPT desktop agent's models, at OpenAI's standard-tier
-  // list prices (developers.openai.com/api/docs/pricing). GPT-5.6 and GPT-6 list a
-  // cache-write rate (1.25x input) but Codex never reports cache writes
-  // (cache_write_input_tokens is always 0), so that column never moves an estimate;
-  // models with no published write rate keep cacheWrite: 0.
+  // --- OpenAI Codex (GPT) — standard-tier list prices. GPT-5.6/6 list a cache-write
+  // rate, but Codex never reports writes, so cacheWrite stays 0 for unpublished rates.
   // Most specific first; the generic /^gpt-/ row must stay last of this group.
   [/gpt-6-astra/i, { input: 10, output: 50, cacheWrite: 12.5, cacheRead: 1 }],
   [/gpt-6-sol/i, { input: 2, output: 10, cacheWrite: 2.5, cacheRead: 0.2 }],

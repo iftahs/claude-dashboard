@@ -2,26 +2,12 @@
  * codex-config.ts — a minimal, read-only view of Codex's `~/.codex/config.toml`
  * (and the `automation.toml` files beside it) for the Workspace tab.
  *
- * config.toml holds far more than the dashboard shows: `[mcp_servers.*.env]`
- * carries paths and tokens, `args` can embed secrets, `[shell_environment_policy]`
- * holds hashes. So this is not a general TOML parser with a filter on top — the
- * scanner only *locates* keys, and a value is decoded solely when its key path is
- * on the allowlist below:
- *
- *   model, model_reasoning_effort, approval_policy, sandbox_mode, personality,
- *   service_tier                      top-level strings
- *   profile                           the active profile's name
- *   [profiles.<name>]                 the six keys above, applied over the top level
- *                                     for the active profile only
- *   notify                            presence only (the command is never read)
- *   [plugins."<name>@<market>"]       the `enabled` flag
- *   [marketplaces.<name>]             the name
- *   [mcp_servers.<name>]              the name, plus the BASENAME of `command`
- *   [projects.'<path>']               `trust_level`, counted — the path is never kept
- *
- * Everything else (env, headers, args, bearer tokens, project paths) is skipped
- * without being decoded. Every read is fail-soft: a missing or malformed file is
- * an empty result, never an error.
+ * Not a general TOML parser with a filter on top — the scanner only *locates*
+ * keys, and a value is decoded solely when its key path is on the allowlist
+ * (TOP_LEVEL/profile/notify/plugins/marketplaces/mcp name+command-basename/project
+ * trust-level). Everything else (env, headers, args, tokens, project paths) is
+ * skipped undecoded. Every read is fail-soft: a missing/malformed file is an
+ * empty result, never an error.
  */
 
 import { readFile } from 'node:fs/promises';
@@ -81,12 +67,7 @@ function endOfString(s: string, i: number): number | null {
   return null;
 }
 
-/**
- * The end of a value starting at `i`: a string (any of the four kinds), a bracketed
- * array or inline table (balanced across lines, strings and comments inside
- * respected), or a scalar running up to the first `stops` character (end of line
- * or a comment at the top level; also ',' and '}' inside an inline table).
- */
+/** End of a value at `i`: a string, a balanced bracket/brace group (strings and comments inside respected), or a scalar up to the first `stops` char. */
 function endOfValue(s: string, i: number, stops = '\n#'): number {
   const str = endOfString(s, i);
   if (str !== null) return str;
@@ -152,12 +133,7 @@ function readKeyPath(s: string, i: number): { path: string[]; end: number } | nu
   }
 }
 
-/**
- * Walk a TOML document and report every table header and key/value, WITHOUT
- * decoding the values. Unparseable lines are skipped to their end — the scanner
- * never throws, so a config the user hand-edited into an odd shape degrades to
- * "fewer fields shown", not to a broken tab.
- */
+/** Walks a TOML document reporting every table/key-value WITHOUT decoding values; never throws — unparseable lines are just skipped. */
 export function scanToml(text: string, visit: TomlVisitor): void {
   const s = text.replace(/^\uFEFF/, '').replace(/\r\n?/g, '\n');
   let table: string[] = [];
@@ -201,8 +177,6 @@ export function scanToml(text: string, visit: TomlVisitor): void {
     i = nextLine(Math.max(end - 1, start));
   }
 }
-
-// ── Value decoding (allowlisted keys only) ────────────────────────────────────
 
 function decodeBasic(body: string): string | null {
   let out = '';
@@ -248,10 +222,7 @@ export function tomlBool(raw: string): boolean | null {
   return v === 'true' ? true : v === 'false' ? false : null;
 }
 
-/**
- * The `command` of an inline table (`{ command = "npx", args = [...] }`), and
- * nothing else from it — the other keys are located but never decoded.
- */
+/** Only `command` from an inline table (`{ command=…, args=[…] }`) — other keys are located but never decoded. */
 function inlineCommand(raw: string): string | null {
   const v = raw.trim();
   if (!v.startsWith('{')) return null;
@@ -274,11 +245,7 @@ function inlineCommand(raw: string): string | null {
 /** A Windows program path that may contain spaces (`C:\Program Files\…\node.exe`), with no args or quotes in it. */
 const WINDOWS_PROGRAM = /^((?:(?! -)[^'"])*?\.(?:exe|cmd|bat|com))(?=\s|$)/i;
 
-/**
- * `C:\Program Files\nodejs\node.exe` → `node.exe`, `/usr/bin/npx` → `npx`: the
- * program name only — never its directory, and never anything after it (a command
- * written with inline args could carry a token).
- */
+/** Program name only — never the directory or anything after it (inline args could carry a token). */
 export function commandBasename(command: string | null): string | null {
   const c = command?.trim();
   if (!c) return null;
@@ -286,8 +253,6 @@ export function commandBasename(command: string | null): string | null {
   const base = program.split(/[\\/]/).pop() ?? '';
   return base || null;
 }
-
-// ── config.toml projection ─────────────────────────────────────────────────────
 
 export interface CodexConfigData {
   /** config.toml exists and was readable. */
@@ -426,8 +391,6 @@ export async function readCodexConfig(now = Date.now()): Promise<CodexConfigData
   return data;
 }
 
-// ── automation.toml ───────────────────────────────────────────────────────────
-
 export interface CodexAutomation {
   name: string;
   /** Human schedule, e.g. "Weekly · Sun 09:00". */
@@ -438,10 +401,7 @@ export interface CodexAutomation {
 
 const DAY_NAMES: Record<string, string> = { MO: 'Mon', TU: 'Tue', WE: 'Wed', TH: 'Thu', FR: 'Fri', SA: 'Sat', SU: 'Sun' };
 
-/**
- * An RFC 5545 RRULE as a short label: `FREQ=WEEKLY;BYDAY=SU;BYHOUR=9;BYMINUTE=0`
- * → "Weekly · Sun 09:00". Unknown shapes fall back to the rule text itself.
- */
+/** RFC 5545 RRULE as a short label (e.g. `FREQ=WEEKLY;BYDAY=SU;BYHOUR=9` → "Weekly · Sun 09:00"); unknown shapes fall back to the rule text. */
 export function describeRrule(rrule: string | null): string {
   if (!rrule) return 'unscheduled';
   const body = rrule.replace(/^RRULE:/i, '');
@@ -470,10 +430,7 @@ export function describeRrule(rrule: string | null): string {
   return when ? `${every} · ${when}` : every;
 }
 
-/**
- * Name, status and schedule from one automation.toml. The `prompt` (free text the
- * user wrote for the automation) and thread ids are never decoded.
- */
+/** Name, status and schedule from one automation.toml — `prompt` (free text) and thread ids are never decoded. */
 export function projectAutomation(text: string, fallbackName: string): CodexAutomation {
   const f: { name?: string | null; status?: string | null; rrule?: string | null } = {};
   scanToml(text, {

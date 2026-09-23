@@ -1,27 +1,17 @@
 /**
  * codex-agents-live.ts
  * getLiveCodexAgents() — the Codex counterpart of subagents-live.ts, returning
- * the SAME LiveSubagentsData shape (and running the same main-session state
- * machine, mainAgentState) so the Agents tab renders both platforms with one
- * component and one set of rules.
+ * the SAME LiveSubagentsData shape (and mainAgentState) so the Agents tab renders
+ * both platforms with one component.
  *
  * Data model: every Codex thread is one rollout file,
  *   <codexDir>/sessions/YYYY/MM/DD/rollout-<ts>-<threadId>.jsonl
- * A user thread (→ MainAgent) spawns subagent threads as separate rollouts whose
- * session_meta carries an object-valued `source` and `parent_thread_id`
- * (→ LiveSubagent / RecentlyCompletedSubagent). Most are Guardian reviews
- * (`thread_source:'guardian_review'`, source {"subagent":{"other":"guardian"}}) —
- * short-lived reviewers that judge each planned action; other kinds (`review`,
- * `thread_spawn`, …) are ordinary delegated work. The split mirrors scan-pass-codex.ts.
+ * A user thread (→ MainAgent) spawns subagent threads (object-valued `source` +
+ * `parent_thread_id`) — most are Guardian reviews, others ordinary delegated work.
  *
- * "Waiting" (red) mirrors the Claude rule — something only the user can resolve:
- *  - an approval pending: the open turn has a tool call with no output yet, under
- *    approval_policy 'on-request' with a person as the reviewer (under
- *    'auto_review' the Guardian decides, and shows as a running subagent);
- *  - an action the user declined, with no agent reply after it;
- *  - a turn that ended in an error (task_complete.error, e.g. usage_limit_exceeded).
- * A turn that simply finished is the soft "your turn" state, never red. Rollouts
- * have no explicit approval-request record, so this is inferred like Claude's.
+ * "Waiting" (red) mirrors Claude's rule: a pending approval (open turn, an
+ * unanswered call, policy 'on-request', a person reviewing), a decline with no
+ * reply since, or a turn that errored — never a turn that simply finished.
  *
  * Two file-system facts shape the design:
  *  - Guardian rollouts keep the mtime they were born with. Recency is therefore
@@ -50,8 +40,7 @@ import {
 import { stripAttachmentManifest } from './transcript.ts';
 
 // ---------------------------------------------------------------------------
-// Thresholds — the main-session ones (MAIN_ACTIVE, MAIN_LINGER, ACTIVE_WINDOW)
-// are shared with subagents-live.ts
+// Thresholds — MAIN_ACTIVE and ACTIVE_WINDOW are shared with subagents-live.ts
 // ---------------------------------------------------------------------------
 
 const LIVE_TTL_MS = 3_000;
@@ -178,12 +167,7 @@ const sizeSeen = new Map<string, number>();
 // Line parsing
 // ---------------------------------------------------------------------------
 
-/**
- * The kind of a subagent thread, from session_meta.source — same rule as
- * scan-pass-codex.ts: 'review' for {"subagent":"review"}, 'thread_spawn' for
- * {"subagent":{"thread_spawn":{…}}}, the name for {"subagent":{"other":"<name>"}}
- * (the guardian is 'guardian'); 'subagent' when the shape is unrecognised.
- */
+/** Kind from session_meta.source, same rule as scan-pass-codex.ts: the literal, or the `other` name, else 'subagent'. */
 export function codexSubagentKind(source: unknown): string {
   const sa = (source as any)?.subagent;
   if (typeof sa === 'string' && sa) return sa;
@@ -262,9 +246,7 @@ function processLine(state: ThreadState, line: Buffer, oversized: boolean): void
   const type = m[2];
   const parseable = !oversized && line.length <= MAX_LINE;
 
-  // Tool calls and their outputs: only the pairing matters (an open call under
-  // 'on-request' is a possible approval prompt). A huge output still resolves its
-  // call — its call_id sits in the first ~200 bytes, which an oversized line keeps.
+  // Only the pairing matters; call_id sits in the first ~200 bytes, which an oversized line still keeps.
   if (type === 'response_item') {
     const pm = PAYLOAD_TYPE_RE.exec(head);
     if (!pm) return;
@@ -291,7 +273,7 @@ function processLine(state: ThreadState, line: Buffer, oversized: boolean): void
       }
       const wantsTitle = !state.firstUserText && itemHead.includes('"item":{"type":"UserMessage"');
       const maybeDeclined = line.indexOf(DECLINED_MARK) !== -1;
-      if (!wantsTitle && !maybeDeclined) return; // everything else is skipped before parsing
+      if (!wantsTitle && !maybeDeclined) return;
     } else if (
       payloadType !== 'task_started' &&
       payloadType !== 'task_complete' &&
@@ -465,14 +447,7 @@ function fallbackMeta(path: string): ThreadMeta {
   };
 }
 
-/**
- * The Codex side of the shared state machine (exported for the unit tests):
- *  - openTurn: a task_started without its task_complete, written to recently;
- *  - needsUser: an approval pending (open turn, a call with no output, policy
- *    'on-request', a person reviews), a person's decline with no reply after it,
- *    or a turn that ended in an error;
- *  - turnEnded: the last turn completed cleanly — the soft "your turn".
- */
+/** needsUser: a pending approval, an unreplied decline, or a turn that errored; turnEnded: the last turn completed cleanly. */
 export function codexMainSignals(st: ThreadState, now: number): { openTurn: boolean; needsUser: boolean; turnEnded: boolean } {
   const openTurn = st.openTurnId !== null && now - st.lastTs < ACTIVE_WINDOW;
   const policy = st.turnApprovalPolicy || st.threadApprovalPolicy;

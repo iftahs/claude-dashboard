@@ -42,14 +42,11 @@ const execAsync = promisify(exec);
 
 const app = express();
 const PORT = Number(process.env.SERVER_PORT ?? 8787);
-// Loopback only on the host. The container must listen on every interface for
-// Docker's port mapping to reach it; docker-compose then publishes the port on
-// 127.0.0.1 unless DASHBOARD_BIND opts into LAN access.
+// Loopback on the host; the container listens on every interface so Docker's port mapping can reach it (compose republishes on 127.0.0.1 unless DASHBOARD_BIND opts into LAN).
 const BIND_HOST = process.env.BIND_HOST?.trim() || (isDocker() ? '0.0.0.0' : '127.0.0.1');
 const ALLOWED_HOSTS = allowedHosts(process.env.ALLOWED_HOSTS);
 
-// Host (DNS-rebinding) and write (CSRF) checks run before anything else — before
-// body parsing, static files and every route. See server/http-guard.ts.
+// Host (DNS-rebinding) and write (CSRF) checks run before anything else — body parsing, static files, every route. See http-guard.ts.
 app.use((req, res, next) => {
   const rejected = checkRequest(
     {
@@ -79,15 +76,7 @@ function parseSource(raw: unknown): SourceFilter {
   return raw === 'code' || raw === 'cowork' || raw === 'codex' || raw === 'claude' ? raw : 'all';
 }
 
-/**
- * A numeric query/body param as an integer in [lo, hi]; `def` when it is absent
- * or not a number. Every `hours`/`days` goes through here, never a bare Number():
- *  - `?days=abc` is NaN, which slips through Math.min/Math.max, and a NaN window
- *    once hung the day-bucket loop until the process ran out of memory;
- *  - qs turns a repeated key (`?days=7&days=8`) into an array — the first wins;
- *  - rounding bounds builder-cache's keys: `days=10.5`, `10.51`, … would each
- *    pin a full builder output in the memo for the life of the process.
- */
+/** Integer in [lo,hi], `def` if absent/NaN — guards NaN loops, qs's repeated-key arrays (first wins), and unbounded builder-cache memo keys from fractional days. */
 function intParam(raw: unknown, def: number, lo: number, hi: number): number {
   const v = Array.isArray(raw) ? raw[0] : raw;
   if (v === undefined || v === null || v === '') return def;
@@ -109,8 +98,7 @@ app.get('/api/version', async (_req, res) => {
 
 // Dev-only self-update: pull latest code (tsx watch + Vite HMR then reload).
 // Docker users can't do this from inside the container — they get instructions.
-// It runs a shell command, so the JSON + Origin write check above is what stops
-// a cross-site form from triggering it.
+// Runs a shell command — the JSON + Origin write check above is what stops a cross-site form from triggering it.
 app.post('/api/update/pull', async (_req, res) => {
   if (isDocker()) {
     res.status(400).json({ ok: false, error: 'Running in Docker — run `git pull && npm run docker:up` on the host.' });
@@ -201,8 +189,7 @@ app.get('/api/config', async (_req, res) => {
     // LiteLLM gateway detection (pure env read) — gates the "Actual billed" cost UI.
     const litellm = detectLitellm();
 
-    // Allowlisted settings.json fields only — never the whole file (env keys,
-    // apiKeyHelper and hook commands live there).
+    // Allowlisted settings.json fields only — never the whole file (env keys, apiKeyHelper and hook commands live there).
     const merged = {
       ...publicSettings(config),
       subscriptionType: sub.subscriptionType,
@@ -228,9 +215,8 @@ app.get('/api/stats/summary', async (_req, res) => {
 });
 
 // Session history is derived live from the JSONL transcripts (insights scan)
-// joined with token stats from the main event scan (sessions.ts). The legacy
-// `usage-data/session-meta/*.json` sidecar only adds fields the transcript can't
-// reconstruct (languages) and keeps sessions whose transcripts are gone listed.
+// joined with token stats from the main event scan (sessions.ts); the legacy
+// usage-data sidecar only adds languages and keeps sessions whose transcripts are gone listed.
 async function sessionRowsFor(source: SourceFilter) {
   const [{ events }, { insights }, sidecar, codexTitles] = await Promise.all([
     getEvents(), getInsights(), readSessionMetas(), readCodexTitles(),
@@ -247,8 +233,7 @@ app.get('/api/sessions', async (req, res) => {
   }
 });
 
-// The Sessions tab's StatCard row — over exactly the rows /api/sessions lists
-// for the same ?source=, with a Claude / Codex split for the Both view.
+// The Sessions tab's StatCard row, over exactly the rows /api/sessions lists for the same ?source=, split by platform under Both.
 app.get('/api/sessions/summary', async (req, res) => {
   try {
     const { rows, insights } = await sessionRowsFor(parseSource(req.query.source));
@@ -258,12 +243,9 @@ app.get('/api/sessions/summary', async (req, res) => {
   }
 });
 
-// Reports which usage surfaces have local data, and the folder each is read
-// from. The frontend gates all Cowork UI (source toggle, Sources card, ?source=
-// params) on cowork.available and the platform switcher on codex.available, so
-// Code-only users see exactly the original dashboard. The lifetime counts also
-// decide the empty state and a Codex-only user's default platform; the dirs label
-// the sidebar with the folder behind the platform on screen.
+// Reports which surfaces have local data and their folders. Gates Cowork UI on
+// cowork.available and the platform switcher on codex.available; also drives
+// the empty state and a Codex-only user's default platform.
 app.get('/api/sources', async (_req, res) => {
   try {
     const { events, computedAt } = await getEvents();
@@ -274,8 +256,7 @@ app.get('/api/sources', async (_req, res) => {
   }
 });
 
-// Opt-in history archive (DASHBOARD_RETAIN_HISTORY=1): the slim rows of
-// transcripts Claude Code's cleanup deleted. See event-store.ts.
+// Opt-in history archive (DASHBOARD_RETAIN_HISTORY=1) of slim rows from deleted transcripts — see event-store.ts.
 app.get('/api/archive', async (_req, res) => {
   try {
     res.json(wrap(await archiveSummary(), Date.now()));
@@ -424,11 +405,7 @@ app.get('/api/codex/agents/live', async (_req, res) => {
   }
 });
 
-/**
- * How Codex is signed in, from `<codexDir>/auth.json`: 'chatgpt' (a ChatGPT plan
- * token), 'apikey' (pay-as-you-go OpenAI key, no plan windows) or null (no login).
- * Reads key NAMES only — neither the token nor the key ever leaves this function.
- */
+/** 'chatgpt' (plan token), 'apikey' (pay-as-you-go, no plan windows) or null (no login) — reads key NAMES only, never the token/key itself. */
 async function readCodexAuthMode(): Promise<'chatgpt' | 'apikey' | null> {
   try {
     const json = JSON.parse(await readFile(join(codexDir(), 'auth.json'), 'utf8'));
@@ -443,11 +420,7 @@ async function readCodexAuthMode(): Promise<'chatgpt' | 'apikey' | null> {
   }
 }
 
-/**
- * The Codex window the block is placed on, fetched at most every 30 s — failures
- * included: fetchCodexUsage caches only successes, and with no login its passive
- * fallback tail-reads every rollout, which a 5 s Live poll must not repeat.
- */
+/** Fetched at most every 30s, failures included — fetchCodexUsage caches only successes, and its passive fallback tail-reads every rollout, which a 5s poll must not repeat. */
 let codexWindowState: { at: number; live: CodexLiveData | null; authMode: 'chatgpt' | 'apikey' | null } | null = null;
 async function codexWindow() {
   if (codexWindowState && Date.now() - codexWindowState.at < 30_000) return codexWindowState;
@@ -456,10 +429,7 @@ async function codexWindow() {
   return codexWindowState;
 }
 
-// The Codex counterpart of /api/usage/recent's activeBlock, for the Live tab's
-// gauge: local Codex usage inside the current rate-limit window. Not memoised —
-// the window moves with the live reset time, not with the event fingerprint.
-// Computed even when the live limits are unavailable (local anchor).
+// Codex counterpart of activeBlock for the Live gauge; never memoised since the window moves with the live reset time, not the event fingerprint.
 app.get('/api/codex/block', async (_req, res) => {
   try {
     const { events, computedAt } = await getEvents();
@@ -471,9 +441,7 @@ app.get('/api/codex/block', async (_req, res) => {
   }
 });
 
-// Usage-limit hits (requests the provider refused at a limit), grouped into
-// episodes — the Live tab's "Limit hits" card, on every platform. 7d/30d counts
-// are always included; `days` bounds the episode list.
+// Usage-limit refusals grouped into episodes for the Live tab's "Limit hits" card; 7d/30d counts are always included, `days` only bounds the episode list.
 app.get('/api/insights/limits', async (req, res) => {
   try {
     const days = intParam(req.query.days, 30, 1, MAX_WINDOW_DAYS);
@@ -544,10 +512,7 @@ app.get('/api/usage/models', async (req, res) => {
   }
 });
 
-// Lifetime activity summary for the Trends "Activity summary" row: lifetime
-// tokens, peak day, streaks and active days over EVERY event of the scoped
-// history (no window). The unscoped request — the Both platform — also carries
-// the Claude / Codex split its cards show.
+// Lifetime activity summary for Trends' "Activity summary" row, over EVERY event (no window); the unscoped (Both) request also carries the Claude/Codex split.
 app.get('/api/usage/summary', async (req, res) => {
   try {
     const { events, computedAt } = await getEvents();
@@ -569,9 +534,7 @@ app.get('/api/usage/summary', async (req, res) => {
   }
 });
 
-// Reasoning effort × model for the Models "Reasoning effort" card: effective
-// tokens and estimated cost per effort level, overall and per model, plus the
-// reasoning (thinking) share of output over the responses that report it.
+// Reasoning effort × model for the Models "Reasoning effort" card.
 app.get('/api/usage/effort', async (req, res) => {
   try {
     const days = intParam(req.query.days, 7, 1, MAX_WINDOW_DAYS);
@@ -602,9 +565,7 @@ app.get('/api/usage/contributors', async (req, res) => {
   }
 });
 
-// ?utc=1 buckets by UTC day (no stats-cache fallback) so the Trends "Server vs
-// local" chart can line the local rollouts up with OpenAI's UTC-day counts; the
-// window reaches the Trends maximum (MAX_WINDOW_DAYS) for the same reason.
+// ?utc=1 buckets by UTC day (no stats-cache fallback) to line local rollouts up with OpenAI's UTC-day counts.
 app.get('/api/activity', async (req, res) => {
   try {
     const days = intParam(req.query.days, 126, 7, MAX_WINDOW_DAYS);
@@ -648,8 +609,7 @@ app.get('/api/projects', async (req, res) => {
     const source = parseSource(req.query.source);
     const data = memoBuilder('projects', [days, source], eventsFingerprint(), () => {
       const stats = buildProjectStats(filterSource(events, source), computedAt, days);
-      // Tags stored before project paths came from the transcript cwd are keyed by
-      // the old folder-decoded path; the UI moves them over using this list.
+      // Tags stored before project paths came from the transcript cwd are keyed by the old folder-decoded path; the UI moves them over using this list.
       const legacy = legacyProjectPaths(insights, sidecar);
       return {
         ...stats,
@@ -814,9 +774,7 @@ app.get('/api/insights/subagents', async (req, res) => {
   }
 });
 
-// File churn — most-edited files (Edit/Write/MultiEdit) over the window. The
-// project label may come from any platform's known folders (unscoped roots): a
-// Codex chat started in a scratch folder still edits files of a real repo.
+// File churn — most-edited files over the window; the project label may come from any platform's known folders, so a Codex chat in a scratch folder still resolves to the real repo edited.
 app.get('/api/insights/churn', async (req, res) => {
   try {
     const days = clampDays(req.query.days);
@@ -831,8 +789,7 @@ app.get('/api/insights/churn', async (req, res) => {
   }
 });
 
-// Turn latency — median / p90 turn time and time to first token, with a histogram
-// split per platform (so Both can stack Claude and Codex instead of blending them).
+// Turn latency — median/p90 turn time and time to first token, with a histogram split per platform (Both stacks Claude/Codex instead of blending).
 app.get('/api/insights/turns', async (req, res) => {
   try {
     const days = clampDays(req.query.days);
@@ -847,8 +804,7 @@ app.get('/api/insights/turns', async (req, res) => {
   }
 });
 
-// The Insights KPI row: failure rate (rejections excluded), rejection rate, commit
-// rate over repo sessions, delegation / auto-review rate — overall and per platform.
+// The Insights KPI row: failure rate (rejections excluded), rejection rate, commit rate, delegation/auto-review rate — overall and per platform.
 app.get('/api/insights/summary', async (req, res) => {
   try {
     const days = clampDays(req.query.days);
@@ -863,8 +819,7 @@ app.get('/api/insights/summary', async (req, res) => {
   }
 });
 
-// Slash commands (history.jsonl, Claude Code only) + skills (per-request
-// attributionSkill, counted once per session), scoped by ?source=.
+// Slash commands (history.jsonl, Claude Code only) + skills (attributionSkill, once per session), scoped by ?source=.
 app.get('/api/insights/commands', async (req, res) => {
   try {
     const days = clampDays(req.query.days);
@@ -991,12 +946,7 @@ function shouldRedact(creds: AiCreds | null): boolean {
   return !!creds && creds.provider !== 'claude';
 }
 
-/**
- * Insight panels whose data IS branch or file names — the per-section twins of
- * the `branches` / `churn` datasets that ai-datasets.ts replaces with a redaction
- * marker under shouldRedact(). Here nothing is sent at all: with the names gone
- * the panel has nothing left to explain.
- */
+/** Panels whose data IS branch/file names — under shouldRedact() nothing is sent at all, since the panel has nothing left to explain without them. */
 const REDACTED_SECTIONS = new Set(['branches', 'churn']);
 
 /** Validate client-supplied AI credentials (Settings → AI Insights). */
@@ -1127,9 +1077,8 @@ app.get('/api/ai/context', async (req, res) => {
 });
 
 // ---------------------------------------------------------------------------
-// Workspace: tasks + plans, the plugin / MCP / skill inventory, and the Codex
-// config profile. ?source=claude|codex|all (Code/Cowork read as claude). With
-// no ?source= they stay Claude-only — what these routes returned before Codex.
+// Workspace: tasks + plans, the plugin/MCP/skill inventory, and the Codex config
+// profile. ?source=claude|codex|all (Code/Cowork read as claude); absent stays Claude-only, as before Codex.
 // ---------------------------------------------------------------------------
 
 function parseWorkspaceScope(raw: unknown): WorkspaceScope {
@@ -1156,9 +1105,7 @@ app.get('/api/workspace/inventory', async (req, res) => {
   }
 });
 
-// The Codex counterpart of /api/config's settings block: allowlisted config.toml
-// keys (see server/codex-config.ts — never env, args, tokens or project paths),
-// how Codex is signed in, and the data dir the dashboard reads.
+// Codex counterpart of /api/config: allowlisted config.toml keys (see codex-config.ts), sign-in mode, and the data dir.
 app.get('/api/codex/config', async (_req, res) => {
   try {
     const [config, authMode] = await Promise.all([readCodexConfig(), readCodexAuthMode()]);
@@ -1182,9 +1129,7 @@ app.get('/api/sessions/:id/transcript', async (req, res) => {
       return;
     }
 
-    // The file is gone (Claude Code's ~30-day cleanup, a deleted rollout, or removed
-    // since the last scan). With history retention its usage lives on in the archive;
-    // there is just nothing left to show turn by turn. Same shape as a real transcript.
+    // File gone (cleanup, deleted rollout, or removed since last scan) — with retention its usage lives on in the archive, just nothing to show turn by turn.
     if (!sm.file || !existsSync(sm.file)) {
       res.json(wrap({
         sessionId,
@@ -1199,8 +1144,7 @@ app.get('/api/sessions/:id/transcript', async (req, res) => {
       return;
     }
 
-    // Claude transcripts and Codex rollouts parse differently but return the same
-    // Turn shape (transcript.ts).
+    // Claude transcripts and Codex rollouts parse differently but return the same Turn shape (transcript.ts).
     const transcript = await readTranscript(sm.file, sessionId, sm.source);
     res.json(wrap({ sessionId, ...transcript }, Date.now()));
   } catch (e) {

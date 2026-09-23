@@ -160,11 +160,7 @@ function num(v: unknown): number {
   return typeof v === 'number' && Number.isFinite(v) ? v : 0;
 }
 
-/**
- * The project a run belongs to: the session transcript's real cwd, the same
- * derivation merge.ts applies to the session's events (project-path.ts) — the
- * lossy folder-name decode is only the fallback.
- */
+/** The project a run belongs to: the session transcript's real cwd (project-path.ts), same as merge.ts uses — the lossy folder decode is only the fallback. */
 async function projectOfFile(file: string): Promise<string> {
   return projectNameOf(await projectPathForFile(file));
 }

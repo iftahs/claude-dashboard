@@ -15,12 +15,8 @@
  * corrupt db) every function degrades to a no-op and the app just parses from
  * scratch as it always did. A cache is never worth an outage.
  *
- * One table is NOT a cache: `archived_files`, the opt-in history archive
- * (DASHBOARD_RETAIN_HISTORY=1). Claude Code deletes transcripts after
- * cleanupPeriodDays (30 by default), and without this the dashboard forgets their
- * usage the moment the file goes. The archive keeps a slim copy (slimRows) of the
- * parsed rows of every file that vanished, and the SCHEMA_VERSION wipe never
- * touches it — there is no source left to rebuild it from.
+ * One table is NOT a cache: `archived_files` (opt-in, DASHBOARD_RETAIN_HISTORY=1)
+ * keeps a slim copy of vanished files' rows and is never touched by the SCHEMA_VERSION wipe — there is no source left to rebuild it from.
  */
 import { existsSync } from 'node:fs';
 import { mkdir } from 'node:fs/promises';
@@ -33,13 +29,6 @@ import { scanRoots, type ScanRoot, type UsageSource } from './scan.ts';
  * Bump when the shape of FileRows — or what a parser puts in it — changes;
  * invalidates every cached blob.
  *   2: Codex rollouts (scan-pass-codex.ts) join the store; `source: 'codex'` rows.
- *   4: `rejected` requires an is_error result; insight rows from files up to 64 MB.
- *   5: a declined Codex item is never a success or a git commit/push candidate,
- *      and is a rejection only when the turn's approvals reviewer is the user;
- *      a non-guardian Codex subagent thread is one spawn of its own kind.
- *   6: history rows (limit hits, Codex rate-limit snapshots, line changes, PR links,
- *      turns, titles), effort / reasoning tokens, session cwd / client / repo URL.
- *   7: churn from edit inputs, synthetic lines end no turn, capped model family, no bare-429 hits.
  */
 const SCHEMA_VERSION = 7;
 
@@ -91,11 +80,7 @@ export function underOwnRoot(path: string, source: UsageSource, roots: ScanRoot[
   return roots.some((r) => r.source === source && isUnder(path, r.dir));
 }
 
-/**
- * Close the database and forget the open handle, so the next call reopens it
- * (possibly at a different DASHBOARD_CACHE_DIR). Tests use it to simulate a
- * restart; the server never needs it.
- */
+/** Forgets the open handle so the next call reopens the db (possibly at a different DASHBOARD_CACHE_DIR); tests use it to simulate a restart. */
 export function closeStore(): void {
   try {
     db?.close();
@@ -108,23 +93,7 @@ export function closeStore(): void {
   statsMemo = null;
 }
 
-/**
- * The archived copy of one file's rows: everything the aggregates need, and no
- * transcript text or error text.
- *
- * Kept: usage, tool calls, session partials (first prompts stay — the store is
- * local), limit hits, rate-limit snapshots, line counts, PR links, turn latencies,
- * titles, and task spawns with their description blanked.
- *
- * Dropped: the search corpus, and the tool results nothing reads — a non-error
- * result that resolves nothing, since a call without a result counts as a success.
- * Error results stay (failure and rejection rates) and so do the non-error ones
- * that resolve a session's git commit/push ids or a subagent's completion, all
- * with errorText forced to ''.
- *
- * Also a normaliser: rows written by an older parser may lack arrays merge.ts
- * iterates, so every array is defaulted. Idempotent.
- */
+/** Drops transcript text, the search corpus and non-load-bearing tool results (error/rejection flags and commit/push-resolving results stay); also normalises older rows' missing arrays. Idempotent. */
 export function slimRows(rows: FileRows): FileRows {
   const sessions = (rows.sessions ?? []).map((s) => ({
     ...s,
@@ -181,17 +150,7 @@ function archiveColumns(rows: FileRows, json: string): [number, number | null] {
   return [Buffer.byteLength(json), oldest];
 }
 
-/**
- * Called on a schema bump, inside the transaction that wipes `files`: files whose
- * transcript is already gone can never be re-parsed, so their rows are archived
- * (slimmed) before the wipe instead of being lost with it. Rows parsed by the old
- * schema may lack newer fields; slimRows defaults them. A blob that no longer
- * parses is skipped — there is nothing to keep.
- *
- * Over-archiving is harmless: a path that is only temporarily missing (a volume
- * not mounted yet) leaves the archive again when data.ts sees it live. A path
- * outside its source's configured root is another data set and goes with the wipe.
- */
+/** Called inside the schema-wipe transaction: archives (slimmed) rows of already-gone files before they're lost; over-archiving is harmless — a path that's live again simply leaves the archive. */
 function archiveVanishedBeforeWipe(): number {
   const vanished: string[] = [];
   for (const r of db.prepare('SELECT path FROM files').all()) {
@@ -280,9 +239,7 @@ export function storeReady(): Promise<void> {
 
       const got = db.prepare('SELECT v FROM meta WHERE k = ?').get('schema_version');
       if (!got || Number(got.v) !== SCHEMA_VERSION) {
-        // One transaction: if archiving fails the wipe rolls back with it and the
-        // store is disabled for this run (parsing uncached) — retried next start —
-        // rather than dropping rows that can no longer be re-parsed.
+        // One transaction: if archiving fails, the wipe rolls back too (disabled for this run, retried next start) rather than drop unreparseable rows.
         db.exec('BEGIN');
         try {
           const archived = retentionEnabled() ? archiveVanishedBeforeWipe() : 0;
@@ -370,16 +327,9 @@ export async function pruneRows(paths: string[]): Promise<void> {
   }
 }
 
-// ---------------------------------------------------------------------------
-// History archive (DASHBOARD_RETAIN_HISTORY=1). Never wiped by a schema bump.
-// ---------------------------------------------------------------------------
+// History archive (DASHBOARD_RETAIN_HISTORY=1) — never wiped by a schema bump.
 
-/**
- * Archive the rows of files that vanished (slimmed again here, so nothing that
- * reaches this table ever carries transcript text). Resolves true when the rows
- * are durably stored — callers prune the file's cache row only after that, so a
- * failed write is retried on the next start instead of losing the history.
- */
+/** Resolves true only once rows are durably stored — callers prune the cache row only then, so a failed write retries on the next start. */
 export async function archiveRows(rows: FileRows[], archivedAt = Date.now()): Promise<boolean> {
   await storeReady();
   if (disabled || !db) return false;

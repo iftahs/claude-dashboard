@@ -80,11 +80,7 @@ function cliInvocation(args: string[]): { file: string; args: string[] } {
   return { file: 'claude', args };
 }
 
-/**
- * cmd.exe looks for `claude` in the current directory before PATH. The print
- * calls run in os.tmpdir(), where any download or extractor can leave files, so
- * that lookup is switched off: only the CLI on PATH is ever launched.
- */
+/** cmd.exe checks the current directory before PATH; disabled since print calls run in os.tmpdir(), where a download could leave a file named `claude`. */
 function cliEnv(): NodeJS.ProcessEnv {
   return process.platform === 'win32' ? { ...process.env, NoDefaultCurrentDirectoryInExePath: '1' } : process.env;
 }
@@ -145,27 +141,8 @@ function callProvider(creds: AiCreds, input: AiCallInput): Promise<string> {
 
 // ── CLI ──────────────────────────────────────────────────────────────────────
 
-// `claude -p` is a full agent by default: every built-in tool, every configured
-// MCP server, the user's hooks and permission allow-list (auto mode included),
-// and the CLAUDE.md of its working directory. The prompt carries repo-derived
-// strings (branch names, file paths, task subjects) and client-supplied section
-// data, so text planted in a cloned repo could steer it into reading or sending
-// files with no human in the loop. AI Insights only needs a completion:
-//   --tools ""           no built-in tools (the CLI's documented "disable all";
-//                        the empty arg survives Windows' `cmd /c` + .cmd shim);
-//   --strict-mcp-config  no MCP servers — none are passed via --mcp-config;
-//   --safe-mode          no hooks, CLAUDE.md, plugins or skills;
-//   cwd = os.tmpdir()    no project to discover.
-// Not --bare: it forces ANTHROPIC_API_KEY auth and would break OAuth logins.
-//
-// `claude -p` also saves every session as a transcript under <config>/projects —
-// on the host that is ~/.claude/projects, the very folder this dashboard scans, so
-// each AI Insights call would come back as Claude Code usage (and a session).
-// --no-session-persistence (print mode only) skips the write.
-//
-// A CLI too old for a flag rejects it as an unknown option. An OPTIONAL flag is
-// dropped for good and the call retried. A REQUIRED one fails closed: the CLI
-// backend is disabled for the life of the process rather than run with tools.
+// Runs as a plain completion (--tools '', --strict-mcp-config, --safe-mode, cwd=tmpdir) since the prompt carries
+// repo-derived strings; a CLI that rejects a required flag fails closed instead of running with tools.
 const NO_PERSIST = '--no-session-persistence';
 const SAFE_MODE = '--safe-mode';
 const REQUIRED_FLAGS = ['--tools', '--strict-mcp-config'];
@@ -176,11 +153,7 @@ function printArgs(model: string): string[] {
   return ['--print', ...optionalFlags, '--tools', '', '--strict-mcp-config', '--model', model, '--output-format', 'text'];
 }
 
-/**
- * Classify a failed call. 'retry' — the CLI rejected an optional flag, now
- * dropped for good. AiUnavailableError — it rejected a required one. null —
- * any other failure.
- */
+/** 'retry': an optional flag was rejected (now dropped for good); AiUnavailableError: a required one was; null: any other failure. */
 function unknownOption(args: string[], stderr: string): 'retry' | AiUnavailableError | null {
   const flag = /unknown option '?(--[\w-]+)/i.exec(stderr)?.[1];
   if (!flag || !args.includes(flag)) return null;
@@ -211,10 +184,8 @@ function runViaCli(input: AiCallInput, model: string): Promise<string> {
       },
     );
     // Prompt via stdin — never interpolated into a shell, so transcript-derived
-    // text can't break out, and there's no arg-length cap or temp file. A CLI that
-    // rejects a flag exits without reading it; the resulting EPIPE is not the
-    // failure worth reporting (the exit code and stderr are), and unhandled it
-    // would take the server down.
+    // text can't break out, and there's no arg-length cap or temp file.
+    // A CLI that rejects a flag exits without reading stdin; unhandled, the resulting EPIPE would crash the server.
     child.stdin?.on('error', () => {});
     child.stdin?.end(`${input.system}\n\n${input.user}`);
   });
@@ -272,9 +243,7 @@ function alwaysThinks(model: string): boolean {
  * text; the system suffix is the documented mitigation — note it names XML tags
  * generically and never tells the model not to think, which makes leakage worse.
  */
-/** Extra `max_tokens` for models that always think: their thinking and the visible
- *  answer share one budget, and at effort 'low' a short answer still needs room after
- *  the thinking. Answer length is held by the prompts, which ask for brevity. */
+/** Extra `max_tokens` for always-thinking models — thinking and the answer share one budget, so a short answer still needs room after it. */
 const THINKING_HEADROOM = 2048;
 
 function messagesBody(input: AiCallInput, model: string, extra?: Record<string, unknown>) {
@@ -353,8 +322,7 @@ async function callOpenAI(apiKey: string, input: AiCallInput, model: string): Pr
 }
 
 // ── Google Gemini ────────────────────────────────────────────────────────────
-// The key goes in the x-goog-api-key header, never a ?key= query parameter: URLs
-// end up in proxy logs, error messages and stack traces.
+// The key goes in the x-goog-api-key header, never a ?key= query param — URLs end up in proxy logs and stack traces.
 
 function geminiHeaders(apiKey: string): Record<string, string> {
   return { 'x-goog-api-key': apiKey, 'content-type': 'application/json' };

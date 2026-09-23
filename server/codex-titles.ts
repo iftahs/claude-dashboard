@@ -1,15 +1,9 @@
 /**
  * codex-titles.ts — Codex thread titles from `<codexDir>/session_index.jsonl`.
  *
- * The desktop app appends `{id, thread_name, updated_at}` whenever a thread is
- * named or renamed, so the file is append-only and the LAST entry per id wins —
- * the Codex counterpart of Claude's `custom-title` / `ai-title` records (which
- * merge.ts already puts on SessionMetaRecord.title). Rollouts themselves carry no
- * title, so /api/sessions and /api/search fill Codex titles from here.
- *
- * Read-only, fail-soft (no file → no titles), and cheap: re-read only when the
- * file's size or mtime changes, checked at most every few seconds. Only ids and
- * names are kept. The Docker compose file already documents this file as read.
+ * Append-only; the desktop app appends `{id, thread_name, updated_at}` on every
+ * (re)name, so the LAST entry per id wins. Rollouts carry no title themselves.
+ * Read-only, fail-soft, and cheap — re-read only when the file's size/mtime changes.
  */
 import { readFile, stat } from 'node:fs/promises';
 import { join } from 'node:path';

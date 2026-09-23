@@ -31,9 +31,9 @@ export interface UsageEvent {
   attributionPlugin: string; // plugin this request ran under
   projectPath: string; // decoded path of the project directory
   gitBranch: string; // git branch at the time of the message ('' if unknown)
-  source: UsageSource;
+  source: UsageSource; // 'code' = Claude Code CLI, 'cowork' = desktop local-agent mode, 'codex' = OpenAI Codex (ChatGPT desktop)
   effort?: string; // reasoning effort ('' / absent when the log doesn't say)
-  reasoningTokens?: number | null; // thinking/reasoning part of outputTokens; null = not reported // 'code' = Claude Code CLI, 'cowork' = desktop local-agent mode, 'codex' = OpenAI Codex (ChatGPT desktop)
+  reasoningTokens?: number | null; // thinking/reasoning part of outputTokens; null = not reported
 }
 
 export function claudeDir(): string {
@@ -274,14 +274,7 @@ export async function readAccountCredentials(): Promise<CapturedToken[]> {
   return list;
 }
 
-/**
- * User-facing "token expired" advice. On the host, any Claude Code command
- * refreshes the token in place. In Docker it depends on the host OS (HOST_OS
- * from docker:up, else whether the macOS Keychain snapshot exists): a Mac must
- * re-sync that snapshot, elsewhere Claude Code rewrites the mounted
- * `.credentials.json`. Keep the word "expired" in every variant: the frontend
- * classifies this state by matching it.
- */
+/** Advice varies by how Docker knows to refresh the token: HOST_OS from docker:up, else whether the macOS Keychain cache exists; keep "expired" in every variant since the frontend matches on it. */
 export function expiredTokenAdvice(docker: boolean, hostOs: string | undefined, macCache: boolean): string {
   if (!docker) return 'OAuth token expired — run any Claude Code command in your terminal to refresh it automatically.';
   if (hostOs === 'darwin' || (!hostOs && macCache)) {
@@ -333,8 +326,7 @@ export async function readSessionMetas(): Promise<any[]> {
       .filter(Boolean)
       .sort((a, b) => Date.parse(b.start_time) - Date.parse(a.start_time));
   } catch (e) {
-    // Current Claude Code no longer writes these sidecars, so a missing dir is the
-    // normal case, not an error — and this runs on every rescan.
+    // Claude Code no longer writes these sidecars, so a missing dir is normal, not an error — and this runs on every rescan.
     if ((e as NodeJS.ErrnoException)?.code !== 'ENOENT') {
       console.error('[server] failed to read session-meta:', e);
     }
@@ -523,8 +515,7 @@ export interface LiteLlmSpend {
   // `days` calendar days incl. today, oldest→newest, zero-filled. Per-day cost,
   // request count, successful count, and per-model spend (for the hover breakdown).
   daily: { date: string; cost: number; requests: number; successful: number; byModel: Record<string, number> }[];
-  /** True when the gateway had more spend rows than the page cap fetched — some days
-   *  (and possibly the month totals) are undercounted. */
+  /** True when the gateway had more spend rows than the page cap fetched — some days (and possibly the month totals) are undercounted. */
   truncated: boolean;
 }
 
@@ -539,17 +530,14 @@ interface LiteLlmBase {
   monthTokens: { prompt: number; completion: number; cacheRead: number; cacheCreate: number };
   prevMonthLabel: string;
   prevMonthToDate: number;
-  /** True when the page cap stopped the fetch with more rows left: some days in the
-   *  range are incomplete, and the UI must not present them as exact. */
+  /** True when the page cap stopped the fetch with more rows left: some days in the range are incomplete, and the UI must not present them as exact. */
   truncated: boolean;
 }
 
 const LITELLM_TTL = 5 * 60 * 1000; // 5 min — billing data moves slowly
-/** At most this many pages of 1000 rows per fetch. The gateway pages raw spend rows
- *  (date × key × model), so a year of a busy key can exceed it. */
+/** At most this many pages of 1000 rows per fetch — the gateway pages raw spend rows (date×key×model), so a year of a busy key can exceed it. */
 const LITELLM_MAX_PAGES = 20;
-// One entry per range ('short' | 'long'), each keyed by its date span, plus one
-// in-flight promise per range so concurrent polls share a single paged fetch.
+// One entry per range ('short'|'long'), keyed by its date span; one in-flight promise per range so concurrent polls share a single paged fetch.
 const cachedLiteLlmBase = new Map<'short' | 'long', { key: string; data: LiteLlmBase; fetchedAt: number }>();
 const inflightLiteLlmBase = new Map<'short' | 'long', Promise<LiteLlmBase>>();
 const MONTH_ABBR = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -561,12 +549,10 @@ function localYmd(d: Date): string {
   return `${d.getFullYear()}-${m}-${day}`;
 }
 
-/** Longest selectable Trends window in days — the clamp on /api/usage/weekly and
- *  /api/usage/litellm, and the span fetchLiteLlmBase always covers. */
+/** Longest selectable Trends window in days — the clamp on /api/usage/weekly and /api/usage/litellm, and the span fetchLiteLlmBase always covers. */
 export const MAX_WINDOW_DAYS = 365;
 
-/** Days from the previous month's 1st through today, inclusive — what the short
- *  range covers. Windows up to this length never need the year-long fetch. */
+/** Days from the previous month's 1st through today, inclusive — windows up to this length never need the year-long fetch. */
 function shortRangeDays(today = new Date()): number {
   const prevMonthStart = new Date(today.getFullYear(), today.getMonth() - 1, 1);
   const todayMidnight = new Date(today.getFullYear(), today.getMonth(), today.getDate());
@@ -574,13 +560,9 @@ function shortRangeDays(today = new Date()): number {
 }
 
 /**
- * A self-scoped /user/daily/activity fetch. 'short' covers previous-month-start →
- * today (month-to-date, the previous-month same-period total, and any window up to
- * ~1–2 months); 'long' covers the last MAX_WINDOW_DAYS days and is only fetched when
- * a longer window asks for it. Each range depends only on today, never on the exact
- * `days`, so windows share cache entries (5 min) instead of evicting each other, and
- * concurrent callers share one in-flight fetch. Throws distinct messages so the route
- * can degrade gracefully (no permission / not a LiteLLM gateway / outage).
+ * 'short' covers previous-month-start → today; 'long' covers the last MAX_WINDOW_DAYS,
+ * fetched only when asked for. Each depends only on today (not the exact `days`), so
+ * windows share cache entries and concurrent callers share one in-flight fetch.
  */
 function fetchLiteLlmBase(range: 'short' | 'long'): Promise<LiteLlmBase> {
   const pending = inflightLiteLlmBase.get(range);
@@ -602,8 +584,7 @@ async function doFetchLiteLlmBase(range: 'short' | 'long'): Promise<LiteLlmBase>
   // Same day-of-month in the previous month, clamped to its last day, for a
   // fair "same point in the month" comparison.
   const prevMonthEnd = new Date(today.getFullYear(), today.getMonth() - 1, Math.min(today.getDate(), prevMonthLastDay));
-  // The long window's first day is today − (MAX_WINDOW_DAYS − 1): fetchLiteLlmSpend
-  // counts today as day 1.
+  // The long window's first day is today − (MAX_WINDOW_DAYS − 1) — fetchLiteLlmSpend counts today as day 1.
   const windowStart = new Date(today.getFullYear(), today.getMonth(), today.getDate() - (MAX_WINDOW_DAYS - 1));
   const startYmd = localYmd(range === 'long' && windowStart < prevMonthStart ? windowStart : prevMonthStart);
   const endYmd = localYmd(today);
@@ -667,8 +648,7 @@ async function doFetchLiteLlmBase(range: 'short' | 'long'): Promise<LiteLlmBase>
       monthTokens.cacheRead += num(mx.cache_read_input_tokens);
       monthTokens.cacheCreate += num(mx.cache_creation_input_tokens);
     }
-    // Bounded by the previous month's first day, not startYmd — the fetch reaches
-    // back up to a year, and only 1st → same day-of-month is a fair comparison.
+    // Bounded by the previous month's first day, not startYmd — the fetch reaches back up to a year, and only 1st → same day is a fair comparison.
     if (date >= prevMonthStartYmd && date <= prevEndYmd) prevMonthToDate += num(mx.spend);
   }
 

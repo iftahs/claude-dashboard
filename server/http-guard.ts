@@ -1,26 +1,14 @@
 /**
  * http-guard.ts — the request/response rules that keep a local-only API local.
  *
- * The dashboard has no login, so "who may call it" is decided by where the
- * request comes from:
+ * No login, so "who may call it" is decided by origin: a Host check (defends DNS
+ * rebinding — only loopback names, plus ALLOWED_HOSTS, are served) and a write
+ * check (defends CSRF — unsafe methods must be application/json with an allowed
+ * Origin if one is sent). Only the HOSTNAME is compared, never the port: Vite's
+ * dev proxy forwards the browser's own Host unchanged (changeOrigin: false).
  *
- *   - Host check (DNS rebinding). A page on evil.example can re-point its own
- *     hostname at 127.0.0.1 and then read our API "same-origin". The browser
- *     still sends `Host: evil.example`, so only loopback names (plus whatever the
- *     user lists in ALLOWED_HOSTS for LAN access) are served.
- *   - Write check (CSRF). A cross-site <form> can POST text/plain or urlencoded
- *     bodies without a preflight. Requiring `application/json` forces a CORS
- *     preflight we never answer, and a present Origin must name an allowed host.
- *
- * Only the HOSTNAME is compared, never the port: the same page reaches the API
- * on 8787 (Docker) or through the Vite dev proxy on 8788, which forwards the
- * browser's `Host: localhost:5180` unchanged — it is configured with
- * changeOrigin: false (vite.config.ts); Vite's string shorthand would rewrite
- * Host to the proxy target and this check would never see the browser's name.
- *
- * Both checks defend BROWSERS (rebinding, forged forms). Neither is access
- * control: any other client that can reach the port just sends `Host: localhost`.
- * Only binding to loopback keeps the API local.
+ * Neither check is access control — any client that sends `Host: localhost` gets
+ * through. Only binding to loopback keeps the API local.
  *
  * Pure functions only — index.ts wires them into Express middleware.
  */
@@ -45,11 +33,7 @@ function normalizeHostname(raw: string): string {
   return h;
 }
 
-/**
- * Hostname of a `Host` header: `localhost:5180` → `localhost`, `[::1]:8787` →
- * `::1`. A bare IPv6 literal without brackets is invalid in a Host header, but
- * it is kept whole rather than mis-split on its last colon. null when absent.
- */
+/** Hostname of a `Host` header (`localhost:5180` → `localhost`); a bracket-less IPv6 literal is kept whole rather than mis-split on its last colon. */
 export function hostHeaderName(host: string | undefined): string | null {
   if (!host) return null;
   let h = host.trim();
@@ -86,12 +70,7 @@ export interface GuardRejection {
 
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 
-/**
- * null when the request may proceed, else the status + message to send. The
- * write rules apply to every unsafe method on every path, not to an `/api`
- * prefix — Express matches routes case-insensitively, so `/API/update/pull`
- * would slip past a prefix test and still hit the handler.
- */
+/** null when the request may proceed. Write rules apply to every unsafe method on every path, not an `/api` prefix — Express routes case-insensitively. */
 export function checkRequest(req: GuardRequest, allowed: ReadonlySet<string>): GuardRejection | null {
   const host = hostHeaderName(req.host);
   if (!host || !allowed.has(host)) {
@@ -115,8 +94,6 @@ export function checkRequest(req: GuardRequest, allowed: ReadonlySet<string>): G
   return null;
 }
 
-// ── What /api/config may expose ───────────────────────────────────────────────
-
 const str = (v: unknown): string | undefined => (typeof v === 'string' ? v : undefined);
 const bool = (v: unknown): boolean | undefined => (typeof v === 'boolean' ? v : undefined);
 const strings = (v: unknown): string[] | undefined =>
@@ -124,13 +101,7 @@ const strings = (v: unknown): string[] | undefined =>
 const record = (v: unknown): Record<string, unknown> | undefined =>
   v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : undefined;
 
-/**
- * The settings.json fields the UI renders (ConfigProfile), projected one by one.
- * NEVER spread settings.json into a response: it routinely carries an `env`
- * block with API keys, an `apiKeyHelper` command and hook commands. Marketplace
- * entries are reduced to their names (only the count is shown; their sources can
- * be private git URLs), and enabled plugins to booleans.
- */
+/** NEVER spread settings.json — it can carry an `env` block with API keys, `apiKeyHelper` and hook commands; only an explicit allowlist goes out. */
 export function publicSettings(settings: unknown) {
   const s = record(settings) ?? {};
   const perms = record(s.permissions);

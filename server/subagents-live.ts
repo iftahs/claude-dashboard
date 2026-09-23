@@ -1,18 +1,13 @@
 /**
  * subagents-live.ts
- * getLiveSubagents() with 3s TTL cache — the Claude Code feed of the Agents tab.
- * codex-agents-live.ts returns the same LiveSubagentsData shape for Codex and
- * shares the main-session state machine below (mainAgentState), so a session
- * reads the same on both platforms.
+ * getLiveSubagents() with 3s TTL cache — the Claude Code feed of the Agents tab;
+ * codex-agents-live.ts shares its LiveSubagentsData shape and state machine (mainAgentState).
  *
  * Detects running subagents by:
- *   (a) Finding Agent/Task tool_use blocks in files modified within last 30 min with no matching result
- *   (b) Finding sidechain files modified recently → active workers
- *   (c) Linking a sidechain to its spawn by the `toolUseId` in its .meta.json sidecar,
- *       else by agentId from the tool_result, else by prompt prefix
- *   (d) Workflow agents (<session>/subagents/workflows/wf_*\/agent-*.jsonl) have no
- *       spawn record at all: they attach to their session by path, labelled from their
- *       .meta.json, with the run's journal.jsonl deciding running vs finished.
+ *   (a) Agent/Task tool_use blocks in files modified within last 30 min with no matching result
+ *   (b) sidechain files modified recently → active workers
+ *   (c) linking a sidechain to its spawn by .meta.json's toolUseId, else agentId, else prompt prefix
+ *   (d) Workflow agents (no spawn record) attach to their session by path, labelled from .meta.json
  */
 
 import { open, readdir, readFile, stat } from 'node:fs/promises';
@@ -20,17 +15,7 @@ import { basename, dirname, join } from 'node:path';
 import { claudeDir } from './scan.ts';
 import { isRejectedToolResult, limitHitOf, runPool, userTurnRole } from './scan-pass.ts';
 
-/**
- * Traffic-light status for an agent:
- *  - 'finished' — task completed (the recentlyCompleted list), or a main session
- *    that is idle (including one whose turn ended — see MainAgent.yourTurn);
- *  - 'running'  — actively working (a main: on its own, or delegating);
- *  - 'waiting'  — paused on something only the user can resolve. INFERRED, not
- *    explicit: the JSONL has no "awaiting permission" marker, so we infer it from a
- *    tool_use left unresolved while the transcript went quiet, a last tool_result the
- *    user rejected, or a turn that ended in an API error / usage limit. Biased toward
- *    'running' when uncertain.
- */
+/** 'finished': done, or a main idle (see yourTurn); 'running': actively working; 'waiting': INFERRED (no explicit marker) from an unresolved tool_use, a rejected result, or an API-error/usage-limit turn end — biased toward 'running' when uncertain. */
 export type AgentTrafficStatus = 'finished' | 'running' | 'waiting';
 
 export interface LiveSubagent {
@@ -77,11 +62,7 @@ export interface MainAgent {
   active: boolean;
   /** True when the transcript is idle but the session still has running subagents. */
   delegating: boolean;
-  /**
-   * The last turn finished normally and the session is idle on the user — a soft
-   * "your turn", never red and never an alert. Mutually exclusive with waiting,
-   * active and delegating.
-   */
+  /** The last turn finished normally and the session is idle on the user — a soft "your turn", never red/alert; mutually exclusive with waiting/active/delegating. */
   yourTurn: boolean;
   status: 'running';
   traffic: AgentTrafficStatus;
@@ -105,9 +86,7 @@ export interface LiveSubagentsData {
   counts: LiveCounts;
 }
 
-// ---------------------------------------------------------------------------
 // Main-session state machine — shared with codex-agents-live.ts
-// ---------------------------------------------------------------------------
 
 /** A session pulses "active" while written to this recently … */
 export const MAIN_ACTIVE = 30_000;
@@ -138,15 +117,7 @@ export interface MainState {
   traffic: AgentTrafficStatus;
 }
 
-/**
- * One rule for both platforms:
- *  - waiting (RED): needsUser, the session has been quiet MAIN_ACTIVE..ACTIVE_WINDOW,
- *    and it is not delegating (a subagent still running is not the user's problem);
- *  - active / delegating: working on its own, or idle with running subagents;
- *  - yourTurn (soft): the turn ended normally and the session sat quiet for
- *    MAIN_ACTIVE..ACTIVE_WINDOW — listed, never red, never an alert;
- *  - otherwise idle: listed for MAIN_LINGER after the last write, then dropped.
- */
+/** waiting (RED): needsUser, quiet MAIN_ACTIVE..ACTIVE_WINDOW, not delegating; yourTurn (soft): turn ended normally in that same quiet window; else active/delegating while working, else idle until MAIN_LINGER. */
 export function mainAgentState(s: MainSignals): MainState {
   const quiet = s.sinceWrite >= MAIN_ACTIVE;
   const recent = s.sinceWrite < ACTIVE_WINDOW;
@@ -159,12 +130,7 @@ export function mainAgentState(s: MainSignals): MainState {
   return { listed, active, delegating, yourTurn, traffic };
 }
 
-/**
- * Traffic tallies, identical on both endpoints. `running` counts what is actually
- * working — running subagents plus mains that are active or delegating — so the
- * header lamp and the sidebar badge (useLiveMetrics) agree; an idle main that is
- * merely still listed is not running.
- */
+/** `running` counts what is actually working (subagents + active/delegating mains), so the header lamp and sidebar badge agree — a merely-listed idle main is not running. */
 export function tallyCounts(
   running: readonly unknown[],
   completed: readonly unknown[],
@@ -327,10 +293,7 @@ export function isSidechainPath(p: string): boolean {
   return SUBAGENTS_SEG.test(p);
 }
 
-/**
- * The main transcript a sidechain belongs to:
- * `<proj>/<session>/subagents/[workflows/wf_*\/]agent-<id>.jsonl` → `<proj>/<session>.jsonl`.
- */
+/** The main transcript a sidechain belongs to: `<proj>/<session>/subagents/[...]/agent-<id>.jsonl` → `<proj>/<session>.jsonl`. */
 export function sessionFileOfSidechain(p: string): string {
   const m = SUBAGENTS_SEG.exec(p);
   return m ? p.slice(0, m.index) + '.jsonl' : '';
@@ -564,10 +527,7 @@ function createMainParser(): LineParser<ParsedMain> {
               isAsyncLaunch: /Async agent launched/i.test(resultText),
             });
             // Track the latest tool_result for the parent's waiting heuristic.
-            // Only a user rejection counts toward "waiting" (red) — a benign tool
-            // failure (non-zero bash exit, empty grep, missing file) is not "needs
-            // attention"; the agent gets the error and keeps going. Same classifier
-            // as the scanner, so a Read of a file that merely says "reject" is not one.
+            // Only a user rejection counts toward "waiting" (red) — a benign tool failure keeps the agent going. Same classifier as the scanner.
             const isErr = isRejectedToolResult(block);
             if (ts >= main.lastToolResultTs) {
               main.lastToolResultTs = ts;
@@ -594,15 +554,7 @@ function createMainParser(): LineParser<ParsedMain> {
   return { push, finish };
 }
 
-/**
- * The Claude side of the shared state machine: what a main transcript says about
- * whether the user is needed and whether the turn is over.
- *  - needsUser: a non-delegation tool_use still unresolved (likely a permission
- *    prompt); a user rejection that is the last word (no reply or prompt after it);
- *    or a turn that ended in an API error / usage-limit refusal.
- *  - turnEnded: the last assistant line ended the turn (end_turn …) with no prompt
- *    after it, or the user interrupted the turn.
- */
+/** needsUser: an unresolved tool_use, a user rejection that's the last word, or a turn that ended in an API error/usage-limit; turnEnded: the last assistant line ended cleanly or was interrupted, with no prompt after. */
 export function claudeMainSignals(main: MainInfo): { needsUser: boolean; turnEnded: boolean } {
   const pendingTool = main.lastNonDelegationToolUseTs > main.lastToolResultTs;
   const rejectedLast =
@@ -802,9 +754,7 @@ async function computeLive(now: number): Promise<LiveSubagentsData> {
   }
   const workflowFinished = (sc: SidechainInfo) => workflowDone.get(dirname(sc.path))?.has(sc.agentId) ?? false;
 
-  // Parents: conversations modified in the last 30 min (source of spawns/results/
-  // notifications), plus the session of any running sidechain — a Workflow run can
-  // outlast its session's last write, and its agents need a home.
+  // Parents: conversations modified in the last 30 min, plus the session of any running sidechain — a Workflow run can outlast its session's last write.
   const parentPaths = new Set<string>();
   for (const f of allFiles) {
     if (now - f.mtime < THIRTY_MIN && f.size <= MAX_FILE && !isSidechainPath(f.path)) parentPaths.add(f.path);
@@ -845,8 +795,7 @@ async function computeLive(now: number): Promise<LiveSubagentsData> {
       if (spawnAge >= BG_COMPLETED_WINDOW) continue;
       const result = parsed.results.get(spawn.id);
 
-      // Link spawn → sidechain: by the sidecar's toolUseId, by agentId from an
-      // async-launch result, else by prompt prefix.
+      // Link spawn → sidechain: by the sidecar's toolUseId, by agentId from an async-launch result, else by prompt prefix.
       let sc: SidechainInfo | undefined = spawn.id ? byToolUseId.get(spawn.id) : undefined;
       if (sc && claimedAgentIds.has(sc.agentId)) sc = undefined;
       if (!sc && result?.agentId) sc = sidechains.get(result.agentId);
@@ -916,9 +865,7 @@ async function computeLive(now: number): Promise<LiveSubagentsData> {
     }
   }
 
-  // Sidechains no spawn claimed: Workflow agents (never spawned by Agent/Task) and
-  // children whose spawn rotated/compacted away. They attach to their session by
-  // path; only when that session file is gone do they fall back to "Other subagents".
+  // Sidechains no spawn claimed: Workflow agents (never spawned by Agent/Task) and children whose spawn rotated/compacted away — attach to their session by path, else fall back to "Other subagents".
   for (const sc of sidechains.values()) {
     if (claimedAgentIds.has(sc.agentId)) continue;
     const parentKey = fileByPath.has(sc.sessionFile) ? sc.sessionFile : '';

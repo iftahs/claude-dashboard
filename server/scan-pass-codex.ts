@@ -25,56 +25,29 @@
  *    record can precede its turn_context, so the join is deferred to the end of the
  *    file. Fallbacks: the latest `thread_settings_applied`, then `world_state`.
  *  - IDENTITY: `session_meta` (always line 0). A subagent thread (object-valued
- *    `source`, e.g. {"subagent":"review"}, or thread_source 'guardian_review') is
- *    a child of `parent_thread_id`: its rows are sidechain, sessionId = parent,
- *    agentId = own id. A non-guardian subagent is one spawn of its kind
- *    (`review`, `thread_spawn`, …), attributed under that kind. The guardian
- *    (thread_source 'guardian_review' / {"subagent":{"other":"guardian"}}) is
- *    different: one guardian thread is a long-lived reviewer that answers many approval
- *    requests (up to ~20), one per turn: each `task_complete` carries a JSON
- *    verdict in `last_agent_message`, and each verdict becomes one TaskSpawnRow
- *    (id `<thread>:<turn>`) — so the Subagents insight counts reviews, not threads.
- *    Only the `outcome` enum is read; the free-text rationale quotes commands and
- *    paths and is never stored. A 'deny' also becomes a rejected `GuardianReview`
- *    call on the parent thread: that verdict is the one record of the decision
- *    (a denied command leaves no item in the parent; a denied patch leaves a
- *    'declined' FileChange, which the reviewer rule under TOOLS keeps from
- *    counting a second time).
- *  - TOOLS: `event_msg/item_completed` only. The `response_item`
- *    custom_tool_call / function_call lines are JS-sandbox wrappers of the same
- *    items and would double-count. Item types are PascalCase. An item whose
- *    status is 'declined' never ran: it is never a success and never an error.
- *    It is a rejection only when a person made that call — the turn's
- *    `approvals_reviewer` (turn_context, else the latest thread_settings) is
- *    'user' or unrecorded, the same split the Claude parser makes. Under
- *    'auto_review' the guardian decided: its deny is already the GuardianReview
- *    row, and a review that failed (e.g. at a usage limit) decided nothing.
+ *    `source`, or thread_source 'guardian_review') is sidechained under its
+ *    `parent_thread_id`. The guardian is special — one long-lived reviewer emits
+ *    one TaskSpawnRow per `task_complete` verdict (id `<thread>:<turn>`, only the
+ *    `outcome` enum kept, never the free-text rationale); a 'deny' also becomes a
+ *    rejected `GuardianReview` call on the parent (the one record of that
+ *    decision). Other subagent kinds get one thread-level spawn of their kind.
+ *  - TOOLS: `event_msg/item_completed` only — `response_item` custom_tool_call /
+ *    function_call lines are JS-sandbox wrappers of the same items and would
+ *    double-count. A 'declined' item is never a success or error; it is a
+ *    rejection only when a person (not the guardian, under 'auto_review') decided,
+ *    per the turn's `approvals_reviewer`.
  *
  * History rows (counts and enums only — never diff text, messages or commands):
- *  - EFFORT / REASONING: `turn_context.effort` joined by turn_id exactly like the
- *    model (fallback `thread_settings.reasoning_effort`); reasoning tokens are
- *    `usage.reasoning_output_tokens`, already inside output_tokens.
- *  - RATE LIMITS: every `token_count.rate_limits` → one RateLimitSnapRow (resets_at
- *    is epoch SECONDS). An identical repeat of the previous snapshot for the same
- *    `limit_id` is skipped. `limit_id: 'premium'` snapshots carry null windows and
- *    are written milliseconds before every usage-limit error — a probe, not a
- *    reading.
- *  - LIMIT HITS: a user-thread `task_complete` whose `error.codex_error_info` is
- *    'usage_limit_exceeded' (key turn_id). The kind comes from the newest
- *    Codex-bucket snapshot before it, classified by WINDOW LENGTH, never by slot
- *    (the 'go' plan's primary IS the weekly window), and read with a 90% floor
- *    because that snapshot predates the refused request (97–100% in practice). A
- *    per-model bucket only counts when one of its windows reads 100%. Guardian
- *    threads are skipped: their parent's turn records the same wall.
- *  - TURNS: user-thread `task_complete.duration_ms` / `time_to_first_token_ms`
- *    (started_at / completed_at are epoch seconds). A replayed 'rollout-N' turn id
- *    yields neither a turn nor a limit hit, as the turn counter skips it.
- *  - LINES: FileChange `unified_diff` hunks for updates (hunk-length aware, so a
- *    removed `-- comment` line is not mistaken for a `---` header); whole `content`
- *    lines for adds (added) and deletes (removed). Declined / failed patches changed
- *    nothing and are skipped.
- *  - SESSION: `originator`, `cli_version` and `git.{repository_url,branch}` from
- *    session_meta; the branch is stamped on the thread's usage and tool rows too.
+ *  - EFFORT / REASONING: `turn_context.effort` joined by turn_id, like the model.
+ *  - RATE LIMITS: every `token_count.rate_limits` → one row (dedup by signature);
+ *    `limit_id: 'premium'` snapshots are probes, not readings, and are skipped.
+ *  - LIMIT HITS: a usage_limit_exceeded `task_complete`, classified by the newest
+ *    Codex-bucket snapshot's WINDOW LENGTH (never slot) with a 90% floor (real
+ *    snapshots read 97-100% at a hit). Guardian threads are skipped.
+ *  - TURNS: user-thread `task_complete.duration_ms` / `time_to_first_token_ms`.
+ *  - LINES: unified_diff hunks for updates, whole content for adds/deletes;
+ *    declined/failed patches are skipped.
+ *  - SESSION: originator, cli_version, git remote/branch from session_meta.
  *
  * Performance: a ~140-char header regex is the only work most lines get; JSON.parse
  * is paid for the handful of record types above, and `compacted` lines (1.3–3.8 MB
@@ -106,10 +79,7 @@ const EVENT_SCAN = 260;
 
 const HEADER_RE =
   /^\{"timestamp":"([^"]+)",(?:"ordinal":(\d+),)?"type":"(session_meta|turn_context|token_usage_record|event_msg|compacted|world_state)"/;
-/**
- * event_msg sub-types we parse. task_complete is a guardian verdict in guardian
- * threads, and a turn's latency / usage-limit error in user threads.
- */
+/** event_msg sub-types we parse; task_complete is a guardian verdict in guardian threads, a turn's latency/usage-limit error in user threads. */
 const EVENT_RE = /"payload":\{"type":"(token_count|task_started|task_complete|item_completed|thread_settings_applied)"/;
 const ITEM_RE = /"item":\{"type":"([A-Za-z]+)"/;
 /** item_completed kinds that never yield a row — rejected from the header, before JSON.parse. */
@@ -162,12 +132,7 @@ function effective(r: UsageRow): number {
   return r.inputTokens + r.outputTokens + r.cacheCreateTokens;
 }
 
-/**
- * The kind of a subagent thread, from session_meta.source: 'review' for
- * {"subagent":"review"}, 'thread_spawn' for {"subagent":{"thread_spawn":{…}}},
- * the name for {"subagent":{"other":"<name>"}} (the guardian is 'guardian').
- * 'subagent' when the shape is unrecognised.
- */
+/** Kind from session_meta.source: the literal string, or the `other` name (guardian is 'guardian'), else 'subagent' when unrecognised. */
 function subagentKind(source: unknown): string {
   const sa = (source as any)?.subagent;
   if (typeof sa === 'string' && sa) return sa;
@@ -179,11 +144,7 @@ function subagentKind(source: unknown): string {
   return 'subagent';
 }
 
-/**
- * The `outcome` of a guardian verdict ('allow' | 'deny'), or '' when the turn
- * ended without one (interrupted, errored). Nothing else leaves this function —
- * `rationale` is free text that quotes the reviewed command.
- */
+/** The `outcome` of a guardian verdict ('allow'|'deny'), or '' when the turn ended without one — `rationale` free text never leaves this function. */
 function verdictOutcome(msg: unknown): string {
   if (typeof msg !== 'string' || !msg.trimStart().startsWith('{')) return '';
   try {
@@ -194,10 +155,7 @@ function verdictOutcome(msg: unknown): string {
   }
 }
 
-/**
- * Codex writes epoch SECONDS (`resets_at`, `started_at`); accept milliseconds and
- * ISO strings too so a format change degrades to a correct value, not a 1970 date.
- */
+/** Codex writes epoch SECONDS; also accepts milliseconds and ISO strings so a format change degrades to a correct value, not a 1970 date. */
 function epochMs(v: unknown): number | null {
   if (typeof v === 'number' && Number.isFinite(v) && v > 0) return v < 1e11 ? v * 1000 : v;
   if (typeof v === 'string' && v) {
@@ -213,13 +171,7 @@ function numOrNull(v: unknown): number | null {
 
 const HUNK_RE = /^@@ -\d+(?:,(\d+))? \+\d+(?:,(\d+))? @@/;
 
-/**
- * Lines added / removed by a unified diff. Walks each hunk by the lengths its
- * `@@ -a,b +c,d @@` header declares, so a removed line that itself starts with
- * `-- ` (a SQL / Lua comment) is counted, not mistaken for a `---` file header.
- * A diff without parseable hunk headers falls back to counting +/- lines that
- * are not `+++ ` / `--- ` headers.
- */
+/** Walks each hunk by its declared lengths, so a `-- ` comment line isn't mistaken for a `---` header; falls back to counting +/- lines when no hunk header parses. */
 export function countUnifiedDiff(diff: string): { added: number; removed: number } {
   const lines = diff.split('\n');
   let added = 0;
@@ -301,20 +253,11 @@ function snapSignature(s: RateLimitSnapRow): string {
   ].join('|');
 }
 
-/**
- * The newest pre-hit snapshot was written before the refused request, so the
- * window that ran out reads just under 100 there (97–100 across the corpus).
- */
+/** The pre-hit snapshot predates the refused request, so the exhausted window reads just under 100 there (97-100 in practice) — hence a 90% floor, not 100. */
 const LIMIT_NEAR_FULL_PCT = 90;
 const DAY_MIN = 24 * 60;
 
-/**
- * Which limit a usage_limit_exceeded turn hit, from the newest snapshots before
- * it. A per-model bucket ('premium') counts only when one of its windows reads
- * full — its usual null-window snapshot is a probe written just before every
- * limit error. Otherwise the fullest open Codex window at or above the floor
- * wins (ties → the longer window, which lifts later), classified by length.
- */
+/** Per-model bucket wins only when one of its windows reads full (its usual null-window snapshot is a probe); else the fullest open Codex window at/above the floor, ties to the longer window. */
 export function classifyLimitHit(
   codex: RateLimitSnapRow | null, other: RateLimitSnapRow | null, at: number,
 ): { kind: LimitHitRow['kind']; resetsAt: number | null } {
@@ -365,10 +308,7 @@ interface PendingLimitHit {
   fallbackModel: string;
 }
 
-/**
- * A declined item's result row. Whether it is a rejection depends on the turn's
- * approvals reviewer, which — like the model — is resolved once the file is read.
- */
+/** A declined item's result row; whether it's a rejection depends on the turn's approvals reviewer, resolved once the file is read (like the model). */
 interface PendingDecline {
   result: ToolResultRow;
   turnId: string;
@@ -478,9 +418,8 @@ export async function parseCodexFileRows(file: ScannedFile): Promise<FileRows> {
   };
 
   // Every tool row gets a result row: merge.ts resolves errors, git commits and
-  // pushes through toolResults only, never through the call row itself. A
-  // declined item is provisionally `rejected`; the reviewer pass at the end of
-  // the file clears that (and settles rejectionCount) for auto-reviewed turns.
+  // pushes through toolResults only, never through the call row itself. A declined
+  // item is provisionally `rejected`; the end-of-file reviewer pass clears that for auto-reviewed turns.
   const emitTool = (
     toolId: string, ts: number, turnId: string, name: string,
     filePath: string | null, isError: boolean, errorText: string, declined = false,
@@ -507,14 +446,12 @@ export async function parseCodexFileRows(file: ScannedFile): Promise<FileRows> {
     const turnId = str(p.turn_id) || currentTurnId;
     const ts = num(p.completed_at_ms) || num(p.started_at_ms) || lineTs;
     const id = str(it.id);
-    // The approval was declined — by the user or the auto-reviewer, settled at the
-    // end of the file. Either way the action never ran: neither a success nor an error.
+    // The approval was declined (user or auto-reviewer, settled at end of file) — the action never ran: neither a success nor an error.
     const declined = it.status === 'declined';
 
     switch (it.type) {
       case 'UserMessage': {
-        // A subagent's "user" messages are injected prompts (the guardian's review
-        // requests, the parent's delegated task), not something the user typed.
+        // A subagent's "user" messages are injected prompts (review requests, delegated tasks), not something the user typed.
         if (subagent) return;
         const content = Array.isArray(it.content) ? it.content : [];
         for (const c of content) {
@@ -753,9 +690,7 @@ export async function parseCodexFileRows(file: ScannedFile): Promise<FileRows> {
             break;
           case 'task_complete': {
             if (!guardian) {
-              // A user turn: its latency, and whether a usage limit ended it. Replayed
-              // 'rollout-N' ids repeat a turn recorded (and counted) elsewhere. Other
-              // subagent threads' turns are not the user's and are skipped.
+              // A user turn: its latency, and whether a usage limit ended it. Replayed 'rollout-N' ids and other subagent threads' turns are skipped.
               if (subagent) break;
               const turnId = str(p.turn_id);
               if (!UUID_RE.test(turnId)) break;
@@ -778,8 +713,7 @@ export async function parseCodexFileRows(file: ScannedFile): Promise<FileRows> {
               }
               break;
             }
-            // Guardian threads: one review per verdict. A turn that ended without
-            // one (interrupted, errored) reviewed nothing.
+            // Guardian threads: one review per verdict; a turn that ended without one (interrupted, errored) reviewed nothing.
             const outcome = verdictOutcome(p.last_agent_message);
             if (!outcome) break;
             const reviewId = `${ownId}:${str(p.turn_id) || ordinal}`;
@@ -797,8 +731,7 @@ export async function parseCodexFileRows(file: ScannedFile): Promise<FileRows> {
               });
               rejectionCount++;
             }
-            // One result row serves both: agentIdFromResult marks the spawn completed in
-            // merge.ts, and `rejected` reaches the rejections insight through the call above.
+            // One result row serves both: agentIdFromResult marks the spawn completed in merge.ts, `rejected` reaches the rejections insight.
             rows.toolResults.push({
               toolId: reviewId, sessionId: sessionId(), isError: false, rejected, errorText: '', agentIdFromResult: ownId,
             });
@@ -867,10 +800,7 @@ export async function parseCodexFileRows(file: ScannedFile): Promise<FileRows> {
     ...(repoUrl ? { repoUrl } : {}),
   });
 
-  // Any other subagent (/review, spawn_agent, …) ends its turns with findings or
-  // prose, never a verdict, so the thread itself is the one spawn. merge.ts marks
-  // a spawn completed — and links it to the agent's session — only through a
-  // result row carrying agentIdFromResult; the rollout's existence is that completion.
+  // A non-guardian subagent ends in findings or prose, never a verdict, so the thread itself is the one spawn; merge.ts marks it completed only through a result row carrying agentIdFromResult.
   if (subagent && !guardian) {
     rows.taskSpawns.push({
       toolId: ownId, ts: firstTs, sessionId: sid,

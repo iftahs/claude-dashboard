@@ -37,19 +37,11 @@ function effective(r: UsageRow): number {
 export type ProjectPathResolver = (source: UsageSource, sessionId: string, rawPath: string) => string;
 
 /**
- * One project path per session, for every row that carries one (usage events,
- * tool calls, task spawns, sessionsMeta), so a session never lands in two projects.
- *
- *  - Claude Code: the real `cwd` the transcript recorded (a main-session file's
- *    cwd beats a subagent's), normalised like the Codex parser's paths; else the
- *    legacy session-meta sidecar's path; else the real path other sessions from the
- *    same `projects/<encoded>` folder recorded (a file over the insights size cap
- *    yields no session partial, so no cwd); else the lossy folder decode.
- *  - Codex: the parser's session_meta cwd, normalised (worktree fold).
- *  - Cowork: blank — sandbox-internal paths mean nothing on the host.
- *
- * Applied here, not at parse time, so cached rows stay valid when this rule or
- * usage-data/session-meta/*.json changes. See project-path.ts.
+ * One project path per session, so it never lands in two projects: Claude Code
+ * prefers the transcript's own cwd, then the sidecar, then another session's
+ * recorded path, else the lossy folder decode; Codex uses its parsed cwd; Cowork
+ * is blank. Applied here, not at parse time, so cached rows stay valid when this
+ * rule or the sidecar changes. See project-path.ts.
  */
 export function buildProjectPathResolver(partials: SessionPartialRow[], sessionMetas: any[]): ProjectPathResolver {
   const sidecarPath = new Map<string, string>();
@@ -253,8 +245,7 @@ function collect(files: FileRows[]): MergeParts {
   const p: MergeParts = {
     allUsage: [], insightUsage: [], toolCallRows: [], taskSpawnRows: [], sessionPartials: [], corpusRows: [],
     limitHitRows: [], rateLimitRows: [], lineChangeRows: [], prLinkRows: [], turnRows: [], relayedTurnRows: [],
-    // Titles carry no timestamp: a later record (file order, then line order) wins,
-    // and a user's custom rename beats Claude's generated ai-title.
+    // Titles carry no timestamp: a later record (file order, then line order) wins; a custom rename beats the generated ai-title.
     customTitle: new Map(), aiTitle: new Map(),
     toolResults: new Map(), resultBySession: new Map(), nonErrorResultIds: new Set(),
   };
@@ -294,10 +285,7 @@ function collect(files: FileRows[]): MergeParts {
   return p;
 }
 
-/**
- * The archive merged once: archived files always follow the live ones and every
- * reduction is first-wins or keep-max, so a merge only settles live rows against it.
- */
+/** The archive merged once: archived files always follow the live ones, and every reduction is first-wins or keep-max, so a merge only settles live rows against it. */
 export interface ReducedArchive {
   parts: MergeParts;
   usage: UsageRow[];
@@ -495,8 +483,7 @@ export function mergeRows(files: FileRows[], sessionMetas: any[], archive: Reduc
       sessionsMeta.set(p.sessionId, sm);
     } else if (!p.fileIsSidechain && sm.isSidechain) {
       // A parent-session file is authoritative and clears a flag set by a subagent file.
-      // It is also the transcript to show and the path to file the session under: a
-      // guardian / subagent rollout that sorted first must not stand in for its parent.
+      // Also the transcript to show and the path to file the session under — a guardian/subagent rollout that sorted first must not stand in for its parent.
       sm.isSidechain = false;
       sm.file = p.file;
       sm.projectPath = projectPathOf(p.source, p.sessionId, p.projectPath);

@@ -1,20 +1,12 @@
 /**
  * history.ts — slash-command and skill usage for the Insights "Commands" panel.
  *
- * Two sources, one list:
- *  - SLASH COMMANDS from ~/.claude/history.jsonl (Claude Code's prompt history).
- *    Each line: {display, pastedContents, timestamp, project, sessionId}; only lines
- *    whose `display` starts with "/" count. The file is the CLI's, so a line takes
- *    the surface of its session (from the usage events) and defaults to 'code' when
- *    that session left no usage; a Codex scope therefore never sees one.
- *  - SKILLS from the per-request `attributionSkill` tag Claude Code writes on each
- *    assistant message. One skill run spans many requests, so a skill counts once
- *    per session that ran it — never once per request.
- * Codex records neither (its desktop app logs no slash commands, and a skill load
- * is only a file read inside a shell command), so a Codex scope comes back empty.
+ * Two sources: SLASH COMMANDS from ~/.claude/history.jsonl (lines whose `display`
+ * starts with "/"), and SKILLS from the per-request `attributionSkill` tag, counted
+ * once per session that ran it, never once per request. Codex records neither, so
+ * a Codex scope comes back empty.
  *
- * The file is split on '\n', never with readline: readline treats U+2028/U+2029 as
- * line breaks, and both are legal inside the JSON strings of a typed prompt.
+ * Split on '\n', never readline — U+2028/U+2029 are legal inside a typed prompt's JSON string.
  */
 
 import { readFile, stat } from 'node:fs/promises';
@@ -124,10 +116,6 @@ export function buildCommandUsage({ slash, events, source, days, now, limit = 25
   };
 }
 
-// ---------------------------------------------------------------------------
-// I/O: history.jsonl, re-read only when it changes
-// ---------------------------------------------------------------------------
-
 let historyCache: { sig: string; entries: SlashEntry[] } | null = null;
 
 /** Slash entries plus a signature of the file version they came from ('' when absent). */
@@ -148,11 +136,7 @@ export async function readSlashHistory(): Promise<{ sig: string; entries: SlashE
 /** (days, source) → the last result, valid while the events and the history file are unchanged. */
 const usageMemo = new Map<string, { token: string; data: CommandUsageData }>();
 
-/**
- * Command usage for a window and scope, on the scan's clock unless `now` is given.
- * Recomputed only when the events (their fingerprint folds in the minute) or the
- * history file change.
- */
+/** Recomputed only when the events (fingerprint folds in the minute) or the history file change. */
 export async function getCommandUsage(
   days: number,
   now?: number,

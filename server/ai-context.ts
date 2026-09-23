@@ -100,7 +100,6 @@ const LIMITS_NOTE: Record<AiPlatform, string> = {
     '`limits` holds one block per provider — `claude` (Anthropic) and `codex` (OpenAI ChatGPT plan) — each a PERCENTAGE of its own plan allowance. They are separate quotas: never add, average or compare them as one number, and never mix them with dollars.',
 };
 
-/** The rules every payload carries, in the vocabulary of the platform it covers. */
 function notesFor(p: AiPlatform): string[] {
   return [
     'Every number in `account`, `topModels`, `topTools`, `topProjects` and `behavior` covers EXACTLY scope.windowDays days on surface scope.source. Blocks inside `detail` state their own `window`/`source` whenever they differ. NEVER compare two numbers from different windows, and NEVER claim the data is inconsistent because of a window mismatch — check the windows first.',
@@ -294,10 +293,7 @@ function codexBlock(live: LiveRead<CodexLiveData>): LimitsBlock | Unavailable {
   };
 }
 
-/**
- * The live quota of the provider(s) the chat is scoped to — the single most-asked
- * thing. Under Codex it is OpenAI's windows, never Anthropic's.
- */
+/** Under Codex, this returns OpenAI's windows — never Anthropic's. */
 function liveLimits(p: AiPlatform, live: LiveReads): AiPayload['limits'] {
   const unread: Unavailable = { unavailable: 'live usage was not read' };
   const claude = live.claude ? claudeBlock(live.claude) : unread;
@@ -307,11 +303,7 @@ function liveLimits(p: AiPlatform, live: LiveReads): AiPayload['limits'] {
   return { claude, codex };
 }
 
-/**
- * The weekly reset the account block states: the provider's live weekly reset on
- * a single platform, else the nominal Monday (under both, each limits block
- * carries its own provider's reset).
- */
+/** Under both, returns the nominal Monday — each limits block carries its own provider's live reset instead. */
 function weeklyResetFor(p: AiPlatform, live: LiveReads, fallbackMs: number): string {
   if (p === 'claude') return weeklyResetIso(live.claude && 'usage' in live.claude ? live.claude.usage : null, fallbackMs);
   if (p === 'codex') {
@@ -321,11 +313,7 @@ function weeklyResetFor(p: AiPlatform, live: LiveReads, fallbackMs: number): str
   return new Date(fallbackMs).toISOString();
 }
 
-/**
- * Anthropic's live `seven_day.resets_at` when the usage API has one, else
- * buildWeekly's nominal Monday 01:00 UTC. The real window is anchored per
- * account and can land hours off that, so the model gets the live value.
- */
+/** Prefers Anthropic's live `seven_day.resets_at` — the real window is anchored per account and can land hours off the nominal Monday. */
 export function weeklyResetIso(usage: any, fallbackMs: number): string {
   const live = Date.parse(usage?.seven_day?.resets_at ?? '');
   return new Date(Number.isFinite(live) ? live : fallbackMs).toISOString();
@@ -365,7 +353,6 @@ async function loadDetail(
 
 // ── Prompt templates ──────────────────────────────────────────────────────────
 
-/** What the dashboard is showing, in the words each prompt uses. */
 export const PRODUCT: Record<AiPlatform, string> = {
   claude: 'Claude Code',
   codex: "Codex (OpenAI's coding agent in the ChatGPT desktop app)",
@@ -402,7 +389,6 @@ const VOCABULARY: Record<AiPlatform, string> = {
     'denial (guardianDenials) is the auto-reviewer blocking an action, NOT a user rejection. Claude and Codex rate limits are separate quotas.',
 };
 
-/** The chat's system prompt, in the vocabulary of the platform the chat is scoped to. */
 export function chatSystem(source: SourceFilter): string {
   const p = platformOf(source);
   return [
@@ -443,10 +429,7 @@ export function buildChatUserMessage(payload: AiPayload, question: string, histo
   return `USAGE PAYLOAD (JSON):\n${JSON.stringify(scrubForModel(payload))}${h}\n\nQUESTION: ${question}`;
 }
 
-/**
- * The ✨ section-insight system prompt. `source` is the platform the panel shows;
- * without one (an older client) the wording names no platform at all.
- */
+/** Without a `source` (an older client), the wording names no platform at all. */
 export function sectionSystem(source?: SourceFilter): string {
   const what = source ? `a ${PRODUCT[platformOf(source)]} usage dashboard` : 'an AI coding-assistant usage dashboard';
   return (
@@ -516,7 +499,6 @@ export const KNOWLEDGE: Record<AiPlatform, string> = {
   both: 'general Claude / Claude Code or Codex / OpenAI knowledge',
 };
 
-/** The follow-up-chip system prompt for the platform the chat is scoped to. */
 export function suggestSystem(source: SourceFilter): string {
   const p = platformOf(source);
   const nouns = p === 'codex' ? '"thread", "project" or "branch"' : '"workflow", "session", "project" or "branch"';

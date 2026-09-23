@@ -51,10 +51,7 @@ async function codexHasData(): Promise<boolean> {
   return hasCodexEvents((await getEvents()).events);
 }
 
-// ── Live plan limits, per provider ───────────────────────────────────────────
-// Shared by the overview's `limits` block (ai-context.ts) and the `limits`
-// dataset below. Each provider's quota is its own percentage of its own plan —
-// the two are never summed.
+// Shared by ai-context.ts's `limits` block; each provider's quota is its own percentage of its own plan — never summed.
 
 export type LiveRead<T> = { usage: T } | { unavailable: string };
 
@@ -196,8 +193,7 @@ const REDACTED = {
 // the dashboard just ran. Two rules keep the keys interchangeable — break either
 // and the dashboard's own route cache is silently poisoned:
 //   - event builders are called with now = computedAt from getEvents();
-//   - insights builders are called with now = computedAt from getInsights(), as the
-//     /api/insights/* routes do (the memo token already folds in the minute).
+//   - insights builders are called with now = computedAt from getInsights().
 // The five `limit: Infinity` variants get their own ':full' keys because their
 // output differs from what the routes cache under the bare name.
 
@@ -792,12 +788,7 @@ export interface CatalogEntry {
   unavailable?: string;
 }
 
-/**
- * The catalog in the words of the platform the chat is scoped to: Codex scope
- * never describes Claude-only vocabulary (Task subagents, the Claude CLI), and a
- * Claude-only dataset is flagged unavailable instead of silently answering with
- * Claude data.
- */
+/** Codex scope never describes Claude-only vocabulary; a Claude-only dataset is flagged unavailable instead of silently answering with Claude data. */
 export function catalogFor(source: SourceFilter): CatalogEntry[] {
   const p = platformOf(source);
   return DATASETS.map((d) => {
