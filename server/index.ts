@@ -6,7 +6,7 @@ import { exec } from 'node:child_process';
 import { promisify } from 'node:util';
 import express from 'express';
 import { getEvents, eventsFingerprint } from './cache.ts';
-import { buildRecent, buildWeekly, buildModels, buildActivity, buildTools, buildHourlyHeatmap, buildProjectStats, filterSource, sourceMatches, statsCacheApplies, type SourceFilter } from './aggregate.ts';
+import { buildRecent, buildWeekly, buildModels, buildActivity, buildTools, buildHourlyHeatmap, buildProjectStats, buildUsageSummary, buildEffort, filterSource, sourceMatches, statsCacheApplies, type SourceFilter, type UsageSummaryData } from './aggregate.ts';
 import { claudeDir, readConfig, readCredentials, readStatsSummary, readSessionMetas, fetchLiveUsage, fetchLiveProfile, fetchLiveUsageFor, fetchLiveProfileFor, readAccountCredentials, expiredTokenMessage, detectLitellm, fetchLiteLlmSpend, MAX_WINDOW_DAYS } from './scan.ts';
 import { getInsights, insightsFingerprint } from './insights-scan.ts';
 import { archiveSummary, forgetArchivedHistory, primeData } from './data.ts';
@@ -588,6 +588,48 @@ app.get('/api/usage/models', async (req, res) => {
   }
 });
 
+// Lifetime activity summary for the Trends "Activity summary" row: lifetime
+// tokens, peak day, streaks and active days over EVERY event of the scoped
+// history (no window). The unscoped request — the Both platform — also carries
+// the Claude / Codex split its cards show.
+app.get('/api/usage/summary', async (req, res) => {
+  try {
+    const { events, computedAt } = await getEvents();
+    const source = parseSource(req.query.source);
+    const data = memoBuilder('summary', [source], eventsFingerprint(), (): UsageSummaryData => {
+      const scoped = filterSource(events, source);
+      const summary: UsageSummaryData = buildUsageSummary(scoped, computedAt);
+      if (source === 'all') {
+        summary.byPlatform = {
+          claude: buildUsageSummary(filterSource(events, 'claude'), computedAt),
+          codex: buildUsageSummary(filterSource(events, 'codex'), computedAt),
+        };
+      }
+      return summary;
+    });
+    res.json(wrap(data, computedAt));
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+// Reasoning effort × model for the Models "Reasoning effort" card: effective
+// tokens and estimated cost per effort level, overall and per model, plus the
+// reasoning (thinking) share of output over the responses that report it.
+app.get('/api/usage/effort', async (req, res) => {
+  try {
+    const days = intParam(req.query.days, 7, 1, MAX_WINDOW_DAYS);
+    const { events, computedAt } = await getEvents();
+    const source = parseSource(req.query.source);
+    const data = memoBuilder('effort', [days, source], eventsFingerprint(), () =>
+      buildEffort(filterSource(events, source), computedAt, days),
+    );
+    res.json(wrap(data, computedAt));
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
 // "What's contributing to your limits usage?" — cost-weighted Day/Week breakdown,
 // replicating the Claude CLI panel. Joins priced events (cost/context) with insights
 // (session duration + subagent type). Both windows are returned in one payload.
@@ -604,16 +646,20 @@ app.get('/api/usage/contributors', async (req, res) => {
   }
 });
 
+// ?utc=1 buckets by UTC day (no stats-cache fallback) so the Trends "Server vs
+// local" chart can line the local rollouts up with OpenAI's UTC-day counts; the
+// window reaches the Trends maximum (MAX_WINDOW_DAYS) for the same reason.
 app.get('/api/activity', async (req, res) => {
   try {
-    const days = intParam(req.query.days, 126, 7, 180);
+    const days = intParam(req.query.days, 126, 7, MAX_WINDOW_DAYS);
+    const utc = req.query.utc === '1' || req.query.utc === 'true';
     const { events, computedAt } = await getEvents();
     const source = parseSource(req.query.source);
-    const stats = statsCacheApplies(source) ? await readStatsSummary() : undefined;
+    const stats = !utc && statsCacheApplies(source) ? await readStatsSummary() : undefined;
     // stats-cache is only a fallback for days with no live data and is itself
     // stale, so keying on the events fingerprint is sufficient.
-    const data = memoBuilder('activity', [days, source], eventsFingerprint(), () =>
-      buildActivity(filterSource(events, source), computedAt, days, stats),
+    const data = memoBuilder('activity', [days, source, utc ? 'utc' : 'local'], eventsFingerprint(), () =>
+      buildActivity(filterSource(events, source), computedAt, days, stats, { utc }),
     );
     res.json(wrap(data, computedAt));
   } catch (e) {

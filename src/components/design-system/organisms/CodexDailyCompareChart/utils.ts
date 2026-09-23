@@ -1,4 +1,4 @@
-import { localYmd } from '@/lib/week';
+import { ymdLabel } from '@/lib/format';
 import type { DailyActivity } from '@/types';
 import type { CompareRow } from './types';
 
@@ -11,11 +11,12 @@ export const SERVER_COLOR = '#8a3af0';
 export const LOCAL_COLOR = '#14b8a6';
 
 /**
- * One row per calendar day for the last `days` days ending today, joining the two
- * series on their `YYYY-MM-DD` key. The server buckets are UTC days and the local
- * ones local-midnight days, so a day's boundary can shift by the UTC offset — the
- * join is deliberately by key (that is how OpenAI labels the day too); the section
- * help explains the caveat.
+ * One row per UTC day for the last `days` days ending today (UTC), joining the
+ * two series on their `YYYY-MM-DD` key. OpenAI keys its daily usage by UTC date,
+ * and the local series comes from `/api/activity?utc=1`, so both sides bucket the
+ * same 24 hours. The local side plots `totalTokens` — every token, cached input
+ * included — which is the unit the server count lines up with (effective tokens
+ * would sit ~20× below it on a cache-heavy day).
  */
 export function mergeDaily(
   server: { date: string; tokens: number }[],
@@ -24,16 +25,15 @@ export function mergeDaily(
   now = Date.now(),
 ): CompareRow[] {
   const s = new Map(server.map((d) => [d.date, d.tokens]));
-  const l = new Map(local.map((d) => [d.date, d.effectiveTokens]));
-  const start = new Date(now);
-  start.setHours(0, 0, 0, 0);
+  const l = new Map(local.map((d) => [d.date, d.totalTokens ?? 0]));
+  const today = new Date(now);
+  const start = Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate());
   const rows: CompareRow[] = [];
   for (let i = days - 1; i >= 0; i--) {
-    const t = start.getTime() - i * DAY;
-    const key = localYmd(t);
+    const key = new Date(start - i * DAY).toISOString().slice(0, 10);
     rows.push({
       date: key,
-      label: new Date(t).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+      label: ymdLabel(key, days > 60),
       server: s.get(key) ?? 0,
       local: l.get(key) ?? 0,
     });

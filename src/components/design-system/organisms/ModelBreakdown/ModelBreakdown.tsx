@@ -5,11 +5,19 @@ import { LegendDot } from '@/components/design-system/atoms/LegendDot/LegendDot'
 import { ProgressBar } from '@/components/design-system/atoms/ProgressBar/ProgressBar';
 import type { ModelBreakdownProps } from './types';
 
+/**
+ * Share of EFFECTIVE tokens by model (donut, legend and percentages) plus each
+ * model's cost per 1M effective tokens. Total tokens are cache-read dominated and
+ * once put a model with a third of the effective volume on top; they appear only
+ * in the donut tooltip.
+ */
 export function ModelBreakdown({ models }: ModelBreakdownProps) {
   const data = models
-    .filter((m) => m.totalTokens > 0)
-    .map((m) => ({ name: m.model, value: m.totalTokens }));
+    .filter((m) => m.effectiveTokens > 0)
+    .map((m) => ({ name: m.model, value: m.effectiveTokens, total: m.totalTokens }))
+    .sort((a, b) => b.value - a.value);
   const total = data.reduce((s, d) => s + d.value, 0);
+  const totalByName = new Map(data.map((d) => [d.name, d.total]));
 
   // Cost efficiency: cost per 1M effective tokens per model
   const efficiencyData = models
@@ -47,7 +55,10 @@ export function ModelBreakdown({ models }: ModelBreakdownProps) {
                 }}
                 itemStyle={{ color: '#e4e4e7' }}
                 labelStyle={{ color: '#e4e4e7' }}
-                formatter={(value: number, name: string) => [compact(value), shortModel(name)]}
+                formatter={(value: number, name: string) => [
+                  `${compact(value)} effective · ${compact(totalByName.get(name) ?? value)} incl. cache reads`,
+                  shortModel(name),
+                ]}
               />
             </PieChart>
           </ResponsiveContainer>

@@ -1,6 +1,7 @@
 import { Section } from '@/components/design-system/molecules/Section/Section';
 import { ModelBreakdown } from '@/components/design-system/organisms/ModelBreakdown/ModelBreakdown';
-import { ToolUsage } from '@/components/design-system/organisms/ToolUsage/ToolUsage';
+import { EffortBreakdown } from '@/components/design-system/organisms/EffortBreakdown/EffortBreakdown';
+import { effortHelp } from '@/components/design-system/organisms/EffortBreakdown/utils';
 import { CostCalculation } from '@/components/design-system/organisms/CostCalculation/CostCalculation';
 import { DonutSkeleton, BarsSkeleton } from '@/components/design-system/atoms/Skeleton/Skeleton';
 import { usePolling } from '@/hooks/usePolling';
@@ -8,16 +9,21 @@ import { useSource } from '@/hooks/useSource';
 import { useLiveData } from '@/hooks/useLiveData';
 import { useAiInsightCtx } from '@/hooks/useAiInsightContext';
 import { titleScope } from '@/lib/platform';
-import type { ToolsData } from '@/types';
+import type { EffortData } from '@/types';
 
+/**
+ * Model statistics only: the effective-token share per model and the reasoning
+ * effort each model ran at, then the rate card. The same two cards on every
+ * platform (both already scoped by `withSrc`); tool-call counts are not a model
+ * statistic and live on Insights.
+ */
 export function ModelsTab() {
   const { platform, withSrc } = useSource();
   const { models } = useLiveData();
   const { aiProps } = useAiInsightCtx();
-  const tools = usePolling<ToolsData>(withSrc('/api/tools?days=7'), 30000);
+  const effort = usePolling<EffortData>(withSrc('/api/usage/effort?days=7'), 30000);
 
-  // Both panels are already platform-scoped by `withSrc`; the titles just say so.
-  // Under Claude the suffix is empty, so the tab is unchanged for Claude-only users.
+  // Under Claude the suffix is empty, so the titles read exactly as before.
   const scope = titleScope(platform);
 
   return (
@@ -40,20 +46,10 @@ export function ModelsTab() {
             <DonutSkeleton />
           ) : null}
         </Section>
-        <Section
-          title={`Tool usage${scope} · 7d`}
-          help={
-            platform === 'claude'
-              ? 'How many times each tool was invoked over the last 7 days, ranked. Reflects which tools the work relied on most.'
-              : `How many times each tool was invoked over the last 7 days, ranked. Codex tool calls (shell commands, file changes, MCP calls, web search) are mapped onto the same tool names as Claude's, so ${
-                  platform === 'both' ? 'the two platforms rank in one list' : 'the ranking reads like the Claude one'
-                }.`
-          }
-          {...aiProps('tools', tools.data)}
-        >
-          {tools.data ? (
-            <ToolUsage tools={tools.data.tools} totalCalls={tools.data.totalCalls} />
-          ) : tools.loading ? (
+        <Section title={`Reasoning effort${scope} · 7d`} help={effortHelp(platform)}>
+          {effort.data ? (
+            <EffortBreakdown data={effort.data} />
+          ) : effort.loading ? (
             <BarsSkeleton />
           ) : null}
         </Section>

@@ -7,8 +7,10 @@ import type { DailyMetric, DailyTrendChartProps } from './types';
 import { trendDelta, trendExport } from './utils';
 
 /**
- * Daily tokens (or equivalent cost), stacked by model, with a dotted projection
- * past today, a vs-prev-period delta, CSV/JSON export, and a tokens/cost toggle.
+ * Daily effective tokens (or equivalent cost), stacked by model, with a dotted
+ * projection past today, a vs-prev-period delta, CSV/JSON export, and a
+ * tokens/cost toggle. Every token figure on it — bars, projection, delta, export —
+ * is effective tokens; the cache-read-inclusive total is only in the tooltip.
  */
 export function DailyTrendChart({
   data,
@@ -19,13 +21,14 @@ export function DailyTrendChart({
   costPerDay,
   tokensPerDay,
   ai,
+  scope = '',
 }: DailyTrendChartProps) {
   const delta = trendDelta(data, metric);
 
   return (
     <Section
-      title={`Last ${weekDays} days · daily ${metric} by model`}
-      help="Daily tokens (or equivalent cost), stacked by model. The dotted segment past today is a projection from your recent daily average. Toggle tokens/cost on the right; change the window with the selector at the top."
+      title={`Last ${weekDays} days${scope} · daily ${metric} by model`}
+      help="Daily effective tokens (input + output + cache writes; cheap cache reads are excluded and shown only in the tooltip) or estimated equivalent cost, stacked by model. The dotted segment past today is a projection from your recent daily average. Toggle tokens/cost on the right; change the window with the selector at the top."
       {...ai}
       right={
         <div className="flex items-center gap-3">

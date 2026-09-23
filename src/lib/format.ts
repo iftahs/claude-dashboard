@@ -26,6 +26,33 @@ export function toolLabel(name: string): string {
   return `${m[1].replace(/^claude_ai_/, '').replace(/_/g, ' ')} · ${m[2]}`;
 }
 
+/**
+ * A logged reasoning-effort level as UI text: `xhigh` → `X-high`, `unknown` (no
+ * effort in the log) → `Not logged`; anything else is capitalised as logged.
+ */
+export function effortLabel(effort: string): string {
+  if (effort === 'unknown' || !effort) return 'Not logged';
+  if (effort === 'xhigh') return 'X-high';
+  return effort.charAt(0).toUpperCase() + effort.slice(1);
+}
+
+/**
+ * "Sep 22" (or "Sep 22 '26") for a YYYY-MM-DD key. The key is read as a calendar
+ * date, not a timestamp, so a UTC-day key and a local-day key label the same way.
+ */
+export function ymdLabel(key: string, withYear = false): string {
+  const [y, m, d] = key.split('-').map(Number);
+  if (!y || !m || !d) return key;
+  const dt = new Date(y, m - 1, d);
+  const md = dt.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  return withYear ? `${md} '${String(y).slice(-2)}` : md;
+}
+
+/** "Sep 22, 2026" for an epoch-ms timestamp — first-seen dates, "since …" labels. */
+export function longDateLabel(ms: number): string {
+  return new Date(ms).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
 export function hourLabel(ms: number): string {
   return new Date(ms).toLocaleTimeString('en-US', { hour: 'numeric' });
 }

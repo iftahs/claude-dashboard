@@ -3,10 +3,10 @@ import type { DailyActivity } from '@/types';
 export interface CodexDailyCompareChartProps {
   /** Server-side per-day tokens from the Codex profile endpoint (UTC days, ascending). */
   server: { date: string; tokens: number }[];
-  /** Local per-day Codex activity from /api/activity?source=codex (local-midnight days). */
+  /** Local per-day Codex activity from /api/activity?source=codex&utc=1 (UTC days; `totalTokens` is plotted). */
   local: DailyActivity[];
   loading?: boolean;
-  /** Window length in days; the chart always shows exactly this many, ending today. */
+  /** Window length in days; the chart always shows exactly this many UTC days, ending today (UTC). */
   days: number;
 }
 

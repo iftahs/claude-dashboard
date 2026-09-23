@@ -17,7 +17,10 @@ export interface TokenTotals {
 
 export interface Bucket extends TokenTotals {
   start: number;
+  /** Total tokens per model, cache reads included. */
   byModel: Record<string, number>;
+  /** Effective tokens per model (input + output + cacheCreate) — what the token charts stack. */
+  byModelEffective: Record<string, number>;
   byModelCost: Record<string, number>;
 }
 
@@ -49,6 +52,11 @@ function add(t: TokenTotals, e: UsageEvent): void {
 
 function eventTokens(e: UsageEvent): number {
   return e.inputTokens + e.outputTokens + e.cacheCreateTokens + e.cacheReadTokens;
+}
+
+/** Effective tokens of one event: input + output + cacheCreate (cache reads excluded). */
+function effectiveOf(e: UsageEvent): number {
+  return e.inputTokens + e.outputTokens + e.cacheCreateTokens;
 }
 
 /**
@@ -91,7 +99,13 @@ function bucketize(events: UsageEvent[], from: number, to: number, width: number
     starts = [];
     for (let s = Math.floor(from / width) * width; s < to; s += width) starts.push(s);
   }
-  const buckets: Bucket[] = starts.map((start) => ({ start, byModel: {}, byModelCost: {}, ...emptyTotals() }));
+  const buckets: Bucket[] = starts.map((start) => ({
+    start,
+    byModel: {},
+    byModelEffective: {},
+    byModelCost: {},
+    ...emptyTotals(),
+  }));
   if (buckets.length === 0) return buckets;
   const start0 = starts[0];
   for (const e of events) {
@@ -101,6 +115,7 @@ function bucketize(events: UsageEvent[], from: number, to: number, width: number
     if (!b) continue;
     add(b, e);
     b.byModel[e.model] = (b.byModel[e.model] ?? 0) + eventTokens(e);
+    b.byModelEffective[e.model] = (b.byModelEffective[e.model] ?? 0) + effectiveOf(e);
     b.byModelCost[e.model] = (b.byModelCost[e.model] ?? 0) + estimateCost(e.model, e);
   }
   return buckets;
@@ -116,10 +131,13 @@ function modelShares(events: UsageEvent[]): ModelShare[] {
     }
     add(t, e);
   }
+  // Ranked by effective tokens — the unit every share in the UI is labelled in.
+  // Total tokens are dominated by cheap cache reads and once put a model with a
+  // third of the effective volume at the top of the ranking.
   return [...map.entries()]
     .map(([model, t]) => ({ model, ...t }))
     .filter((m) => m.totalTokens > 0 && m.model !== '<synthetic>')
-    .sort((a, b) => b.totalTokens - a.totalTokens);
+    .sort((a, b) => b.effectiveTokens - a.effectiveTokens || b.totalTokens - a.totalTokens);
 }
 
 function sumTotals(events: UsageEvent[]): TokenTotals {
@@ -138,6 +156,29 @@ export interface SourceSplit {
 function sourceSplit(events: UsageEvent[]): SourceSplit {
   const split: SourceSplit = { code: emptyTotals(), cowork: emptyTotals(), codex: emptyTotals() };
   for (const e of events) add(e.source === 'cowork' ? split.cowork : e.source === 'codex' ? split.codex : split.code, e);
+  return split;
+}
+
+/** Codex usage split by thread kind — the Codex counterpart of the Code / Cowork split. */
+export interface CodexSplit {
+  /** User threads (every rollout that is not a guardian review). */
+  threads: TokenTotals;
+  /** Guardian auto-reviews, folded into their parent thread by the parser. */
+  guardian: TokenTotals;
+}
+
+/** A Codex event that ran as a guardian auto-review rather than as the thread itself. */
+export function isGuardianReview(e: UsageEvent): boolean {
+  return e.attributionAgent === 'guardian_review';
+}
+
+/** Codex events of the window split into threads vs guardian reviews (non-Codex events are ignored). */
+function codexSplit(events: UsageEvent[]): CodexSplit {
+  const split: CodexSplit = { threads: emptyTotals(), guardian: emptyTotals() };
+  for (const e of events) {
+    if (e.source !== 'codex') continue;
+    add(isGuardianReview(e) ? split.guardian : split.threads, e);
+  }
   return split;
 }
 
@@ -314,6 +355,7 @@ export function buildWeekly(events: UsageEvent[], now: number, days = 7) {
     prevTotals: sumTotals(prevEvents),
     byModel: modelShares(windowEvents),
     bySource: sourceSplit(windowEvents),
+    codexSplit: codexSplit(windowEvents),
     cacheEfficiency,
     // Earliest event in the (source-filtered) history, so the UI can tell "history
     // starts inside this window" from "quiet previous period". Events arrive sorted.
@@ -335,18 +377,46 @@ function localDateKey(ms: number): string {
   return `${y}-${m}-${day}`;
 }
 
+/** YYYY-MM-DD of `ms` in UTC — how OpenAI labels the days of its server-side counts. */
+function utcDateKey(ms: number): string {
+  return new Date(ms).toISOString().slice(0, 10);
+}
+
+/** UTC midnight of every UTC day from `from`'s day up to (not including) `to`. UTC has no DST. */
+function utcDayStarts(from: number, to: number): number[] {
+  if (!Number.isFinite(from) || !Number.isFinite(to) || to <= from) return [];
+  const d = new Date(from);
+  const out: number[] = [];
+  for (let s = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()); s < to; s += DAY) out.push(s);
+  return out;
+}
+
 export interface DailyActivity {
-  date: string; // local YYYY-MM-DD
+  date: string; // YYYY-MM-DD — local calendar day, or the UTC day with { utc: true }
   effectiveTokens: number;
+  /** Every token, cache reads included — the unit of OpenAI's server-side daily count. */
+  totalTokens: number;
   messageCount: number;
   toolCallCount: number;
 }
 
+export interface ActivityOptions {
+  /**
+   * Bucket by UTC day instead of the local calendar day, to line up with a
+   * server-side series that is keyed by UTC date (Codex's profile `dailyUsage`).
+   * The stats-cache fallback is skipped: its dates are local days.
+   */
+  utc?: boolean;
+}
+
 /** Daily activity derived live from JSONL events (always current, unlike the
  *  stale stats-cache.json). Fills every day in the window so the heatmap is dense. */
-export function buildActivity(events: UsageEvent[], now: number, days: number, stats?: any) {
+export function buildActivity(events: UsageEvent[], now: number, days: number, stats?: any, opts: ActivityOptions = {}) {
+  const utc = !!opts.utc;
+  const keyOf = utc ? utcDateKey : localDateKey;
   const map = new Map<string, DailyActivity>();
   const from = now - days * DAY;
+  if (utc) stats = undefined;
 
   const cacheActivityMap = new Map<string, { messageCount: number; toolCallCount: number }>();
   if (stats?.dailyActivity) {
@@ -376,21 +446,22 @@ export function buildActivity(events: UsageEvent[], now: number, days: number, s
 
   for (const e of events) {
     if (e.ts < from) continue;
-    const key = localDateKey(e.ts);
+    const key = keyOf(e.ts);
     let a = map.get(key);
     if (!a) {
-      a = { date: key, effectiveTokens: 0, messageCount: 0, toolCallCount: 0 };
+      a = { date: key, effectiveTokens: 0, totalTokens: 0, messageCount: 0, toolCallCount: 0 };
       map.set(key, a);
     }
-    a.effectiveTokens += e.inputTokens + e.outputTokens + e.cacheCreateTokens;
+    a.effectiveTokens += effectiveOf(e);
+    a.totalTokens += eventTokens(e);
     a.messageCount += 1;
     a.toolCallCount += e.tools.length;
   }
-  // Emit one entry per local calendar day in [from, now] (inclusive, hence now + 1),
+  // Emit one entry per calendar day in [from, now] (inclusive, hence now + 1),
   // including empty days.
   const out: DailyActivity[] = [];
-  for (const t of localDayStarts(from, now + 1)) {
-    const key = localDateKey(t);
+  for (const t of utc ? utcDayStarts(from, now + 1) : localDayStarts(from, now + 1)) {
+    const key = keyOf(t);
     const live = map.get(key);
     if (live) {
       out.push(live);
@@ -401,6 +472,7 @@ export function buildActivity(events: UsageEvent[], now: number, days: number, s
         out.push({
           date: key,
           effectiveTokens: cacheTok ?? 0,
+          totalTokens: cacheTok ?? 0,
           messageCount: cacheAct?.messageCount ?? 0,
           toolCallCount: cacheAct?.toolCallCount ?? 0,
         });
@@ -408,13 +480,277 @@ export function buildActivity(events: UsageEvent[], now: number, days: number, s
         out.push({
           date: key,
           effectiveTokens: 0,
+          totalTokens: 0,
           messageCount: 0,
           toolCallCount: 0,
         });
       }
     }
   }
-  return { rangeFrom: from, rangeTo: now, dailyActivity: out };
+  return { rangeFrom: from, rangeTo: now, utc, dailyActivity: out };
+}
+
+// ---------------------------------------------------------------------------
+// Lifetime activity summary (Trends "Activity summary" row)
+// ---------------------------------------------------------------------------
+
+export interface UsageSummary {
+  /** Earliest / latest event in the scoped history; null when there is none. */
+  firstEventTs: number | null;
+  lastEventTs: number | null;
+  lifetimeEffectiveTokens: number;
+  lifetimeTotalTokens: number;
+  lifetimeCost: number;
+  /** The local calendar day with the most effective tokens. */
+  peakDay: { date: string; effectiveTokens: number } | null;
+  /** Consecutive active local days ending today — or yesterday, while today has none yet. */
+  currentStreakDays: number;
+  longestStreakDays: number;
+  /** Local calendar days with at least one usage event. */
+  activeDays: number;
+  /** Local calendar days from the first event's day through today, inclusive. */
+  spanDays: number;
+}
+
+/** The next local calendar date after `key` (YYYY-MM-DD) — calendar arithmetic, DST-safe. */
+function nextDateKey(key: string): string {
+  const [y, m, d] = key.split('-').map(Number);
+  return localDateKey(new Date(y, m - 1, d + 1).getTime());
+}
+
+/** Local midnight `n` calendar days before the local day of `d` (n = 0: that day's midnight). */
+function localMidnightBefore(d: Date, n: number): Date {
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate() - n);
+}
+
+/**
+ * Lifetime figures over EVERY event of the (source-filtered) history: lifetime
+ * tokens and cost, the peak day, active days and streaks. "Lifetime" only reaches
+ * back as far as the transcripts on disk — Claude Code deletes old ones after
+ * ~30 days unless the history archive is on — so the UI labels it "since <first
+ * date>". Days are local calendar days, like the activity heatmap beside it.
+ */
+export function buildUsageSummary(events: UsageEvent[], now: number): UsageSummary {
+  const perDay = new Map<string, number>();
+  let first = Infinity;
+  let last = -Infinity;
+  let eff = 0;
+  let total = 0;
+  let cost = 0;
+  for (const e of events) {
+    if (e.ts > now) continue;
+    if (e.ts < first) first = e.ts;
+    if (e.ts > last) last = e.ts;
+    const k = localDateKey(e.ts);
+    perDay.set(k, (perDay.get(k) ?? 0) + effectiveOf(e));
+    eff += effectiveOf(e);
+    total += eventTokens(e);
+    cost += estimateCost(e.model, e);
+  }
+  if (perDay.size === 0) {
+    return {
+      firstEventTs: null,
+      lastEventTs: null,
+      lifetimeEffectiveTokens: 0,
+      lifetimeTotalTokens: 0,
+      lifetimeCost: 0,
+      peakDay: null,
+      currentStreakDays: 0,
+      longestStreakDays: 0,
+      activeDays: 0,
+      spanDays: 0,
+    };
+  }
+
+  let peakDay: UsageSummary['peakDay'] = null;
+  for (const [date, v] of perDay) {
+    if (!peakDay || v > peakDay.effectiveTokens) peakDay = { date, effectiveTokens: v };
+  }
+
+  // Longest run of consecutive calendar dates among the active ones.
+  const keys = [...perDay.keys()].sort();
+  let longest = 1;
+  let run = 1;
+  for (let i = 1; i < keys.length; i++) {
+    run = keys[i] === nextDateKey(keys[i - 1]) ? run + 1 : 1;
+    if (run > longest) longest = run;
+  }
+
+  // Current streak: walk back from today — from yesterday while today is still
+  // empty, since the streak is not broken until the day is over.
+  const today = new Date(now);
+  let back = perDay.has(localDateKey(localMidnightBefore(today, 0).getTime())) ? 0 : 1;
+  let current = 0;
+  while (perDay.has(localDateKey(localMidnightBefore(today, back).getTime()))) {
+    current += 1;
+    back += 1;
+  }
+
+  const spanDays = localDayStarts(localMidnightBefore(new Date(first), 0).getTime(), now + 1).length;
+
+  return {
+    firstEventTs: first,
+    lastEventTs: last,
+    lifetimeEffectiveTokens: eff,
+    lifetimeTotalTokens: total,
+    lifetimeCost: cost,
+    peakDay,
+    currentStreakDays: current,
+    longestStreakDays: longest,
+    activeDays: perDay.size,
+    spanDays,
+  };
+}
+
+export interface UsageSummaryData extends UsageSummary {
+  /** Per-platform summaries — only for the unscoped (Both) request, which shows the split. */
+  byPlatform?: { claude: UsageSummary; codex: UsageSummary };
+}
+
+// ---------------------------------------------------------------------------
+// Reasoning effort × model (Models "Reasoning effort" card)
+// ---------------------------------------------------------------------------
+
+/** Known effort levels, lowest first (Claude adds xhigh / max; Codex runs low–high). */
+export const EFFORT_ORDER = ['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'];
+/** Events whose log carries no effort (older Claude Code builds, older Codex rollouts). */
+export const UNKNOWN_EFFORT = 'unknown';
+
+export interface EffortSlice {
+  effort: string;
+  effectiveTokens: number;
+  cost: number;
+  messages: number;
+}
+
+/**
+ * Reasoning (Claude: thinking) tokens as a share of output. Only responses that
+ * REPORT the split count: Claude logs `output_tokens_details` only on newer
+ * builds, and an unreported message is unknown, not "0% thinking". `share` is
+ * null when nothing in the window reports it; `coverage` is the fraction of the
+ * window's output tokens the share is computed over.
+ */
+export interface ReasoningShare {
+  outputTokens: number;
+  reportedOutputTokens: number;
+  reasoningTokens: number;
+  share: number | null;
+  coverage: number;
+}
+
+export interface ModelEffort {
+  model: string;
+  effectiveTokens: number;
+  cost: number;
+  efforts: EffortSlice[];
+  reasoning: ReasoningShare;
+}
+
+export interface EffortData {
+  rangeFrom: number;
+  rangeTo: number;
+  efforts: EffortSlice[];
+  models: ModelEffort[];
+  reasoning: ReasoningShare;
+}
+
+/** Effort label as logged, normalised: lower-case, '' → UNKNOWN_EFFORT. */
+export function normalizeEffort(raw: string | undefined): string {
+  const v = (raw ?? '').trim().toLowerCase();
+  return v || UNKNOWN_EFFORT;
+}
+
+function effortRank(effort: string): number {
+  if (effort === UNKNOWN_EFFORT) return EFFORT_ORDER.length + 1;
+  const i = EFFORT_ORDER.indexOf(effort);
+  return i === -1 ? EFFORT_ORDER.length : i;
+}
+
+/** Lowest effort first; unrecognised levels after the known ones (by name), unknown last. */
+function sortEfforts(slices: EffortSlice[]): EffortSlice[] {
+  return slices.sort((a, b) => effortRank(a.effort) - effortRank(b.effort) || a.effort.localeCompare(b.effort));
+}
+
+interface ReasoningAcc {
+  output: number;
+  reportedOutput: number;
+  reasoning: number;
+}
+
+function addReasoning(acc: ReasoningAcc, e: UsageEvent): void {
+  acc.output += e.outputTokens;
+  if (typeof e.reasoningTokens === 'number' && Number.isFinite(e.reasoningTokens)) {
+    acc.reportedOutput += e.outputTokens;
+    acc.reasoning += e.reasoningTokens;
+  }
+}
+
+function reasoningShare(acc: ReasoningAcc): ReasoningShare {
+  return {
+    outputTokens: acc.output,
+    reportedOutputTokens: acc.reportedOutput,
+    reasoningTokens: acc.reasoning,
+    share: acc.reportedOutput > 0 ? Math.min(1, acc.reasoning / acc.reportedOutput) : null,
+    coverage: acc.output > 0 ? acc.reportedOutput / acc.output : 0,
+  };
+}
+
+/**
+ * Effective tokens and estimated cost by reasoning effort — overall and per model
+ * — plus the reasoning share of output over the responses that report it. Same
+ * shape for Claude and Codex, so one card serves both platforms.
+ */
+export function buildEffort(events: UsageEvent[], now: number, days: number): EffortData {
+  const from = now - days * DAY;
+  const overall = new Map<string, EffortSlice>();
+  const overallReasoning: ReasoningAcc = { output: 0, reportedOutput: 0, reasoning: 0 };
+  const perModel = new Map<string, { total: TokenTotals; efforts: Map<string, EffortSlice>; reasoning: ReasoningAcc }>();
+
+  const bump = (m: Map<string, EffortSlice>, effort: string, e: UsageEvent, c: number) => {
+    let s = m.get(effort);
+    if (!s) {
+      s = { effort, effectiveTokens: 0, cost: 0, messages: 0 };
+      m.set(effort, s);
+    }
+    s.effectiveTokens += effectiveOf(e);
+    s.cost += c;
+    s.messages += 1;
+  };
+
+  for (const e of events) {
+    if (e.ts < from || e.ts > now || e.model === '<synthetic>') continue;
+    const effort = normalizeEffort(e.effort);
+    const c = estimateCost(e.model, e);
+    bump(overall, effort, e, c);
+    addReasoning(overallReasoning, e);
+    let pm = perModel.get(e.model);
+    if (!pm) {
+      pm = { total: emptyTotals(), efforts: new Map(), reasoning: { output: 0, reportedOutput: 0, reasoning: 0 } };
+      perModel.set(e.model, pm);
+    }
+    add(pm.total, e);
+    bump(pm.efforts, effort, e, c);
+    addReasoning(pm.reasoning, e);
+  }
+
+  const models: ModelEffort[] = [...perModel.entries()]
+    .filter(([, pm]) => pm.total.totalTokens > 0)
+    .map(([model, pm]) => ({
+      model,
+      effectiveTokens: pm.total.effectiveTokens,
+      cost: pm.total.cost,
+      efforts: sortEfforts([...pm.efforts.values()]),
+      reasoning: reasoningShare(pm.reasoning),
+    }))
+    .sort((a, b) => b.effectiveTokens - a.effectiveTokens);
+
+  return {
+    rangeFrom: from,
+    rangeTo: now,
+    efforts: sortEfforts([...overall.values()]),
+    models,
+    reasoning: reasoningShare(overallReasoning),
+  };
 }
 
 export interface ToolShare {

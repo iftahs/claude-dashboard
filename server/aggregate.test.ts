@@ -98,10 +98,10 @@ test('Codex and Cowork activity never shows stats-cache days as their own', () =
       .dailyActivity.find((d) => d.date === key);
 
   for (const source of ['codex', 'cowork'] as const) {
-    assert.deepEqual(day(source), { date: key, effectiveTokens: 0, messageCount: 0, toolCallCount: 0 }, source);
+    assert.deepEqual(day(source), { date: key, effectiveTokens: 0, totalTokens: 0, messageCount: 0, toolCallCount: 0 }, source);
   }
   for (const source of ['all', 'claude', 'code'] as const) {
-    assert.deepEqual(day(source), { date: key, effectiveTokens: 42_556, messageCount: 95, toolCallCount: 61 }, source);
+    assert.deepEqual(day(source), { date: key, effectiveTokens: 42_556, totalTokens: 42_556, messageCount: 95, toolCallCount: 61 }, source);
   }
 });
 

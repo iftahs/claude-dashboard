@@ -5,7 +5,7 @@ export interface UsageBarChartProps {
   labelFor: (ms: number) => string;
   /** When provided, renders projected future bars for the next 3 days */
   projectionCostPerDay?: number;
-  /** Token height of those bars; defaults to the average over all buckets. */
+  /** Effective-token height of those bars; defaults to the average over all buckets. */
   projectionTokensPerDay?: number;
   metric?: 'tokens' | 'cost';
 }

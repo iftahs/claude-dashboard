@@ -72,7 +72,10 @@ export interface VersionInfo {
 
 export interface Bucket extends TokenTotals {
   start: number;
+  /** Total tokens per model, cache reads included (tooltips only). */
   byModel: Record<string, number>;
+  /** Effective tokens per model — what the token bar charts stack. */
+  byModelEffective: Record<string, number>;
   byModelCost: Record<string, number>;
 }
 
@@ -108,6 +111,8 @@ export interface WeeklyData {
   prevTotals: TokenTotals;
   byModel: ModelShare[];
   bySource?: SourceSplit;
+  /** Codex usage split by thread kind — the Sources card under the Codex platform. */
+  codexSplit?: CodexSplit;
   cacheEfficiency?: { date: string; hitRate: number; cacheReadTokens: number; totalTokens: number }[];
   /** Earliest event in the scoped history (null when there is none). */
   firstEventTs?: number | null;
@@ -119,9 +124,77 @@ export interface ModelsData {
   models: ModelShare[];
 }
 
+/** Codex usage split into user threads vs guardian auto-reviews (mirrors server CodexSplit). */
+export interface CodexSplit {
+  threads: TokenTotals;
+  guardian: TokenTotals;
+}
+
+/** GET /api/usage/effort — one effort level's share (mirrors server EffortSlice). */
+export interface EffortSlice {
+  /** 'low' | 'medium' | 'high' | 'xhigh' | 'max' | … ; 'unknown' when the log has none. */
+  effort: string;
+  effectiveTokens: number;
+  cost: number;
+  messages: number;
+}
+
+/** Reasoning (thinking) share of output over the responses that report the split. */
+export interface ReasoningShare {
+  outputTokens: number;
+  reportedOutputTokens: number;
+  reasoningTokens: number;
+  /** null = nothing in the window reports it (show n/a, never 0%). */
+  share: number | null;
+  /** Fraction of the window's output tokens `share` is computed over. */
+  coverage: number;
+}
+
+export interface ModelEffort {
+  model: string;
+  effectiveTokens: number;
+  cost: number;
+  efforts: EffortSlice[];
+  reasoning: ReasoningShare;
+}
+
+/** GET /api/usage/effort?days=&source= — Models "Reasoning effort" card. */
+export interface EffortData {
+  rangeFrom: number;
+  rangeTo: number;
+  efforts: EffortSlice[];
+  models: ModelEffort[];
+  reasoning: ReasoningShare;
+}
+
+/** Lifetime figures over every event of the scoped history (mirrors server UsageSummary). */
+export interface UsageSummary {
+  firstEventTs: number | null;
+  lastEventTs: number | null;
+  lifetimeEffectiveTokens: number;
+  lifetimeTotalTokens: number;
+  lifetimeCost: number;
+  /** Local calendar day with the most effective tokens. */
+  peakDay: { date: string; effectiveTokens: number } | null;
+  currentStreakDays: number;
+  longestStreakDays: number;
+  activeDays: number;
+  /** Local calendar days from the first event's day through today. */
+  spanDays: number;
+}
+
+/** GET /api/usage/summary?source= — the unscoped (Both) response adds the per-platform split. */
+export interface UsageSummaryData extends UsageSummary {
+  byPlatform?: { claude: UsageSummary; codex: UsageSummary };
+}
+
 export interface DailyActivity {
+  /** YYYY-MM-DD — the local calendar day, or the UTC day for `?utc=1`. */
   date: string;
   effectiveTokens: number;
+  /** Every token, cache reads included (the server always sends it; optional so
+   *  client-side placeholder days need not invent one). */
+  totalTokens?: number;
   messageCount: number;
   toolCallCount: number;
 }
@@ -129,6 +202,8 @@ export interface DailyActivity {
 export interface ActivityData {
   rangeFrom: number;
   rangeTo: number;
+  /** True for `?utc=1`: days are UTC days (no stats-cache fallback). */
+  utc?: boolean;
   dailyActivity: DailyActivity[];
 }
 

@@ -1,5 +1,5 @@
 import type { Platform } from '@/hooks/useSource';
-import type { Bucket, SourceSplit, WeeklyData } from '@/types';
+import type { Bucket, ModelShare, SourceSplit, WeeklyData } from '@/types';
 
 export { PLATFORM_NOUN } from '@/lib/platform';
 
@@ -19,6 +19,45 @@ export function costBasisHelp(platform: Platform, litellmAvailable: boolean): st
     return "What this usage would cost at Anthropic's and OpenAI's pay-as-you-go API rates, added together. Neither subscription has a per-token bill — this is a reference figure only.";
   }
   return "What this usage would cost at Anthropic's pay-as-you-go API rates. Your subscription has no per-token bill — this is a reference figure only.";
+}
+
+/**
+ * Help for the "Effective tokens" card. Only Anthropic documents which tokens
+ * count toward its limits; OpenAI publishes no token basis for the Codex limits,
+ * so the Codex copy only says what the number is and why it is comparable.
+ */
+export function effectiveTokensHelp(platform: Platform): string {
+  if (platform === 'codex') {
+    return 'Uncached input + output tokens. Cached input is excluded — the counterpart of cache reads on Claude — so the figure is comparable across platforms. OpenAI does not publish how tokens weigh against the Codex limits. Compared against the previous period.';
+  }
+  if (platform === 'both') {
+    return 'Input + output + cache-write tokens on both platforms (Codex never reports cache writes). Cache reads and cached input are excluded — cheap context reuse, not new work. Compared against the previous period.';
+  }
+  return 'Input + output + cache-write tokens — the tokens that count toward rate limits. Cheap cache reads are excluded. Compared against the previous period.';
+}
+
+/** Help for the cache-efficiency section — each vendor caches differently. */
+export function cacheEfficiencyHelp(platform: Platform): string {
+  if (platform === 'codex') {
+    return "Share of all tokens served from OpenAI's prompt cache each day (cached input ÷ all tokens). Codex caches automatically and never bills a cache write; higher means more context was reused instead of re-sent.";
+  }
+  if (platform === 'both') {
+    return 'Share of all tokens served from the prompt cache each day (cache reads ÷ all tokens), one line per platform — the two vendors cache differently (Anthropic bills cache writes, OpenAI caches automatically), so a blended rate would describe neither.';
+  }
+  return 'Share of total tokens served from the prompt cache each day (cache reads ÷ all tokens). Higher means more context was reused cheaply instead of re-sent.';
+}
+
+/**
+ * The window's top model by estimated cost — the "top:" sub-line of the cost
+ * card. Read from the same window's `byModel` (the card's own poll), never from
+ * the fixed 7-day models poll, and ranked by cost because the card is a cost.
+ */
+export function topModelByCost(byModel: ModelShare[] | undefined): { model: string; pct: number } | null {
+  if (!byModel?.length) return null;
+  const total = byModel.reduce((a, m) => a + m.cost, 0);
+  if (total <= 0) return null;
+  const top = byModel.reduce((best, m) => (m.cost > best.cost ? m : best));
+  return { model: top.model, pct: Math.round((top.cost / total) * 100) };
 }
 
 /**
@@ -66,24 +105,35 @@ export function prevPeriodLabel(days: number): string {
 /** Max buckets sent to the AI ✨ explainer; the server caps a section at 64 KB. */
 const AI_MAX_BUCKETS = 60;
 
+/** A Trends bucket as the AI explainer sees it: the totals plus ONE per-model map. */
+export type AiTrendsBucket = Omit<Bucket, 'byModel' | 'byModelCost'>;
+
+export type AiTrendsPayload = Omit<WeeklyData, 'buckets'> & { buckets: AiTrendsBucket[]; daysPerBucket?: number };
+
 /**
- * The Trends payload for the AI explainer, small enough for long windows: past
- * AI_MAX_BUCKETS days, consecutive daily buckets merge into runs of
- * `daysPerBucket` days (a 1-year window becomes ~61 six-day buckets) and the
- * per-model cost map is dropped — 366 buckets with both maps overflow the 64 KB
- * section limit. Runs are cut from the newest end, so only the OLDEST bucket can
- * be short; the newest one still holds only part of today.
+ * The Trends payload for the AI explainer. Every bucket carries exactly one
+ * per-model map — effective tokens, the unit the daily chart stacks — so the
+ * explainer reads the same numbers the chart shows and three maps never multiply
+ * the payload. Past AI_MAX_BUCKETS days, consecutive daily buckets also merge
+ * into runs of `daysPerBucket` days (a 1-year window becomes ~61 six-day
+ * buckets) to stay under the 64 KB section limit. Runs are cut from the newest
+ * end, so only the OLDEST bucket can be short; the newest one still holds only
+ * part of today.
  */
-export function aiTrendsPayload(data: WeeklyData | null): (WeeklyData & { daysPerBucket?: number }) | null {
-  if (!data || data.buckets.length <= AI_MAX_BUCKETS) return data;
+export function aiTrendsPayload(data: WeeklyData | null): AiTrendsPayload | null {
+  if (!data) return null;
+  const slim = (b: Bucket): AiTrendsBucket => {
+    const { byModel: _t, byModelCost: _c, ...rest } = b;
+    return { ...rest, byModelEffective: { ...(b.byModelEffective ?? {}) } };
+  };
+  if (data.buckets.length <= AI_MAX_BUCKETS) return { ...data, buckets: data.buckets.map(slim) };
   const per = Math.ceil(data.buckets.length / AI_MAX_BUCKETS);
-  const buckets: Bucket[] = [];
+  const buckets: AiTrendsBucket[] = [];
   for (let end = data.buckets.length; end > 0; end -= per) {
     const run = data.buckets.slice(Math.max(0, end - per), end);
-    const merged: Bucket = {
+    const merged: AiTrendsBucket = {
       start: run[0].start,
-      byModel: {},
-      byModelCost: {},
+      byModelEffective: {},
       inputTokens: 0,
       outputTokens: 0,
       cacheCreateTokens: 0,
@@ -100,7 +150,9 @@ export function aiTrendsPayload(data: WeeklyData | null): (WeeklyData & { daysPe
       merged.totalTokens += b.totalTokens;
       merged.effectiveTokens += b.effectiveTokens;
       merged.cost += b.cost;
-      for (const [m, v] of Object.entries(b.byModel)) merged.byModel[m] = (merged.byModel[m] ?? 0) + v;
+      for (const [m, v] of Object.entries(b.byModelEffective ?? {})) {
+        merged.byModelEffective[m] = (merged.byModelEffective[m] ?? 0) + v;
+      }
     }
     buckets.unshift(merged);
   }

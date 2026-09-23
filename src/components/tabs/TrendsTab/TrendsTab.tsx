@@ -1,17 +1,27 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { StatCard } from '@/components/design-system/atoms/StatCard/StatCard';
 import { Section } from '@/components/design-system/molecules/Section/Section';
 import { ExportButton } from '@/components/design-system/molecules/ExportButton/ExportButton';
 import { CacheEfficiencyChart } from '@/components/design-system/organisms/CacheEfficiencyChart/CacheEfficiencyChart';
+import type { CacheSeries } from '@/components/design-system/organisms/CacheEfficiencyChart/types';
 import { PeakHoursHeatmap } from '@/components/design-system/organisms/PeakHoursHeatmap/PeakHoursHeatmap';
 import { ActivityHeatmap } from '@/components/design-system/organisms/ActivityHeatmap/ActivityHeatmap';
+import { ActivitySummary } from '@/components/design-system/organisms/ActivitySummary/ActivitySummary';
 import { LiteLlmActualBilled } from '@/components/design-system/organisms/LiteLlmActualBilled/LiteLlmActualBilled';
+import { CodexDailyCompareChart } from '@/components/design-system/organisms/CodexDailyCompareChart/CodexDailyCompareChart';
 import { SourcesSplitChart } from '@/components/design-system/organisms/SourcesSplitChart/SourcesSplitChart';
+import {
+  computeCodexSplit,
+  computeSourceSplit,
+  sourcesHelp,
+} from '@/components/design-system/organisms/SourcesSplitChart/utils';
 import { PlatformDailyCompareChart } from '@/components/design-system/organisms/PlatformDailyCompareChart/PlatformDailyCompareChart';
+import { CLAUDE_COLOR, CODEX_COLOR } from '@/components/design-system/organisms/PlatformDailyCompareChart/utils';
 import { DailyTrendChart } from '@/components/design-system/organisms/DailyTrendChart/DailyTrendChart';
 import type { DailyMetric } from '@/components/design-system/organisms/DailyTrendChart/types';
 import { StatCardSkeleton, HeatmapSkeleton } from '@/components/design-system/atoms/Skeleton/Skeleton';
 import { compact, usd, shortModel } from '@/lib/format';
+import { titleScope } from '@/lib/platform';
 import { buildSpendReport } from '@/lib/report';
 import { usePolling } from '@/hooks/usePolling';
 import { useSource } from '@/hooks/useSource';
@@ -20,8 +30,18 @@ import { useLiveData, weeklyPollMs } from '@/hooks/useLiveData';
 import { useCostMetrics } from '@/hooks/useCostMetrics';
 import { useLiteLlmActual } from '@/hooks/useLiteLlmActual';
 import { useAiInsightCtx } from '@/hooks/useAiInsightContext';
-import type { ActivityData, HeatmapData, WeeklyData } from '@/types';
-import { PLATFORM_NOUN, TIME_WINDOWS, aiTrendsPayload, costBasisHelp, platformSplitLabel, prevPeriodLabel } from './utils';
+import type { ActivityData, HeatmapData, UsageSummaryData, WeeklyData } from '@/types';
+import {
+  PLATFORM_NOUN,
+  TIME_WINDOWS,
+  aiTrendsPayload,
+  cacheEfficiencyHelp,
+  costBasisHelp,
+  effectiveTokensHelp,
+  platformSplitLabel,
+  prevPeriodLabel,
+  topModelByCost,
+} from './utils';
 
 /** A stat card's own sub-text, with the Claude/Codex split on a second line. */
 function SplitSub({ sub, split }: { sub: string; split: string | null }) {
@@ -34,10 +54,21 @@ function SplitSub({ sub, split }: { sub: string; split: string | null }) {
   );
 }
 
+/**
+ * Trends — the same sections in the same order on every platform (Claude /
+ * Codex / Both); only the data and the platform-specific copy change:
+ *
+ *   spending cards → server-side figure (Claude: LiteLLM "Actual billed";
+ *   Codex: OpenAI "Server vs local") → sources split (Claude: Code / Cowork;
+ *   Codex: threads / guardian reviews; Both: all three) → [Both: Claude vs
+ *   Codex] → daily chart → cache efficiency (Both: one line per platform) →
+ *   peak hours → activity summary → activity heatmap.
+ */
 export function TrendsTab() {
-  const { platform, showClaude, showSurfaceToggle, source, withSrc, effectiveSource } = useSource();
+  const { platform, showClaude, showCodex, showSurfaceToggle, source, withSrc, effectiveSource, codexAvailable } =
+    useSource();
   const { litellmAvailable, litellmHost, weekStart } = useConfigMode();
-  const { weekly, models, weekDays, setWeekDays } = useLiveData();
+  const { weekly, weekDays, setWeekDays, codexProfile } = useLiveData();
   const { costPerDay, coverageDays, daysLeftInMonth, projectedMonthCost, weeklyEffective, prevWeeklyEffective } =
     useCostMetrics();
   const { litellmSpend } = useLiteLlmActual();
@@ -46,12 +77,14 @@ export function TrendsTab() {
 
   const heatmap = usePolling<HeatmapData>(withSrc('/api/heatmap?days=90'), 60000);
   const activity = usePolling<ActivityData>(withSrc('/api/activity'), 30000);
-  const topModel = models.data?.models[0];
+  const summary = usePolling<UsageSummaryData>(withSrc('/api/usage/summary'), 60000);
   const noun = PLATFORM_NOUN[platform];
+  const scope = titleScope(platform);
+  const topModel = topModelByCost(weekly.data?.byModel);
 
   // Under *Both* the shared weekly poll is deliberately unscoped, so the
-  // comparison needs its own two explicitly-scoped polls. An empty URL issues no
-  // request, so nothing extra is fetched on any other platform.
+  // comparisons need their own two explicitly-scoped polls. An empty URL issues
+  // no request, so nothing extra is fetched on any other platform.
   const bothActive = platform === 'both';
   const claudeWeekly = usePolling<WeeklyData>(
     bothActive ? `/api/usage/weekly?days=${weekDays}&source=claude` : '',
@@ -62,17 +95,54 @@ export function TrendsTab() {
     weeklyPollMs(weekDays),
   );
 
+  // Codex "Server vs local": the local rollouts per UTC day (OpenAI keys its
+  // daily count by UTC date) over the Trends window. Explicitly source=codex —
+  // under Both it is still the Codex-side panel.
+  const codexProfileOk = !!codexProfile.data && !codexProfile.data.error;
+  const showCodexCompare = showCodex && codexAvailable && !codexProfile.data?.error;
+  const codexUtcActivity = usePolling<ActivityData>(
+    showCodexCompare ? `/api/activity?days=${weekDays}&source=codex&utc=1` : '',
+    60_000, // slow-moving, and the server series it sits beside is cached for 30 min
+  );
+
   // Sub-labels splitting each card between the two platforms — only under Both,
   // where the card total is a sum. On a single platform it already IS that one.
   const bs = bothActive ? weekly.data?.bySource : undefined;
   const daysThisMonth = new Date().getDate() + daysLeftInMonth;
 
+  // The sources slot: the same card on every platform, split by what that
+  // platform has — Code / Cowork (Claude's All filter), threads / guardian
+  // reviews (Codex), or all three surfaces (Both). Code-only users without
+  // Cowork never reach a branch, exactly as before.
+  const splitSegments = useMemo(() => {
+    const w = weekly.data;
+    if (!w) return null;
+    if (platform === 'codex') return w.codexSplit ? computeCodexSplit(w.codexSplit) : null;
+    if (bothActive || (showSurfaceToggle && source === 'all')) return w.bySource ? computeSourceSplit(w.bySource) : null;
+    return null;
+  }, [weekly.data, platform, bothActive, showSurfaceToggle, source]);
+
+  // Cache efficiency: one line per platform under Both (the vendors cache
+  // differently, so a pooled rate describes neither); otherwise the scoped line.
+  const cacheSeries = useMemo<CacheSeries[] | null>(() => {
+    if (!bothActive) return null;
+    return [
+      { key: 'claude', label: 'Claude', color: CLAUDE_COLOR, points: claudeWeekly.data?.cacheEfficiency ?? [] },
+      { key: 'codex', label: 'Codex', color: CODEX_COLOR, points: codexWeekly.data?.cacheEfficiency ?? [] },
+    ];
+  }, [bothActive, claudeWeekly.data, codexWeekly.data]);
+  const hasCacheData = cacheSeries
+    ? cacheSeries.some((s) => s.points.length > 0)
+    : (weekly.data?.cacheEfficiency?.length ?? 0) > 0;
+
   return (
     <>
       {/* Window selector — drives the cost stat cards, the estimate chart,
-          and (when present) the LiteLLM actual-billed chart. */}
+          and (when present) the server-side charts. */}
       <div className="flex items-center justify-between">
-        <span className="text-xs uppercase tracking-wider text-zinc-500">Spending · last {weekDays} days</span>
+        <span className="text-xs uppercase tracking-wider text-zinc-500">
+          Spending{scope} · last {weekDays} days
+        </span>
         <div className="flex items-center gap-3">
           <div className="flex overflow-hidden rounded-lg ring-1 ring-white/10">
             {TIME_WINDOWS.map(({ days, label }) => (
@@ -111,7 +181,7 @@ export function TrendsTab() {
               value={usd(weekly.data?.totals.cost ?? 0)}
               sub={
                 <SplitSub
-                  sub={topModel ? `top: ${shortModel(topModel.model)}` : ''}
+                  sub={topModel ? `top: ${shortModel(topModel.model)} · ${topModel.pct}%` : ''}
                   split={platformSplitLabel(bs, 'cost', usd)}
                 />
               }
@@ -130,7 +200,7 @@ export function TrendsTab() {
                   split={platformSplitLabel(bs, 'effectiveTokens', compact)}
                 />
               }
-              help="Input + output + cache-write tokens — the tokens that count toward rate limits. Cheap cache reads are excluded. Compared against the previous period."
+              help={effectiveTokensHelp(platform)}
             />
             <StatCard
               label="Cost per day (avg)"
@@ -141,7 +211,9 @@ export function TrendsTab() {
                   split={platformSplitLabel(bs, 'cost', usd, 1 / coverageDays)}
                 />
               }
-              help="Estimated equivalent API cost averaged over the selected window (total cost ÷ days). When your logs start inside the window (a new install, or Claude Code's ~30-day transcript cleanup), it divides by the days that have history instead."
+              help={`Estimated equivalent API cost averaged over the selected window (total cost ÷ days). When your logs start inside the window (${
+                platform === 'codex' ? 'a new install' : "a new install, or Claude Code's ~30-day transcript cleanup"
+              }), it divides by the days that have history instead.`}
             />
             <StatCard
               label="Projected this month"
@@ -159,18 +231,23 @@ export function TrendsTab() {
         )}
       </div>
 
-      {/* Actual billed (LiteLLM gateway): month-to-date + per-day window. The
-          gateway proxies Anthropic, so it has nothing to say under Codex-only. */}
+      {/* Server-side figure beside the estimate — one slot, each platform's own:
+          Claude's LiteLLM gateway bill (when a gateway is configured) and
+          OpenAI's per-day Codex count vs the local rollouts. Under Both, both. */}
       {showClaude && litellmAvailable && litellmSpend && (
         <LiteLlmActualBilled spend={litellmSpend} host={litellmHost} weekDays={weekDays} />
       )}
+      {showCodexCompare && (
+        <CodexDailyCompareChart
+          server={codexProfileOk ? (codexProfile.data?.dailyUsage ?? []) : []}
+          local={codexUtcActivity.data?.dailyActivity ?? []}
+          loading={codexProfile.loading || codexUtcActivity.loading}
+          days={weekDays}
+        />
+      )}
 
-      {/* Sources split — shown only where a split is meaningful: under Both
-          (Claude Code / Cowork / Codex) or under the Claude platform's All filter
-          (Code / Cowork). Codex-only has a single surface and hides it, and
-          Code-only users reach neither branch. */}
-      {(bothActive || (showSurfaceToggle && source === 'all')) && weekly.data?.bySource && (
-        <SourcesSplitChart bySource={weekly.data.bySource} weekDays={weekDays} />
+      {splitSegments && splitSegments.length > 0 && (
+        <SourcesSplitChart segments={splitSegments} weekDays={weekDays} help={sourcesHelp(platform)} scope={scope} />
       )}
 
       {/* Claude vs Codex, side by side — the one chart that exists only under Both. */}
@@ -185,7 +262,8 @@ export function TrendsTab() {
         />
       )}
 
-      {/* Daily chart with projection */}
+      {/* Daily chart with projection — effective tokens throughout (bars,
+          projection, delta, export); totals only in the tooltip. */}
       <DailyTrendChart
         data={weekly.data}
         loading={weekly.loading}
@@ -193,23 +271,25 @@ export function TrendsTab() {
         metric={dailyMetric}
         onMetricChange={setDailyMetric}
         costPerDay={costPerDay}
-        tokensPerDay={(weekly.data?.totals.totalTokens ?? 0) / coverageDays}
+        tokensPerDay={(weekly.data?.totals.effectiveTokens ?? 0) / coverageDays}
         ai={aiProps('trends', aiTrendsPayload(weekly.data))}
+        scope={scope}
       />
 
       {/* Cache efficiency chart */}
-      {weekly.data?.cacheEfficiency && weekly.data.cacheEfficiency.length > 0 && (
-        <Section
-          title="Cache efficiency · hit rate over time"
-          help="Share of total tokens served from the prompt cache each day (cache reads ÷ all tokens). Higher means more context was reused cheaply instead of re-sent."
-        >
-          <CacheEfficiencyChart data={weekly.data.cacheEfficiency} />
+      {hasCacheData && (
+        <Section title={`Cache efficiency${scope} · hit rate over time`} help={cacheEfficiencyHelp(platform)}>
+          {cacheSeries ? (
+            <CacheEfficiencyChart series={cacheSeries} />
+          ) : (
+            <CacheEfficiencyChart data={weekly.data?.cacheEfficiency ?? []} />
+          )}
         </Section>
       )}
 
       {/* Peak hours heatmap */}
       <Section
-        title="Peak usage · tokens by hour & day of week"
+        title={`Peak usage${scope} · tokens by hour & day of week`}
         help={`Effective tokens summed into a 7-day × 24-hour grid (your local time). Darker cells are your busiest hours — when you use ${noun} most.`}
       >
         {heatmap.data ? (
@@ -221,9 +301,18 @@ export function TrendsTab() {
         )}
       </Section>
 
+      {/* Lifetime summary of the heatmap below — the same four cards everywhere. */}
+      <ActivitySummary
+        summary={summary.data}
+        loading={summary.loading}
+        platform={platform}
+        codexServerLifetime={codexProfileOk ? codexProfile.data?.lifetimeTokens : null}
+        scope={scope}
+      />
+
       {/* Activity heatmap */}
       <Section
-        title="Daily activity · last 18 weeks"
+        title={`Daily activity${scope} · last 18 weeks`}
         help={`GitHub-style calendar: one square per day, darker = more effective tokens used. Shows your day-to-day ${noun} usage streaks over the last ~18 weeks.`}
       >
         {activity.data ? (
