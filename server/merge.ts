@@ -17,7 +17,8 @@
  * result row the parser emits with agentIdFromResult = the guardian's own id.
  */
 import { estimateCost } from './pricing.ts';
-import type { UsageEvent } from './scan.ts';
+import { normalizeProjectPath } from './project-path.ts';
+import type { UsageEvent, UsageSource } from './scan.ts';
 import type {
   CorpusRow, FileRows, LimitHitRow, LineChangeRow, PrLinkRow, RateLimitSnapRow, SessionPartialRow,
   TaskSpawnRow, ToolCallRow, TurnRow, UsageRow,
@@ -32,11 +33,75 @@ function effective(r: UsageRow): number {
   return r.inputTokens + r.outputTokens + r.cacheCreateTokens;
 }
 
-function toEvent(r: UsageRow, sessionPathMap: Map<string, string>): UsageEvent {
-  // The session-meta override is applied here rather than at parse time so cached
-  // rows stay valid when usage-data/session-meta/*.json changes.
-  const projectPath =
-    r.source === 'code' && r.sessionId ? sessionPathMap.get(r.sessionId) ?? r.projectPathRaw : r.projectPathRaw;
+/** (source, sessionId, path the parser derived) → the session's project path. */
+export type ProjectPathResolver = (source: UsageSource, sessionId: string, rawPath: string) => string;
+
+/**
+ * One project path per session, for every row that carries one (usage events,
+ * tool calls, task spawns, sessionsMeta), so a session never lands in two projects.
+ *
+ *  - Claude Code: the real `cwd` the transcript recorded (a main-session file's
+ *    cwd beats a subagent's), normalised like the Codex parser's paths; else the
+ *    legacy session-meta sidecar's path; else the real path other sessions from the
+ *    same `projects/<encoded>` folder recorded (a file over the insights size cap
+ *    yields no session partial, so no cwd); else the lossy folder decode.
+ *  - Codex: the parser's session_meta cwd, normalised (worktree fold).
+ *  - Cowork: blank — sandbox-internal paths mean nothing on the host.
+ *
+ * Applied here, not at parse time, so cached rows stay valid when this rule or
+ * usage-data/session-meta/*.json changes. See project-path.ts.
+ */
+export function buildProjectPathResolver(partials: SessionPartialRow[], sessionMetas: any[]): ProjectPathResolver {
+  const sidecarPath = new Map<string, string>();
+  for (const s of sessionMetas) {
+    if (typeof s?.session_id === 'string' && typeof s?.project_path === 'string' && s.project_path) {
+      sidecarPath.set(s.session_id, normalizeProjectPath(s.project_path));
+    }
+  }
+
+  const cwdBySession = new Map<string, string>();
+  const fromMain = new Set<string>();
+  // legacy decoded folder → real path → sessions that recorded it
+  const votes = new Map<string, Map<string, Set<string>>>();
+  for (const p of partials) {
+    if (p.source !== 'code' || !p.cwd) continue;
+    const real = normalizeProjectPath(p.cwd);
+    if (!real) continue;
+    if (!cwdBySession.has(p.sessionId) || (!p.fileIsSidechain && !fromMain.has(p.sessionId))) {
+      cwdBySession.set(p.sessionId, real);
+    }
+    if (!p.fileIsSidechain) fromMain.add(p.sessionId);
+    if (p.projectPath) {
+      let byReal = votes.get(p.projectPath);
+      if (!byReal) { byReal = new Map(); votes.set(p.projectPath, byReal); }
+      let ids = byReal.get(real);
+      if (!ids) { ids = new Set(); byReal.set(real, ids); }
+      ids.add(p.sessionId);
+    }
+  }
+  const legacyToReal = new Map<string, string>();
+  for (const [legacy, byReal] of votes) {
+    let best = '';
+    let bestN = 0;
+    for (const [real, ids] of byReal) {
+      if (ids.size > bestN) { best = real; bestN = ids.size; } // ties: first seen (file order)
+    }
+    if (best) legacyToReal.set(legacy, best);
+  }
+
+  return (source, sessionId, rawPath) => {
+    if (source === 'cowork') return rawPath; // '' from the parser
+    if (source === 'codex') return normalizeProjectPath(rawPath);
+    return (
+      (sessionId && (cwdBySession.get(sessionId) ?? sidecarPath.get(sessionId))) ||
+      legacyToReal.get(rawPath) ||
+      rawPath
+    );
+  };
+}
+
+function toEvent(r: UsageRow, projectPathOf: ProjectPathResolver): UsageEvent {
+  const projectPath = projectPathOf(r.source, r.sessionId, r.projectPathRaw);
   return {
     ts: r.ts,
     sessionId: r.sessionId,
@@ -103,11 +168,6 @@ export interface MergeResult {
 }
 
 export function mergeRows(files: FileRows[], sessionMetas: any[]): MergeResult {
-  const sessionPathMap = new Map<string, string>();
-  for (const s of sessionMetas) {
-    if (s?.session_id && s?.project_path) sessionPathMap.set(s.session_id, s.project_path);
-  }
-
   // ---- usage events (every file) ----
   const allUsage: UsageRow[] = [];
   // ---- usage restricted to insight-eligible files, for per-session token/cost ----
@@ -160,8 +220,10 @@ export function mergeRows(files: FileRows[], sessionMetas: any[]): MergeResult {
     }
   }
 
+  const projectPathOf = buildProjectPathResolver(sessionPartials, sessionMetas);
+
   const dedupedUsage = dedupUsage(allUsage);
-  const events = dedupedUsage.map((r) => toEvent(r, sessionPathMap)).sort((a, b) => a.ts - b.ts);
+  const events = dedupedUsage.map((r) => toEvent(r, projectPathOf)).sort((a, b) => a.ts - b.ts);
 
   // ---- tool calls: distinct by tool_use id ----
   const seenTool = new Set<string>();
@@ -174,7 +236,7 @@ export function mergeRows(files: FileRows[], sessionMetas: any[]): MergeResult {
     toolCalls.push({
       ts: t.ts, sessionId: t.sessionId, name: t.name, isSidechain: t.isSidechain,
       mcpServer: t.mcpServer, filePath: t.filePath, gitBranch: t.gitBranch,
-      projectPath: t.projectPath, id: t.toolId, source: t.source,
+      projectPath: projectPathOf(t.source, t.sessionId, t.projectPath), id: t.toolId, source: t.source,
     });
   }
   toolCalls.sort((a, b) => a.ts - b.ts);
@@ -193,7 +255,8 @@ export function mergeRows(files: FileRows[], sessionMetas: any[]): MergeResult {
     taskSpawns.push({
       ts: t.ts, sessionId: t.sessionId, id: t.toolId, subagentType: t.subagentType,
       model: t.model, description: t.description, agentIdFromResult: agentId,
-      completed: agentId !== null, gitBranch: t.gitBranch, projectPath: t.projectPath,
+      completed: agentId !== null, gitBranch: t.gitBranch,
+      projectPath: projectPathOf(t.source, t.sessionId, t.projectPath),
       source: t.source,
     });
   }
@@ -215,7 +278,7 @@ export function mergeRows(files: FileRows[], sessionMetas: any[]): MergeResult {
         lastTs: p.lastTs,
         turns: 0, assistantMsgs: 0, toolCallCount: 0, errorCount: 0, rejectionCount: 0,
         subagentSpawns: 0, compactions: 0, committed: false, gitCommits: 0, gitPushes: 0,
-        firstPrompt: '', gitBranch: p.gitBranch, projectPath: p.projectPath,
+        firstPrompt: '', gitBranch: p.gitBranch, projectPath: projectPathOf(p.source, p.sessionId, p.projectPath),
         models: {}, effectiveTokens: 0, cost: 0, file: p.file,
         agentId: p.agentId ?? undefined, source: p.source,
         linesAdded: 0, linesRemoved: 0, activeMs: 0, prUrls: [],
@@ -223,7 +286,11 @@ export function mergeRows(files: FileRows[], sessionMetas: any[]): MergeResult {
       sessionsMeta.set(p.sessionId, sm);
     } else if (!p.fileIsSidechain && sm.isSidechain) {
       // A parent-session file is authoritative and clears a flag set by a subagent file.
+      // It is also the transcript to show and the path to file the session under: a
+      // guardian / subagent rollout that sorted first must not stand in for its parent.
       sm.isSidechain = false;
+      sm.file = p.file;
+      sm.projectPath = projectPathOf(p.source, p.sessionId, p.projectPath);
     }
     if (p.firstTs < sm.firstTs) sm.firstTs = p.firstTs;
     if (p.lastTs > sm.lastTs) sm.lastTs = p.lastTs;

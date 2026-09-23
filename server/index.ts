@@ -1,12 +1,10 @@
 import { existsSync } from 'node:fs';
-import { createReadStream } from 'node:fs';
 import { join } from 'node:path';
-import { createInterface } from 'node:readline';
 import { exec } from 'node:child_process';
 import { promisify } from 'node:util';
 import express from 'express';
 import { getEvents, eventsFingerprint } from './cache.ts';
-import { buildRecent, buildWeekly, buildModels, buildActivity, buildTools, buildHourlyHeatmap, buildProjectStats, buildUsageSummary, buildEffort, filterSource, sourceMatches, statsCacheApplies, type SourceFilter, type UsageSummaryData } from './aggregate.ts';
+import { buildRecent, buildWeekly, buildModels, buildActivity, buildTools, buildHourlyHeatmap, buildProjectStats, buildUsageSummary, buildEffort, filterSource, statsCacheApplies, type SourceFilter, type UsageSummaryData } from './aggregate.ts';
 import { claudeDir, readConfig, readCredentials, readStatsSummary, readSessionMetas, fetchLiveUsage, fetchLiveProfile, fetchLiveUsageFor, fetchLiveProfileFor, readAccountCredentials, expiredTokenMessage, detectLitellm, fetchLiteLlmSpend, MAX_WINDOW_DAYS } from './scan.ts';
 import { getInsights, insightsFingerprint } from './insights-scan.ts';
 import { archiveSummary, forgetArchivedHistory, primeData } from './data.ts';
@@ -27,6 +25,9 @@ import { computeCodexBlock, buildLimitHits } from './aggregate.ts';
 import { codexDir } from './scan.ts';
 import type { CodexLiveData } from './codex-live.ts';
 import { getWorkflows, getWorkflowStats } from './workflows.ts';
+import { readCodexTitles } from './codex-titles.ts';
+import { buildSessionRows, buildSessionSummary, legacyProjectPaths, searchSessions } from './sessions.ts';
+import { readTranscript } from './transcript.ts';
 import { getAgentDetail } from './workflow-agent-detail.ts';
 import { runAi, runAiStream, resolveBackend, AiUnavailableError, AiTokenRejectedError, AiCallError, type AiCreds } from './ai.ts';
 import { buildAiPayload, buildChatUserMessage, CHAT_SYSTEM, buildSectionUserMessage, SECTION_SYSTEM, SUGGEST_SYSTEM, buildSuggestMessage, type AiScope, type ChatTurn } from './ai-context.ts';
@@ -219,147 +220,31 @@ app.get('/api/stats/summary', async (_req, res) => {
 });
 
 // Session history is derived live from the JSONL transcripts (insights scan)
-// joined with token stats from the main event scan. The legacy
-// `usage-data/session-meta/*.json` sidecar is used only as optional enrichment
-// for fields the transcript can't reconstruct (lines added/removed, languages),
-// because Claude Code stopped writing those sidecars — relying on them froze
-// this list. See readSessionMetas() / scan.ts.
-const WRITE_TOOLS = new Set(['Edit', 'Write', 'MultiEdit', 'NotebookEdit']);
+// joined with token stats from the main event scan (sessions.ts). The legacy
+// `usage-data/session-meta/*.json` sidecar only adds fields the transcript can't
+// reconstruct (languages) and keeps sessions whose transcripts are gone listed.
+async function sessionRowsFor(source: SourceFilter) {
+  const [{ events }, { insights }, sidecar, codexTitles] = await Promise.all([
+    getEvents(), getInsights(), readSessionMetas(), readCodexTitles(),
+  ]);
+  return { rows: buildSessionRows(events, insights, sidecar, source, codexTitles), insights };
+}
 
 app.get('/api/sessions', async (req, res) => {
   try {
-    const source = parseSource(req.query.source);
-    const { events } = await getEvents();
-    const { insights } = await getInsights();
-    const sidecar = await readSessionMetas();
+    const { rows } = await sessionRowsFor(parseSource(req.query.source));
+    res.json(wrap(rows, Date.now()));
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
 
-    // Token splits per session from the main event scan.
-    const eventStats = new Map<string, {
-      inputTokens: number;
-      outputTokens: number;
-      cacheCreateTokens: number;
-      cacheReadTokens: number;
-      totalTokens: number;
-      effectiveTokens: number;
-    }>();
-
-    for (const e of events) {
-      if (!e.sessionId) continue;
-      let stats = eventStats.get(e.sessionId);
-      if (!stats) {
-        stats = {
-          inputTokens: 0,
-          outputTokens: 0,
-          cacheCreateTokens: 0,
-          cacheReadTokens: 0,
-          totalTokens: 0,
-          effectiveTokens: 0,
-        };
-        eventStats.set(e.sessionId, stats);
-      }
-      stats.inputTokens += e.inputTokens;
-      stats.outputTokens += e.outputTokens;
-      stats.cacheCreateTokens += e.cacheCreateTokens;
-      stats.cacheReadTokens += e.cacheReadTokens;
-      stats.totalTokens += e.inputTokens + e.outputTokens + e.cacheCreateTokens + e.cacheReadTokens;
-      stats.effectiveTokens += e.inputTokens + e.outputTokens + e.cacheCreateTokens;
-    }
-
-    // Per-session tool counts + distinct modified files from main-thread tool calls.
-    const toolAgg = new Map<string, { counts: Record<string, number>; files: Set<string> }>();
-    for (const tc of insights.toolCalls) {
-      if (tc.isSidechain || !tc.sessionId) continue; // count main thread only
-      let a = toolAgg.get(tc.sessionId);
-      if (!a) { a = { counts: {}, files: new Set() }; toolAgg.set(tc.sessionId, a); }
-      a.counts[tc.name] = (a.counts[tc.name] ?? 0) + 1;
-      if (WRITE_TOOLS.has(tc.name) && tc.filePath) a.files.add(tc.filePath);
-    }
-
-    const sidecarById = new Map(sidecar.map((s) => [s.session_id, s]));
-
-    const result = [];
-    for (const sm of insights.sessionsMeta.values()) {
-      if (sm.isSidechain || !sm.sessionId) continue; // skip subagent-only sessions
-      if (sm.assistantMsgs === 0) continue;           // skip empty/aborted shells
-      if (!sourceMatches(sm.source, source)) continue; // surface / platform filter
-
-      const stats = eventStats.get(sm.sessionId);
-      const agg = toolAgg.get(sm.sessionId);
-      const side = sidecarById.get(sm.sessionId);
-
-      const input = stats?.inputTokens ?? 0;
-      const output = stats?.outputTokens ?? 0;
-      const cacheCreate = stats?.cacheCreateTokens ?? 0;
-      const cacheRead = stats?.cacheReadTokens ?? 0;
-      const effective = stats?.effectiveTokens ?? sm.effectiveTokens;
-      const total = stats?.totalTokens ?? sm.effectiveTokens;
-
-      result.push({
-        session_id: sm.sessionId,
-        source: sm.source,
-        project_path: sm.projectPath,
-        start_time: new Date(sm.firstTs).toISOString(),
-        duration_minutes: Math.max(0, Math.round((sm.lastTs - sm.firstTs) / 60000)),
-        user_message_count: sm.turns,
-        assistant_message_count: sm.assistantMsgs,
-        tool_counts: agg?.counts ?? {},
-        languages: side?.languages ?? {},
-        git_commits: sm.gitCommits,
-        git_pushes: sm.gitPushes,
-        input_tokens: input,
-        output_tokens: output,
-        cache_create_tokens: cacheCreate,
-        cache_read_tokens: cacheRead,
-        effective_tokens: effective,
-        total_tokens: total,
-        first_prompt: (side?.first_prompt as string) || sm.firstPrompt || '',
-        user_interruption_count: side?.user_interruptions,
-        tool_errors: sm.errorCount,
-        files_modified: agg?.files.size ?? side?.files_modified ?? 0,
-        lines_added: side?.lines_added ?? 0,
-        lines_removed: side?.lines_removed ?? 0,
-      });
-    }
-
-    // Preserve older sessions whose transcripts are gone from disk but whose
-    // sidecar metadata survives — append them so the list never regresses.
-    // Sidecars are Claude Code only, so skip them when scoped to another surface.
-    const liveIds = new Set(result.map((r) => r.session_id));
-    for (const s of sidecar) {
-      if (source !== 'all' && source !== 'code' && source !== 'claude') break;
-      if (liveIds.has(s.session_id)) continue;
-      const stats = eventStats.get(s.session_id);
-      const in_tok = s.input_tokens ?? 0;
-      const out_tok = s.output_tokens ?? 0;
-      result.push({
-        session_id: s.session_id,
-        source: 'code' as const,
-        project_path: s.project_path,
-        start_time: s.start_time,
-        duration_minutes: s.duration_minutes ?? 0,
-        user_message_count: s.user_message_count ?? 0,
-        assistant_message_count: s.assistant_message_count ?? 0,
-        tool_counts: s.tool_counts ?? {},
-        languages: s.languages ?? {},
-        git_commits: s.git_commits ?? 0,
-        git_pushes: s.git_pushes ?? 0,
-        input_tokens: stats?.inputTokens ?? in_tok,
-        output_tokens: stats?.outputTokens ?? out_tok,
-        cache_create_tokens: stats?.cacheCreateTokens ?? 0,
-        cache_read_tokens: stats?.cacheReadTokens ?? 0,
-        effective_tokens: stats?.effectiveTokens ?? in_tok + out_tok,
-        total_tokens: stats?.totalTokens ?? in_tok + out_tok,
-        first_prompt: (s.first_prompt as string) ?? '',
-        user_interruption_count: s.user_interruptions,
-        tool_errors: s.tool_errors,
-        files_modified: s.files_modified ?? 0,
-        lines_added: s.lines_added ?? 0,
-        lines_removed: s.lines_removed ?? 0,
-      });
-    }
-
-    result.sort((a, b) => Date.parse(b.start_time) - Date.parse(a.start_time));
-    res.json(wrap(result, Date.now()));
+// The Sessions tab's StatCard row — over exactly the rows /api/sessions lists
+// for the same ?source=, with a Claude / Codex split for the Both view.
+app.get('/api/sessions/summary', async (req, res) => {
+  try {
+    const { rows, insights } = await sessionRowsFor(parseSource(req.query.source));
+    res.json(wrap(buildSessionSummary(rows, insights.turns), Date.now()));
   } catch (e) {
     res.status(500).json({ error: String(e) });
   }
@@ -767,13 +652,25 @@ app.get('/api/heatmap', async (req, res) => {
 app.get('/api/projects', async (req, res) => {
   try {
     const days = intParam(req.query.days, 30, 7, 365);
-    const { events, computedAt } = await getEvents();
+    const [{ events, computedAt }, { insights }, sidecar] = await Promise.all([
+      getEvents(), getInsights(), readSessionMetas(),
+    ]);
     // buildProjectStats already drops cowork; the source filter keeps behavior
     // consistent when the UI explicitly scopes to one surface.
     const source = parseSource(req.query.source);
-    const data = memoBuilder('projects', [days, source], eventsFingerprint(), () =>
-      buildProjectStats(filterSource(events, source), computedAt, days),
-    );
+    const data = memoBuilder('projects', [days, source], eventsFingerprint(), () => {
+      const stats = buildProjectStats(filterSource(events, source), computedAt, days);
+      // Tags stored before project paths came from the transcript cwd are keyed by
+      // the old folder-decoded path; the UI moves them over using this list.
+      const legacy = legacyProjectPaths(insights, sidecar);
+      return {
+        ...stats,
+        projects: stats.projects.map((p) => {
+          const legacyPaths = legacy.get(p.path);
+          return legacyPaths?.length ? { ...p, legacyPaths } : p;
+        }),
+      };
+    });
     res.json(wrap(data, computedAt));
   } catch (e) {
     res.status(500).json({ error: String(e) });
@@ -1253,120 +1150,27 @@ app.get('/api/sessions/:id/transcript', async (req, res) => {
       return;
     }
 
-    // Parse the JSONL file on demand
-    const file = sm.file;
-
-    // The transcript is gone (Claude Code's cleanup, or deleted since the last
-    // scan). With history retention its usage lives on in the archive; there is
-    // just nothing left to show turn by turn. Same shape as a real transcript.
-    if (!file || !existsSync(file)) {
+    // The file is gone (Claude Code's ~30-day cleanup, a deleted rollout, or removed
+    // since the last scan). With history retention its usage lives on in the archive;
+    // there is just nothing left to show turn by turn. Same shape as a real transcript.
+    if (!sm.file || !existsSync(sm.file)) {
       res.json(wrap({
         sessionId,
         turns: [],
         compactions: 0,
         totalTurns: 0,
         archived: true,
-        message: 'This transcript was removed by Claude Code cleanup; only its usage history is kept.',
+        message: sm.source === 'codex'
+          ? "This thread's rollout file is no longer on disk; only its usage history is kept."
+          : 'This transcript was removed by Claude Code cleanup; only its usage history is kept.',
       }, Date.now()));
       return;
     }
-    interface Turn {
-      role: 'user' | 'assistant';
-      ts: number;
-      text: string;
-      tools: { name: string; brief: string }[];
-      model?: string;
-      effectiveTokens?: number;
-    }
-    const turns: Turn[] = [];
-    let compactions = 0;
 
-    const rl = createInterface({
-      input: createReadStream(file, { encoding: 'utf8' }),
-      crlfDelay: Infinity,
-    });
-
-    for await (const line of rl) {
-      if (!line || line.length < 2) continue;
-      let obj: any;
-      try { obj = JSON.parse(line); } catch { continue; }
-      if (obj.sessionId !== sessionId && obj.session_id !== sessionId) continue;
-
-      const ts = Date.parse(obj.timestamp ?? '');
-      if (Number.isNaN(ts)) continue;
-
-      if (obj.type === 'summary') {
-        compactions++;
-        continue;
-      }
-
-      if (obj.type === 'user' && obj.message?.role === 'user') {
-        const content = obj.message.content;
-        let text = '';
-        let hasToolResultOnly = true;
-
-        if (typeof content === 'string') {
-          text = content.slice(0, 600);
-          hasToolResultOnly = false;
-          if (/continued from a previous conversation/i.test(content)) compactions++;
-        } else if (Array.isArray(content)) {
-          for (const block of content) {
-            if (block?.type === 'text' && typeof block.text === 'string') {
-              text += block.text.slice(0, 600 - text.length);
-              hasToolResultOnly = false;
-              if (/continued from a previous conversation/i.test(block.text)) compactions++;
-            }
-          }
-          const hasNonResult = content.some((b: any) => b?.type !== 'tool_result');
-          hasToolResultOnly = !hasNonResult;
-        }
-
-        // Skip user entries that are tool_result-only
-        if (hasToolResultOnly) continue;
-
-        turns.push({ role: 'user', ts, text: text.slice(0, 600), tools: [] });
-      }
-
-      if (obj.type === 'assistant' && obj.message?.role === 'assistant') {
-        const usage = obj.message?.usage;
-        const model: string | undefined = obj.message?.model;
-        const inTok = usage ? (usage.input_tokens ?? 0) : 0;
-        const outTok = usage ? (usage.output_tokens ?? 0) : 0;
-        const cacheCreate = usage ? (usage.cache_creation_input_tokens ?? 0) : 0;
-        const effectiveTokens = inTok + outTok + cacheCreate;
-
-        let text = '';
-        const tools: { name: string; brief: string }[] = [];
-        const msgContent = obj.message?.content;
-
-        if (Array.isArray(msgContent)) {
-          for (const block of msgContent) {
-            if (block?.type === 'text' && typeof block.text === 'string') {
-              text += block.text.slice(0, 600 - text.length);
-            }
-            if (block?.type === 'tool_use') {
-              const brief = block.input?.description ?? block.input?.command ?? block.input?.file_path ?? '';
-              tools.push({ name: block.name ?? '', brief: String(brief).slice(0, 80) });
-            }
-          }
-        } else if (typeof msgContent === 'string') {
-          text = msgContent.slice(0, 600);
-        }
-
-        turns.push({ role: 'assistant', ts, text: text.slice(0, 600), tools, model, effectiveTokens });
-      }
-    }
-
-    const totalTurns = turns.length;
-    let finalTurns = turns;
-    let truncated = false;
-
-    if (totalTurns > 300) {
-      finalTurns = [...turns.slice(0, 50), ...turns.slice(totalTurns - 250)];
-      truncated = true;
-    }
-
-    res.json(wrap({ sessionId, turns: finalTurns, compactions, totalTurns, truncated: truncated || undefined }, Date.now()));
+    // Claude transcripts and Codex rollouts parse differently but return the same
+    // Turn shape (transcript.ts).
+    const transcript = await readTranscript(sm.file, sessionId, sm.source);
+    res.json(wrap({ sessionId, ...transcript }, Date.now()));
   } catch (e) {
     res.status(500).json({ error: String(e) });
   }
@@ -1384,45 +1188,10 @@ app.get('/api/search', async (req, res) => {
       return;
     }
     const days = clampDays(req.query.days, 30);
-    const from = Date.now() - days * 24 * 3600_000;
-
-    const { insights } = await getInsights();
-    const results: Array<{ sessionId: string; project: string; date: string; snippet: string; matches: number }> = [];
-
-    const qLower = q.toLowerCase();
-
-    for (const [sessionId, corpus] of insights.searchCorpus) {
-      const sm = insights.sessionsMeta.get(sessionId);
-      if (!sm) continue;
-      if (sm.lastTs < from) continue;
-
-      const corpusLower = corpus.toLowerCase();
-      let count = 0;
-      let idx = 0;
-      let firstIdx = -1;
-      while ((idx = corpusLower.indexOf(qLower, idx)) !== -1) {
-        count++;
-        if (firstIdx === -1) firstIdx = idx;
-        idx += qLower.length;
-      }
-      if (count === 0) continue;
-
-      // Build snippet: match ±60 chars
-      const start = Math.max(0, firstIdx - 60);
-      const end = Math.min(corpus.length, firstIdx + q.length + 60);
-      const snippet = (start > 0 ? '…' : '') + corpus.slice(start, end) + (end < corpus.length ? '…' : '');
-
-      const projectName = sm.projectPath
-        ? sm.projectPath.split(/[\\\/]/).filter(Boolean).pop() ?? sm.projectPath
-        : 'unknown';
-      const d = new Date(sm.firstTs);
-      const date = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-
-      results.push({ sessionId, project: projectName, date, snippet, matches: count });
-    }
-
-    results.sort((a, b) => b.matches - a.matches);
-    res.json(wrap(results.slice(0, 30), Date.now()));
+    const source = parseSource(req.query.source);
+    const [{ insights }, codexTitles] = await Promise.all([getInsights(), readCodexTitles()]);
+    const hits = searchSessions(insights, q, Date.now() - days * 24 * 3600_000, source, codexTitles);
+    res.json(wrap(hits, Date.now()));
   } catch (e) {
     res.status(500).json({ error: String(e) });
   }

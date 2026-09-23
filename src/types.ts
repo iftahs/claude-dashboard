@@ -304,8 +304,21 @@ export interface SessionMeta {
   session_id: string;
   source?: UsageSource;
   project_path: string;
+  /** Claude's custom / AI title, or the Codex thread name (session_index.jsonl). */
+  title?: string;
   start_time: string;
+  /** Wall clock, first → last record — idle time included. */
   duration_minutes: number;
+  /** Sum of recorded turn durations; null when no turn was recorded. */
+  active_ms?: number | null;
+  /** User turns that got an answer (Claude prompt → reply, Codex task_complete) — same on both platforms. */
+  turn_count?: number;
+  /** Pull requests the session opened or linked. */
+  pr_urls?: string[];
+  /** Client that wrote the session (Claude entrypoint / Codex originator) and its version. */
+  client?: string;
+  client_version?: string;
+  /** Every user line for Claude (tool results included) — prefer turn_count. */
   user_message_count: number;
   assistant_message_count: number;
   tool_counts: Record<string, number>;
@@ -468,6 +481,28 @@ export interface ProjectStat {
   effectiveTokens: number;
   cost: number;
   sessionCount: number;
+  /** Paths this project was filed under before paths came from the transcript cwd (tag-key migration). */
+  legacyPaths?: string[];
+}
+
+/** One platform's slice of the Sessions StatCard row (/api/sessions/summary). */
+export interface SessionSummaryPart {
+  sessions: number;
+  since: number | null;
+  longestActiveMs: number;
+  longestSessionId: string | null;
+  longestLabel: string;
+  medianTurnMs: number | null;
+  turnCount: number;
+  linesAdded: number;
+  linesRemoved: number;
+}
+
+export interface SessionSummary {
+  total: SessionSummaryPart;
+  /** Claude Code + Cowork. */
+  claude: SessionSummaryPart;
+  codex: SessionSummaryPart;
 }
 
 export interface ProjectData {
@@ -890,7 +925,11 @@ export interface SessionTranscript {
 
 export interface SearchResult {
   sessionId: string;
+  source?: UsageSource;
+  /** Last path segment of the project. */
   project: string;
+  projectPath?: string;
+  title?: string;
   date: string;
   snippet: string;
   matches: number;
