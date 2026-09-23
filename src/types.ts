@@ -680,6 +680,9 @@ export interface SessionTranscript {
   compactions: number;
   totalTurns: number;
   truncated?: boolean;
+  /** The transcript file is gone (Claude Code cleanup); `turns` is empty and `message` says why. */
+  archived?: boolean;
+  message?: string;
 }
 
 export interface SearchResult {

@@ -9,7 +9,7 @@ import { getEvents, eventsFingerprint } from './cache.ts';
 import { buildRecent, buildWeekly, buildModels, buildActivity, buildTools, buildHourlyHeatmap, buildProjectStats, filterSource, sourceMatches, statsCacheApplies, type SourceFilter } from './aggregate.ts';
 import { claudeDir, readConfig, readCredentials, readStatsSummary, readSessionMetas, fetchLiveUsage, fetchLiveProfile, fetchLiveUsageFor, fetchLiveProfileFor, readAccountCredentials, expiredTokenMessage, detectLitellm, fetchLiteLlmSpend } from './scan.ts';
 import { getInsights, insightsFingerprint } from './insights-scan.ts';
-import { primeData } from './data.ts';
+import { archiveSummary, forgetArchivedHistory, primeData } from './data.ts';
 import { memoBuilder } from './builder-cache.ts';
 import {
   buildErrors, buildRetries, buildLanguages, buildBranches, buildMcp,
@@ -377,6 +377,27 @@ app.get('/api/sources', async (_req, res) => {
       cowork: { available: coworkN > 0, events: coworkN, lastTs: coworkLast },
       codex: { available: codexN > 0, events: codexN, lastTs: codexLast },
     }, computedAt));
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+// Opt-in history archive (DASHBOARD_RETAIN_HISTORY=1): the slim rows of
+// transcripts Claude Code's cleanup deleted. See event-store.ts.
+app.get('/api/archive', async (_req, res) => {
+  try {
+    res.json(wrap(await archiveSummary(), Date.now()));
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+// Deletes the archive. A POST with a JSON body, so the CSRF guard above applies.
+app.post('/api/archive/forget', async (_req, res) => {
+  try {
+    const ok = await forgetArchivedHistory();
+    if (!ok) return void res.status(503).json({ error: 'The history archive could not be deleted (store unavailable).' });
+    res.json(wrap(await archiveSummary(), Date.now()));
   } catch (e) {
     res.status(500).json({ error: String(e) });
   }
@@ -1082,6 +1103,21 @@ app.get('/api/sessions/:id/transcript', async (req, res) => {
 
     // Parse the JSONL file on demand
     const file = sm.file;
+
+    // The transcript is gone (Claude Code's cleanup, or deleted since the last
+    // scan). With history retention its usage lives on in the archive; there is
+    // just nothing left to show turn by turn. Same shape as a real transcript.
+    if (!file || !existsSync(file)) {
+      res.json(wrap({
+        sessionId,
+        turns: [],
+        compactions: 0,
+        totalTurns: 0,
+        archived: true,
+        message: 'This transcript was removed by Claude Code cleanup; only its usage history is kept.',
+      }, Date.now()));
+      return;
+    }
     interface Turn {
       role: 'user' | 'assistant';
       ts: number;
