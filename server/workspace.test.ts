@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { claudeJsonPath, getInventory, getWorkspaceTasks, workspaceScope } from './workspace.ts';
@@ -162,4 +162,40 @@ test('getWorkspaceTasks: Codex plans (thread/turn/PLAN.md), and a merged all-pla
 
   const merged = await getInventory('all', now);
   assert.equal(merged.model, undefined); // two platforms have no single default model
+});
+
+test('getInventory: a linked skill folder (symlink / junction) is listed; a dangling link is not', async (t) => {
+  const root = await sandbox(t);
+  process.env.CLAUDE_DIR = join(root, '.claude');
+  process.env.CLAUDE_JSON = join(root, 'none.json');
+  const skills = join(root, '.claude', 'skills');
+  await put(join(skills, 'plain', 'SKILL.md'), 'x');
+  await put(join(root, 'store', 'linked', 'SKILL.md'), 'x');
+  await symlink(join(root, 'store', 'linked'), join(skills, 'linked'), 'junction');
+  await mkdir(join(root, 'store', 'gone'));
+  await symlink(join(root, 'store', 'gone'), join(skills, 'dangling'), 'junction');
+  await rm(join(root, 'store', 'gone'), { recursive: true });
+
+  const inv = await getInventory('claude', Date.now() + 80 * MIN);
+  assert.deepEqual(inv.skills, [{ name: 'linked' }, { name: 'plain' }]);
+});
+
+test('without Codex data the Codex half is empty, even when CODEX_DIR is the ~/.claude folder (Docker fallback)', async (t) => {
+  const root = await sandbox(t);
+  const claude = join(root, '.claude');
+  process.env.CLAUDE_DIR = claude;
+  process.env.CODEX_DIR = claude;
+  process.env.CLAUDE_JSON = join(root, 'none.json');
+  await put(join(claude, 'plans', 'a-plan.md'), '# A plan\n');
+  await put(join(claude, 'skills', 'mine', 'SKILL.md'), 'x');
+
+  const now = Date.now() + 100 * MIN;
+  const all = await getWorkspaceTasks('all', now, false);
+  assert.equal(all.plans.total, 1);
+  assert.ok(all.plans.items.every((p) => p.platform === undefined));
+  assert.equal((await getWorkspaceTasks('codex', now, false)).plans.total, 0);
+  assert.deepEqual((await getInventory('codex', now, false)).skills, []);
+  assert.deepEqual((await getInventory('all', now, false)).skills, [{ name: 'mine' }]);
+  // Ungated, the same folder is read a second time as Codex — the double count the gate prevents.
+  assert.equal((await getWorkspaceTasks('all', now, true)).plans.total, 2);
 });

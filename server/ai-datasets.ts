@@ -26,7 +26,8 @@ import {
   buildErrors, buildRetries, buildLanguages, buildBranches, buildMcp,
   buildComplexity, buildYield, buildRejections, buildSubagentStats, buildFileChurn, scopeInsights,
 } from './insights.ts';
-import { buildContributors } from './contributors.ts';
+import { buildContributors, type ContributorsData } from './contributors.ts';
+import { hasCodexEvents } from './sources.ts';
 import { getCommandUsage } from './history.ts';
 import { getWorkspaceTasks, getInventory, workspaceScope, type InventoryData, type WorkspaceTasksData } from './workspace.ts';
 import { getWorkflowStats, type WorkflowRunSummary } from './workflows.ts';
@@ -38,6 +39,16 @@ export type AiPlatform = 'claude' | 'codex' | 'both';
 
 export function platformOf(source: SourceFilter): AiPlatform {
   return source === 'codex' ? 'codex' : source === 'all' ? 'both' : 'claude';
+}
+
+/** A chat scope of `all` without any Codex data is a Claude-only install: scope and word it as Claude, never as both. */
+export function aiSource(source: SourceFilter, codexAvailable: boolean): SourceFilter {
+  return source === 'all' && !codexAvailable ? 'claude' : source;
+}
+
+/** `/api/sources`' codex.available. Without it, codexDir() may be Docker's fallback mount of ~/.claude. */
+async function codexHasData(): Promise<boolean> {
+  return hasCodexEvents((await getEvents()).events);
 }
 
 // ── Live plan limits, per provider ───────────────────────────────────────────
@@ -147,6 +158,9 @@ const WORKFLOWS_CLAUDE_ONLY =
 
 const RETRIES_CLAUDE_ONLY =
   'Codex patches never retry — each one applies, fails or is declined, and the next is a new change — so there is no one-shot rate while the dashboard is on Codex.';
+const COMMANDS_CLAUDE_ONLY =
+  'Codex records neither slash commands nor skill runs (a skill load is only a file read inside a shell command), ' +
+  'so command and skill usage is tracked for Claude Code only.';
 
 const SOFT_TIMEOUT_MS = 1500;
 const round2 = (n: number) => Math.round(n * 100) / 100;
@@ -193,6 +207,36 @@ async function scopedInsights(source: SourceFilter) {
 }
 
 // ── Row projections (the allowlist) ──────────────────────────────────────────
+
+export function rejectionsDetail(r: ReturnType<typeof buildRejections>, p: AiPlatform, limit: number) {
+  return {
+    total: r.total,
+    ...(p === 'claude' ? {} : { userDeclines: r.userDeclines, guardianDenials: r.guardianDenials }),
+    perTool: topN(r.perTool, limit, 'rejections desc'),
+  };
+}
+
+export function contributorsDetail(c: ContributorsData, limit: number) {
+  const projectWindow = (w: ContributorsData['day']) => ({
+    totalEstCostUsd: round2(w.totalCost),
+    requestCount: w.requestCount,
+    sessionCount: w.sessionCount,
+    behaviors: w.behaviors.map((b) => ({ key: b.key, headline: b.headline, pct: b.pct })),
+    subagents: topN(w.subagents, limit, 'pct desc'),
+    mcpServers: topN(w.mcpServers, limit, 'pct desc'),
+    skills: topN(w.skills, limit, 'pct desc'),
+    plugins: topN(w.plugins, limit, 'pct desc'),
+  });
+  return {
+    weight: c.weight,
+    weightNote:
+      c.weight === 'effectiveTokens'
+        ? 'Every pct is a share of EFFECTIVE TOKENS, not of cost (the Guardian auto-reviewer is priced at $0 but still spends the plan limit) — never quote a pct as a share of totalEstCostUsd.'
+        : 'Every pct is a share of estimated cost.',
+    day: projectWindow(c.day),
+    week: projectWindow(c.week),
+  };
+}
 
 function workflowSummaryRow(s: WorkflowRunSummary) {
   return {
@@ -374,7 +418,7 @@ export const DATASETS: DatasetDef[] = [
         'Per-session complexity: individual Claude Code sessions and Codex threads with their turn count, tool calls, subagents (Codex: Guardian auto-reviews), ' +
         'effective tokens and duration. Use this for "which session was heaviest/longest/most expensive". A session is NOT a project and NOT a workflow.',
     },
-    trigger: /\bsessions?\b|\bconversations?\b|\bchats?\b|\bcomplexit|\bheaviest\b|\blongest\b/i,
+    trigger: /\bsessions?\b|\bthreads?\b|\bconversations?\b|\bchats?\b|\bcomplexit|\bheaviest\b|\blongest\b/i,
     async load({ days, source, limit }) {
       const { d, now } = await scopedInsights(source);
       const rows = memoBuilder('complexity:full', [days, source], insightsFingerprint(), () =>
@@ -406,10 +450,12 @@ export const DATASETS: DatasetDef[] = [
     id: 'commands',
     describes: 'Slash-command and skill usage: which /commands and skills were invoked and how often.',
     describesFor: {
-      codex: 'Skill usage in Codex threads: which skills ran and in how many threads. (Slash commands are recorded for Claude Code only.)',
+      both: 'Slash-command and skill usage — CLAUDE CODE ONLY (Codex records neither): which /commands and skills were invoked and how often.',
     },
+    claudeOnly: COMMANDS_CLAUDE_ONLY,
     trigger: /\bslash\b|\bcommands?\b|\bskills?\b|\/\w+/i,
     async load({ days, source, limit }) {
+      if (platformOf(source) === 'codex') return { unavailable: COMMANDS_CLAUDE_ONLY };
       const c = await soft(() => getCommandUsage(days, undefined, source));
       if (!c) return { unavailable: 'command history could not be read in time' };
       return {
@@ -480,16 +526,19 @@ export const DATASETS: DatasetDef[] = [
   {
     id: 'rejections',
     describes: 'Permission rejections: how many tool calls the user denied, broken down per tool.',
+    describesFor: {
+      codex:
+        'Rejections in Codex: tool calls the user declined (userDeclines) and planned actions the Guardian auto-reviewer denied ' +
+        '(guardianDenials), per tool. A Guardian denial is NOT a user rejection.',
+      both:
+        'Rejections: tool calls the user declined (Claude permission prompts, Codex approvals — userDeclines) and actions the Codex ' +
+        'Guardian auto-reviewer denied (guardianDenials), per tool. A Guardian denial is NOT a user rejection.',
+    },
     trigger: /\breject|\bdenied?\b|\bpermissions?\b|\bblocked\b/i,
     async load({ days, source, limit }) {
       const { d, now } = await scopedInsights(source);
       const r = memoBuilder('rejections', [days, source], insightsFingerprint(), () => buildRejections(d, days, now));
-      return {
-        window: win(days, Date.now()),
-        source,
-        total: r.total,
-        perTool: topN(r.perTool, limit, 'rejections desc'),
-      };
+      return { window: win(days, Date.now()), source, ...rejectionsDetail(r, platformOf(source), limit) };
     },
   },
   {
@@ -533,10 +582,12 @@ export const DATASETS: DatasetDef[] = [
       'What is driving your rate-limit usage: a cost-weighted Day and Week breakdown by behavior, subagent, MCP server, skill and plugin ' +
       '(the same panel the Claude CLI shows).',
     describesFor: {
-      codex: 'What is driving your Codex rate-limit usage: a cost-weighted Day and Week breakdown by behavior, subagent, MCP server, skill and plugin.',
+      codex:
+        'What is driving your Codex rate-limit usage: an effective-token-weighted Day and Week breakdown (shares of effective tokens, ' +
+        'not of cost) by behavior and subagent, Guardian auto-reviews included.',
       both:
-        'What is driving your rate-limit usage on this scope: a cost-weighted Day and Week breakdown by behavior, subagent, MCP server, skill and plugin. ' +
-        'Claude and Codex limits are separate quotas.',
+        'What is driving your rate-limit usage on this scope: a Day and Week breakdown by behavior, subagent, MCP server, skill and plugin — ' +
+        'shares of estimated cost, or of effective tokens when the scope holds only Codex data (see `weight`). Claude and Codex limits are separate quotas.',
     },
     trigger: /\bcontribut|\bwhat.?s driving\b|\bdrives?\b|\bwhat.*(using|eating|burning).*(limit|quota)\b/i,
     async load({ source, limit }) {
@@ -544,22 +595,11 @@ export const DATASETS: DatasetDef[] = [
       const c = memoBuilder('contributors', [source], eventsFingerprint(), () =>
         buildContributors(filterSource(events, source), computedAt),
       );
-      const projectWindow = (w: typeof c.day) => ({
-        totalEstCostUsd: round2(w.totalCost),
-        requestCount: w.requestCount,
-        sessionCount: w.sessionCount,
-        behaviors: w.behaviors.map((b) => ({ key: b.key, headline: b.headline, pct: b.pct })),
-        subagents: topN(w.subagents, limit, 'pct desc'),
-        mcpServers: topN(w.mcpServers, limit, 'pct desc'),
-        skills: topN(w.skills, limit, 'pct desc'),
-        plugins: topN(w.plugins, limit, 'pct desc'),
-      });
       return {
         window: 'native',
         source,
         scopeNote: 'IGNORES the chat window: `day` is the last 24h and `week` is the last 7 days, always.',
-        day: projectWindow(c.day),
-        week: projectWindow(c.week),
+        ...contributorsDetail(c, limit),
       };
     },
   },
@@ -621,7 +661,9 @@ export const DATASETS: DatasetDef[] = [
     trigger: /\btasks?\b|\bplans?\b|\bbacklog\b|\bblocked\b|\btodos?\b/i,
     async load({ source, limit }) {
       const scope = workspaceScope(source);
-      const t = await soft<WorkspaceTasksData>(() => getWorkspaceTasks(scope));
+      const t = await soft<WorkspaceTasksData>(async () =>
+        getWorkspaceTasks(scope, Date.now(), scope !== 'claude' && (await codexHasData())),
+      );
       if (!t) return { unavailable: 'workspace tasks could not be read in time' };
       const plans = {
         totalPlans: t.plans.total,
@@ -662,14 +704,15 @@ export const DATASETS: DatasetDef[] = [
     trigger: /\bplugins?\b|\bmarketplaces?\b|\binventory\b|\bhooks?\b|\binstalled\b|\bautomations?\b|\bscheduled\b/i,
     async load({ source }) {
       const scope = workspaceScope(source);
+      const codexData = scope !== 'claude' && (await codexHasData());
       if (scope !== 'all') {
-        const inv = await soft<InventoryData>(() => getInventory(scope));
+        const inv = await soft<InventoryData>(() => getInventory(scope, Date.now(), codexData));
         if (!inv) return { unavailable: 'inventory could not be read in time' };
         return { window: 'all-time', source: scope, ...inventoryDetail(inv) };
       }
       const [claude, codex] = await Promise.all([
         soft<InventoryData>(() => getInventory('claude')),
-        soft<InventoryData>(() => getInventory('codex')),
+        soft<InventoryData>(() => getInventory('codex', Date.now(), codexData)),
       ]);
       const unavailable = { unavailable: 'inventory could not be read in time' };
       return {
@@ -736,7 +779,7 @@ function codexLimitsDetail(live: LiveRead<CodexLiveData>) {
 
 const BY_ID = new Map(DATASETS.map((d) => [d.id, d]));
 
-/** The Claude-wording catalog (ids + descriptions), as the router has always used it. */
+/** The Claude-wording catalog (ids + descriptions). */
 export const CATALOG: { id: DatasetId; describes: string }[] = DATASETS.map((d) => ({
   id: d.id,
   describes: d.describes,

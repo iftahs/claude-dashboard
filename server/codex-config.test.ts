@@ -154,3 +154,38 @@ test('projectAutomation: name, status and schedule only — never the prompt', (
   assert.ok(!JSON.stringify(a).includes('PRIVATE'));
   assert.equal(projectAutomation('', 'fallback-dir').name, 'fallback-dir');
 });
+
+test('projectCodexConfig: a UTF-8 BOM does not hide the first key', () => {
+  const c = projectCodexConfig('\uFEFFmodel = "bommed"\r\napproval_policy = "never"\r\n');
+  assert.equal(c.model, 'bommed');
+  assert.equal(c.approvalPolicy, 'never');
+});
+
+test('projectCodexConfig: the active profile overrides the top-level keys, other profiles never apply', () => {
+  const text = [
+    'profile = "work"',
+    'model = "gpt-top"',
+    'sandbox_mode = "read-only"',
+    '[profiles.work]',
+    'model = "o-work"',
+    'approval_policy = "never"',
+    'instructions = "SECRET-PROFILE"',
+    '[profiles.play]',
+    'model = "o-play"',
+    'service_tier = "flex"',
+  ].join('\n');
+  const c = projectCodexConfig(text);
+  assert.equal(c.profile, 'work');
+  assert.equal(c.model, 'o-work');
+  assert.equal(c.approvalPolicy, 'never');
+  assert.equal(c.sandboxMode, 'read-only'); // the profile does not set it: the top level stands
+  assert.equal(c.serviceTier, null);
+  assert.ok(!JSON.stringify(c).includes('SECRET'));
+
+  const unselected = projectCodexConfig(text.replace('profile = "work"\n', ''));
+  assert.equal(unselected.profile, null);
+  assert.equal(unselected.model, 'gpt-top');
+
+  const dotted = projectCodexConfig('profile = "p"\nmodel = "top"\nprofiles.p.model = "dotted"\n');
+  assert.equal(dotted.model, 'dotted');
+});

@@ -24,7 +24,7 @@ import { getLiveCodexAgents } from './codex-agents-live.ts';
 import { readFile } from 'node:fs/promises';
 import { computeCodexBlock, buildLimitHits } from './aggregate.ts';
 import { codexDir, scanRoots } from './scan.ts';
-import { summarizeSources } from './sources.ts';
+import { hasCodexEvents, summarizeSources } from './sources.ts';
 import type { CodexLiveData } from './codex-live.ts';
 import { getWorkflows, getWorkflowStats } from './workflows.ts';
 import { readCodexTitles } from './codex-titles.ts';
@@ -34,6 +34,7 @@ import { getAgentDetail } from './workflow-agent-detail.ts';
 import { runAi, runAiStream, resolveBackend, AiUnavailableError, AiTokenRejectedError, AiCallError, type AiCreds } from './ai.ts';
 import { buildAiPayload, buildChatUserMessage, chatSystem, buildSectionUserMessage, sectionSystem, suggestSystem, buildSuggestMessage, type AiScope, type ChatTurn } from './ai-context.ts';
 import { routeDatasets } from './ai-router.ts';
+import { aiSource } from './ai-datasets.ts';
 import { getVersionInfo, isDocker } from './version.ts';
 import { allowedHosts, checkRequest, publicSettings } from './http-guard.ts';
 
@@ -66,6 +67,11 @@ app.use(express.json({ limit: '1mb' }));
 
 function wrap(data: unknown, computedAt: number) {
   return { data, computedAt, claudeDir: claudeDir() };
+}
+
+/** /api/sources' codex.available — what gates every Codex read and the "both" scope. */
+async function codexHasData(): Promise<boolean> {
+  return hasCodexEvents((await getEvents()).events);
 }
 
 /** Parse the optional ?source=all|claude|code|cowork|codex filter (default 'all'). */
@@ -968,8 +974,12 @@ function parseSuggestions(text: string): string[] {
  * is actually looking at. Every overview number then shares a window, so the model
  * can never "notice" a phantom inconsistency between two differently-scoped figures.
  */
-function parseAiScope(body: any): AiScope {
-  return { source: parseSource(body?.source), days: clampDays(body?.days, 30) };
+async function parseAiScope(body: any): Promise<AiScope> {
+  const source = parseSource(body?.source);
+  return {
+    source: source === 'all' ? aiSource(source, await codexHasData()) : source,
+    days: clampDays(body?.days, 30),
+  };
 }
 
 /**
@@ -1018,8 +1028,8 @@ app.post('/api/ai/chat', async (req, res) => {
     }
     const history = parseHistory(req.body?.history);
     const creds = parseAiCreds(req.body?.config);
-    const scope = parseAiScope(req.body);
-    const route = await routeDatasets(question, history, creds);
+    const scope = await parseAiScope(req.body);
+    const route = await routeDatasets(question, history, creds, scope.source);
     const payload = await buildAiPayload(scope, route.ids, { redact: shouldRedact(creds) });
     // Stream the answer as chunked text/plain. Headers flush on the first delta;
     // an error before any delta is still sent as JSON (headers not yet sent).
@@ -1090,7 +1100,7 @@ app.post('/api/ai/suggestions', async (req, res) => {
     }
     const creds = parseAiCreds(req.body?.config);
     // Overview only: the chips just need the catalog to know what is askable.
-    const scope = parseAiScope(req.body);
+    const scope = await parseAiScope(req.body);
     const payload = await buildAiPayload(scope, [], { redact: shouldRedact(creds) });
     const { text } = await runAi(
       { system: suggestSystem(scope.source), user: buildSuggestMessage(payload, history), maxTokens: 200 },
@@ -1109,7 +1119,7 @@ app.post('/api/ai/suggestions', async (req, res) => {
  */
 app.get('/api/ai/context', async (req, res) => {
   try {
-    const payload = await buildAiPayload(parseAiScope(req.query), []);
+    const payload = await buildAiPayload(await parseAiScope(req.query), []);
     res.json(wrap(payload, Date.now()));
   } catch (e) {
     sendAiError(res, e);
@@ -1128,7 +1138,9 @@ function parseWorkspaceScope(raw: unknown): WorkspaceScope {
 
 app.get('/api/workspace/tasks', async (req, res) => {
   try {
-    res.json(wrap(await getWorkspaceTasks(parseWorkspaceScope(req.query.source)), Date.now()));
+    const scope = parseWorkspaceScope(req.query.source);
+    const codex = scope !== 'claude' && (await codexHasData());
+    res.json(wrap(await getWorkspaceTasks(scope, Date.now(), codex), Date.now()));
   } catch (e) {
     res.status(500).json({ error: String(e) });
   }
@@ -1136,7 +1148,9 @@ app.get('/api/workspace/tasks', async (req, res) => {
 
 app.get('/api/workspace/inventory', async (req, res) => {
   try {
-    res.json(wrap(await getInventory(parseWorkspaceScope(req.query.source)), Date.now()));
+    const scope = parseWorkspaceScope(req.query.source);
+    const codex = scope !== 'claude' && (await codexHasData());
+    res.json(wrap(await getInventory(scope, Date.now(), codex), Date.now()));
   } catch (e) {
     res.status(500).json({ error: String(e) });
   }

@@ -217,8 +217,15 @@ export function mergeTasks(claude: WorkspaceTasksData, codex: WorkspaceTasksData
   };
 }
 
-export async function getWorkspaceTasks(scope: WorkspaceScope = 'claude', now = Date.now()): Promise<WorkspaceTasksData> {
-  if (scope !== 'all') return tasksFor(scope, now);
+// Without Codex events (codexData false) codexDir() may be Docker's fallback mount of ~/.claude: never read it as Codex.
+export async function getWorkspaceTasks(
+  scope: WorkspaceScope = 'claude',
+  now = Date.now(),
+  codexData = true,
+): Promise<WorkspaceTasksData> {
+  if (!codexData && scope === 'codex') return tasksData([], {}, []);
+  if (!codexData || scope === 'claude') return tasksFor('claude', now);
+  if (scope === 'codex') return tasksFor('codex', now);
   const [claude, codex] = await Promise.all([tasksFor('claude', now), tasksFor('codex', now)]);
   return mergeTasks(claude, codex);
 }
@@ -270,7 +277,14 @@ export function claudeJsonPath(dir: string, env: NodeJS.ProcessEnv = process.env
 /** Skill folders under `root` that hold a SKILL.md — by folder name; the file itself is never read. */
 async function listSkills(root: string, system = false): Promise<{ name: string; system?: boolean }[]> {
   const out: { name: string; system?: boolean }[] = [];
-  for (const name of await listDirs(root)) {
+  let entries: Dirent[] = [];
+  try {
+    entries = await readdir(root, { withFileTypes: true });
+  } catch {
+    return out;
+  }
+  // A linked skill folder (symlink, or a junction on Windows) loads like a real one; the SKILL.md stat follows it.
+  for (const { name } of entries.filter((d) => d.isDirectory() || d.isSymbolicLink())) {
     if (name.startsWith('.')) continue;
     try {
       await stat(join(root, name, 'SKILL.md'));
@@ -387,6 +401,10 @@ async function codexInventory(): Promise<InventoryData> {
   };
 }
 
+function emptyInventory(): InventoryData {
+  return { plugins: [], marketplaces: [], enabledPlugins: [], mcpServers: [], hooks: [], skills: [], automations: [] };
+}
+
 const invCache: Cache<InventoryData> = new Map();
 
 function inventoryFor(platform: WorkspacePlatform, now: number): Promise<InventoryData> {
@@ -408,8 +426,10 @@ export function mergeInventory(claude: InventoryData, codex: InventoryData): Inv
   };
 }
 
-export async function getInventory(scope: WorkspaceScope = 'claude', now = Date.now()): Promise<InventoryData> {
-  if (scope !== 'all') return inventoryFor(scope, now);
+export async function getInventory(scope: WorkspaceScope = 'claude', now = Date.now(), codexData = true): Promise<InventoryData> {
+  if (!codexData && scope === 'codex') return emptyInventory();
+  if (!codexData || scope === 'claude') return inventoryFor('claude', now);
+  if (scope === 'codex') return inventoryFor('codex', now);
   const [claude, codex] = await Promise.all([inventoryFor('claude', now), inventoryFor('codex', now)]);
   return mergeInventory(claude, codex);
 }

@@ -1,7 +1,11 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { chatSystem, sectionSystem, suggestSystem, buildSuggestMessage, type AiPayload } from './ai-context.ts';
-import { CATALOG, catalogFor, codexLimitFields, loadDatasets, platformOf } from './ai-datasets.ts';
+import {
+  CATALOG, aiSource, catalogFor, codexLimitFields, contributorsDetail, lexicalRoute, loadDatasets, platformOf, rejectionsDetail,
+} from './ai-datasets.ts';
+import { routerCatalog, routerSystem } from './ai-router.ts';
+import type { ContribWindow } from './contributors.ts';
 import type { CodexLiveData } from './codex-live.ts';
 
 test('platformOf: Claude surfaces are claude, codex is codex, all is both', () => {
@@ -10,6 +14,69 @@ test('platformOf: Claude surfaces are claude, codex is codex, all is both', () =
   assert.equal(platformOf('claude'), 'claude');
   assert.equal(platformOf('codex'), 'codex');
   assert.equal(platformOf('all'), 'both');
+});
+
+test('aiSource: "all" is both only when Codex data exists; a Claude-only install is scoped as Claude', () => {
+  assert.equal(aiSource('all', false), 'claude');
+  assert.equal(platformOf(aiSource('all', false)), 'claude');
+  assert.equal(aiSource('all', true), 'all');
+  for (const s of ['code', 'cowork', 'claude', 'codex'] as const) {
+    assert.equal(aiSource(s, false), s);
+    assert.equal(aiSource(s, true), s);
+  }
+});
+
+test('commands: unavailable under Codex (Codex records no slash commands or skill runs), Claude-only under both', () => {
+  const codex = catalogFor('codex').find((c) => c.id === 'commands')!;
+  assert.match(codex.unavailable ?? '', /Codex records neither slash commands nor skill runs/);
+  assert.doesNotMatch(codex.describes, /Codex threads/);
+  const both = catalogFor('all').find((c) => c.id === 'commands')!;
+  assert.equal(both.unavailable, undefined);
+  assert.match(both.describes, /CLAUDE CODE ONLY/);
+});
+
+test('lexicalRoute: Codex "thread" questions reach the sessions dataset', () => {
+  for (const q of ['Which thread used the most tokens?', 'What was my most expensive Codex thread?', 'Show my top threads by cost']) {
+    assert.ok(lexicalRoute(q).includes('sessions'), q);
+  }
+});
+
+test('router: the model router gets the scope\'s own catalog and product name', () => {
+  const codex = routerCatalog('codex');
+  const ids = codex.map((c) => c.id);
+  assert.ok(!ids.includes('workflows') && !ids.includes('commands'));
+  assert.ok(codex.every((c) => !/CLI conversations|Claude CLI|Task subagents/.test(c.describes)));
+  assert.match(codex.find((c) => c.id === 'sessions')!.describes, /Codex threads/);
+  assert.match(routerSystem('codex'), /Codex/);
+  assert.doesNotMatch(routerSystem('codex'), /Claude Code usage dashboard/);
+  assert.match(routerSystem('claude'), /a Claude Code usage dashboard/);
+  assert.deepEqual(routerCatalog('code'), CATALOG);
+});
+
+test('rejections: Codex and both split user declines from Guardian denials; Claude keeps the total alone', () => {
+  const r = { total: 6, guardianDenials: 5, userDeclines: 1, perTool: [{ name: 'GuardianReview', calls: 9, rejections: 5 }] };
+  const codex = rejectionsDetail(r, 'codex', 10);
+  assert.equal(codex.total, 6);
+  assert.equal(codex.guardianDenials, 5);
+  assert.equal(codex.userDeclines, 1);
+  assert.equal(rejectionsDetail(r, 'both', 10).guardianDenials, 5);
+  assert.deepEqual(Object.keys(rejectionsDetail(r, 'claude', 10)).sort(), ['perTool', 'total']);
+  assert.match(catalogFor('codex').find((c) => c.id === 'rejections')!.describes, /Guardian denial is NOT a user rejection/);
+  assert.match(chatSystem('codex'), /guardianDenials/);
+});
+
+test('contributors: a Codex breakdown is labelled effective-token-weighted, never cost-weighted', () => {
+  const w: ContribWindow = {
+    totalCost: 76.81, requestCount: 10, sessionCount: 2,
+    behaviors: [{ key: 'cron', headline: 'h', body: 'b', pct: 82 }],
+    subagents: [{ name: 'guardian_review', pct: 1 }], mcpServers: [], skills: [], plugins: [],
+  };
+  const codex = contributorsDetail({ day: w, week: w, weight: 'effectiveTokens' }, 5);
+  assert.equal(codex.weight, 'effectiveTokens');
+  assert.match(codex.weightNote, /EFFECTIVE TOKENS, not of cost/);
+  assert.equal(codex.week.behaviors[0].pct, 82);
+  assert.match(contributorsDetail({ day: w, week: w, weight: 'cost' }, 5).weightNote, /estimated cost/);
+  assert.doesNotMatch(catalogFor('codex').find((c) => c.id === 'contributors')!.describes, /cost-weighted/);
 });
 
 test('chatSystem(codex): answers Codex / OpenAI questions and never speaks Claude Code', () => {

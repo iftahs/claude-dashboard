@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { summarizeSources } from './sources.ts';
+import { hasCodexEvents, summarizeSources } from './sources.ts';
 
 // Synthetic events only.
 const dirs = { claudeDir: '/data/.claude', codexDir: '/data/.codex', coworkDir: '/data/cowork' };
@@ -42,4 +42,10 @@ test('summarizeSources keeps the original payload keys for older clients', () =>
   assert.deepEqual(Object.keys(s.code).sort(), ['events', 'lastTs']);
   assert.deepEqual(Object.keys(s.cowork).sort(), ['available', 'events', 'lastTs']);
   assert.deepEqual(Object.keys(s.codex).sort(), ['available', 'events', 'lastTs']);
+});
+
+test('hasCodexEvents agrees with summarizeSources codex.available', () => {
+  for (const events of [[], [{ source: 'code' as const, ts: 1 }], [{ source: 'cowork' as const, ts: 1 }, { source: 'codex' as const, ts: 2 }]]) {
+    assert.equal(hasCodexEvents(events), summarizeSources(events, dirs).codex.available);
+  }
 });

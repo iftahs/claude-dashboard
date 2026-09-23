@@ -74,6 +74,9 @@ export interface AiPayload {
     autoReviewRatePct?: number | null;
     commitRatePct: number;
     rejections: number;
+    /** Codex / both: `rejections` split into user declines and Guardian auto-review denials. */
+    userDeclines?: number;
+    guardianDenials?: number;
     mcpCalls: number;
     builtinCalls: number;
   };
@@ -103,7 +106,7 @@ function notesFor(p: AiPlatform): string[] {
     'Every number in `account`, `topModels`, `topTools`, `topProjects` and `behavior` covers EXACTLY scope.windowDays days on surface scope.source. Blocks inside `detail` state their own `window`/`source` whenever they differ. NEVER compare two numbers from different windows, and NEVER claim the data is inconsistent because of a window mismatch — check the windows first.',
     'Any list with truncated:true shows only the top `shown` of `total` rows sorted by `sortedBy`, with the remainder rolled up in `other`. Never state a total, a count, or a "that is all of them" claim that depends on the hidden rows.',
     ...(p === 'codex'
-      ? ['A catalog entry with `unavailable` is a Claude Code feature with no Codex equivalent — say so plainly; never answer it with Claude data.']
+      ? ['A catalog entry with `unavailable` has no Codex data (a Claude Code feature, or something Codex does not record) — say so plainly; never answer it with Claude data.']
       : [
           'Workflow tokens and costs are a SUBSET of the account totals, never an addition — do not add them together.',
           'Project stats exclude Cowork sessions (their paths are sandbox-internal), so per-project costs can sum to LESS than the account total. That is expected, not a bug.',
@@ -239,6 +242,7 @@ async function assemble(scope: AiScope, ids: DatasetId[], redact: boolean): Prom
       ...(platform === 'claude' ? {} : { autoReviewRatePct: sub.autoReview.rate === null ? null : pct(sub.autoReview.rate) }),
       commitRatePct: pct(yld.rate),
       rejections: rej.total,
+      ...(platform === 'claude' ? {} : { userDeclines: rej.userDeclines, guardianDenials: rej.guardianDenials }),
       mcpCalls: mcp.mcpCalls,
       builtinCalls: mcp.builtinCalls,
     },
@@ -362,7 +366,7 @@ async function loadDetail(
 // ── Prompt templates ──────────────────────────────────────────────────────────
 
 /** What the dashboard is showing, in the words each prompt uses. */
-const PRODUCT: Record<AiPlatform, string> = {
+export const PRODUCT: Record<AiPlatform, string> = {
   claude: 'Claude Code',
   codex: "Codex (OpenAI's coding agent in the ChatGPT desktop app)",
   both: "Claude Code and Codex (OpenAI's coding agent in the ChatGPT desktop app)",
@@ -389,11 +393,13 @@ const VOCABULARY: Record<AiPlatform, string> = {
   codex:
     'VOCABULARY IS EXACT. A "project" is a repo directory (a thread\'s working directory). A "session" is one Codex thread. ' +
     'A Codex "subagent" is usually a Guardian auto-review — a safety check of a planned action, NOT delegated work. ' +
+    'A "rejection" is a tool call the USER declined (userDeclines); a Guardian denial (guardianDenials) is the auto-reviewer blocking an action, NOT a user rejection. ' +
     'Workflows and task lists are Claude Code features with no Codex equivalent.',
   both:
     'VOCABULARY IS EXACT. A "workflow" is one run of Claude Code\'s workflow-orchestration tool (Claude only). A "project" is a repo directory. ' +
     'A "session" is one Claude Code conversation or one Codex thread. A "subagent" is a Claude Task spawn, or on Codex usually a Guardian ' +
-    'auto-review (a safety check, NOT delegated work). Claude and Codex rate limits are separate quotas.',
+    'auto-review (a safety check, NOT delegated work). A "rejection" is a tool call the USER declined (userDeclines); a Codex Guardian ' +
+    'denial (guardianDenials) is the auto-reviewer blocking an action, NOT a user rejection. Claude and Codex rate limits are separate quotas.',
 };
 
 /** The chat's system prompt, in the vocabulary of the platform the chat is scoped to. */
@@ -504,7 +510,7 @@ export function buildSectionUserMessage(section: string, data: unknown): string 
 
 // ── Follow-up suggestions ───────────────────────────────────────────────────
 
-const KNOWLEDGE: Record<AiPlatform, string> = {
+export const KNOWLEDGE: Record<AiPlatform, string> = {
   claude: 'general Claude / Claude Code knowledge',
   codex: 'general Codex / OpenAI knowledge',
   both: 'general Claude / Claude Code or Codex / OpenAI knowledge',

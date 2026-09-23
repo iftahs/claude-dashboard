@@ -949,6 +949,8 @@ export interface InventoryData {
 export interface CodexConfigData {
   /** config.toml exists and was readable. */
   available: boolean;
+  /** The active `profile = "<name>"`; its values are already applied to the fields below. */
+  profile: string | null;
   model: string | null;
   reasoningEffort: string | null;
   approvalPolicy: string | null;

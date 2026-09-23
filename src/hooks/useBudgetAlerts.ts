@@ -76,7 +76,7 @@ interface PlatformRows {
  * header switcher shows (switching the view never fires or hides an alert).
  *
  * Each platform's 7-day spend comes from `liveWeekly` when that poll is already
- * scoped to the platform (a Claude-only install always is), else from its own
+ * scoped to the platform (a Claude-only install is, once /api/sources answers), else from its own
  * explicit `?source=claude` / `?source=codex` poll — which only runs while that
  * platform has a cap and alerts are on. Fires a browser notification (and
  * optional chime) the first time spend crosses 70 / 90 / 100% of a cap, once per
@@ -86,7 +86,7 @@ interface PlatformRows {
  */
 export function useBudgetAlerts(mode: Settings['budgetAlert']) {
   const [caps] = usePlatformLimits();
-  const { effectiveSource, codexAvailable } = useSource();
+  const { effectiveSource, codexAvailable, sourcesLoaded, sourcesError } = useSource();
   const { liveWeekly } = useLiveData();
   const { weekStart } = useConfigMode();
   const { costPerDay } = useCostMetrics();
@@ -97,7 +97,8 @@ export function useBudgetAlerts(mode: Settings['budgetAlert']) {
   const codexCapped = on && codexAvailable && hasCaps(caps.codex);
   // liveWeekly (and the Trends-window `weekly` behind costPerDay) already cover
   // exactly this platform: reuse them instead of polling the same numbers twice.
-  const claudeInView = effectiveSource === 'claude' || (!codexAvailable && effectiveSource === null);
+  // Until /api/sources answers, the unscoped poll may still include Codex spend.
+  const claudeInView = sourcesLoaded && (effectiveSource === 'claude' || (!codexAvailable && effectiveSource === null));
   const codexInView = effectiveSource === 'codex';
 
   const claudePoll = usePolling<WeeklyData>(claudeCapped && !claudeInView ? `${WEEKLY_7D}&source=claude` : '', SCOPED_POLL_MS);
@@ -143,6 +144,8 @@ export function useBudgetAlerts(mode: Settings['budgetAlert']) {
   useEffect(() => {
     if (mode === 'off') return;
     if (!('Notification' in window) || Notification.permission !== 'granted') return;
+    // The wording names the platform only once we know Codex exists; a failing /api/sources still alerts.
+    if (!sourcesLoaded && !sourcesError) return;
     const state = (fired.current ??= readAlertMemory(FIRED_KEY, isFired));
     let changed = false;
 
@@ -188,5 +191,5 @@ export function useBudgetAlerts(mode: Settings['budgetAlert']) {
       }
     }
     if (changed) writeAlertMemory(FIRED_KEY, state);
-  }, [perPlatform, mode, codexAvailable]);
+  }, [perPlatform, mode, codexAvailable, sourcesLoaded, sourcesError]);
 }

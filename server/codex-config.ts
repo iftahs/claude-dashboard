@@ -10,6 +10,9 @@
  *
  *   model, model_reasoning_effort, approval_policy, sandbox_mode, personality,
  *   service_tier                      top-level strings
+ *   profile                           the active profile's name
+ *   [profiles.<name>]                 the six keys above, applied over the top level
+ *                                     for the active profile only
  *   notify                            presence only (the command is never read)
  *   [plugins."<name>@<market>"]       the `enabled` flag
  *   [marketplaces.<name>]             the name
@@ -156,7 +159,7 @@ function readKeyPath(s: string, i: number): { path: string[]; end: number } | nu
  * "fewer fields shown", not to a broken tab.
  */
 export function scanToml(text: string, visit: TomlVisitor): void {
-  const s = text.replace(/\r\n?/g, '\n');
+  const s = text.replace(/^\uFEFF/, '').replace(/\r\n?/g, '\n');
   let table: string[] = [];
   let i = 0;
   const nextLine = (from: number) => {
@@ -289,6 +292,8 @@ export function commandBasename(command: string | null): string | null {
 export interface CodexConfigData {
   /** config.toml exists and was readable. */
   available: boolean;
+  /** The active `profile = "<name>"`; its [profiles.<name>] values are already applied to the fields below. */
+  profile: string | null;
   model: string | null;
   reasoningEffort: string | null;
   approvalPolicy: string | null;
@@ -318,6 +323,7 @@ const TOP_LEVEL = new Map<string, (o: CodexConfigData, v: string | null) => void
 export function emptyCodexConfig(available = false): CodexConfigData {
   return {
     available,
+    profile: null,
     model: null,
     reasoningEffort: null,
     approvalPolicy: null,
@@ -345,6 +351,7 @@ export function projectCodexConfig(text: string): CodexConfigData {
   const marketplaces = new Set<string>();
   const mcp = new Map<string, string | null>();
   const projects = new Map<string, string | null>();
+  const profiles = new Map<string, Map<string, string | null>>();
 
   const touch = (path: string[]) => {
     const [root, name] = path;
@@ -361,6 +368,7 @@ export function projectCodexConfig(text: string): CodexConfigData {
       if (path.length === 1) {
         const set = TOP_LEVEL.get(path[0]);
         if (set) set(out, tomlString(raw));
+        else if (path[0] === 'profile') out.profile = tomlString(raw);
         else if (path[0] === 'notify') out.notify = raw.length > 0 && raw !== '[]' && raw !== '""';
         return;
       }
@@ -377,9 +385,18 @@ export function projectCodexConfig(text: string): CodexConfigData {
         mcp.set(name, commandBasename(inlineCommand(raw)));
       } else if (root === 'projects' && key === 'trust_level') {
         projects.set(name, tomlString(raw));
+      } else if (root === 'profiles' && name !== '[]' && key !== undefined && TOP_LEVEL.has(key)) {
+        const values = profiles.get(name) ?? new Map<string, string | null>();
+        values.set(key, tomlString(raw));
+        profiles.set(name, values);
       }
     },
   });
+
+  // Codex's precedence: the selected profile's values win over the top-level ones.
+  for (const [key, v] of (out.profile ? profiles.get(out.profile) : undefined) ?? []) {
+    if (v !== null) TOP_LEVEL.get(key)?.(out, v);
+  }
 
   out.plugins = [...plugins]
     .map(([id, enabled]) => ({ ...splitPluginId(id), enabled }))

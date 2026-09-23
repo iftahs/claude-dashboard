@@ -25,6 +25,11 @@ export interface SourcesSummary extends SourceDirs {
   codex: SurfaceCount & { available: boolean };
 }
 
+/** summarizeSources' `codex.available`, without counting everything else. */
+export function hasCodexEvents(events: readonly { source: UsageSource }[]): boolean {
+  return events.some((e) => e.source === 'codex');
+}
+
 /** Count events and find the newest one per surface. Pure: no I/O. */
 export function summarizeSources(
   events: readonly { source: UsageSource; ts: number }[],
