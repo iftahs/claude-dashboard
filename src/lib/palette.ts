@@ -1,6 +1,6 @@
 /**
  * Model colors are FIXED per model family — never handed out by encounter order.
- * Color follows the entity: `sonnet-5` is the same green in every chart, on every
+ * Color follows the entity: `sonnet-5-5` is the same green in every chart, on every
  * tab, in every session. (The old cycling assigner repainted a model whenever the
  * set of visible series changed.)
  *
@@ -19,7 +19,7 @@
  * stays readable at a glance. The amber steps are ordered by generation, not by
  * price: the newest opus (5.5) takes the canonical hue, the superseded 5/25 opus
  * (5, 4.5–4.8) the brighter step, legacy opus (3.0/4.0/4.1) the deep step. That
- * ordering is measured, not aesthetic — the deep amber sits at ΔE 1.2 from sonnet-5 green under protanopia, so it has
+ * ordering is measured, not aesthetic — the deep amber sits at ΔE 1.2 from the canonical sonnet green #008300 under protanopia, so it has
  * to land on the tier that essentially never appears in a modern transcript.
  * The canonical ↔ brighter pair (#c98500 ↔ #eda100) separates at ΔE 9.6 normal / 9.3 CVD,
  * better than the fable↔mythos and haiku-4↔haiku-3 pairs already shipping here.
@@ -28,8 +28,8 @@
  * from the canonical red, the widest in-family gap in the table), and the mythos pair
  * takes the deep end — mythos 5.1 the canonical mythos red #b93b3f, superseded mythos 5
  * (and Mythos Preview) the deepest step #8e2a2f. That pair separates at ΔE 10.0 normal /
- * 8.3 protan / 10.3 tritan, and #8e2a2f's worst cross-family pair is sonnet-5 green at
- * deutan 9.0 — well clear of the table's worst, mythos↔sonnet-5 at deutan 3.1, so the
+ * 8.3 protan / 10.3 tritan, and #8e2a2f's worst cross-family pair is the canonical sonnet green #008300 at
+ * deutan 9.0 — well clear of the table's worst, mythos↔sonnet green #008300 at deutan 3.1, so the
  * step adds no new collision (validator all-pairs worsts are unchanged from before it:
  * #008300↔#a86e00 protan 1.2, #2a78d6↔#3987e5 normal 4.7). #8e2a2f sits at L 0.44,
  * just under the dark band floor, and at 2.03:1 on #1c1c24 — the superseded-generation
@@ -79,6 +79,15 @@
  * 9.3 CVD); GPT models share a violet step with their price tier — 6 Sol and
  * 5.3 Codex with 5.6 Terra (1.75–2 / 10–14), 6 Luna with 5.6 Luna / 5.4 Mini, 5.6 Sol with 5.5. No hex
  * value changed, so the validator report above still holds.
+ *
+ * Sonnet 5.5 (2026-09-28) follows the same generation rule: it takes the canonical
+ * green #008300 and Sonnet 5 steps aside onto the existing aqua step #199e70 with the
+ * older sonnets. The newest pair separates at ΔE 11.9 normal / 11.6 protan / 11.5
+ * deutan / 9.7 tritan — wider than the opus canonical ↔ brighter pair. A scripted
+ * OKLCH search for a third green found none that keeps ≥ 3:1 on #1c1c24 and ≥ 2.5:1
+ * on white without dropping under ΔE 8 normal from the aqua step or into the 6–8 CVD
+ * floor band against the fable reds, so the step is reused; no hex value changed.
+ * The cost is warmth: Sonnet 5 (2 / 10) now shares a hue with the 3 / 15 sonnets.
  */
 const MODEL_TABLE: Array<[RegExp, string]> = [
   // Order matters: specific patterns before generic fallbacks, first match wins
@@ -90,8 +99,8 @@ const MODEL_TABLE: Array<[RegExp, string]> = [
   [/opus-5-5|opus-5\.5/i, '#c98500'], // amber — opus 5.5 takes the canonical hue
   [/opus-5|opus-4-[5-8]|opus-4\.[5-8]/i, '#eda100'], // amber, brighter step — superseded 5/25 opus (5, 4.5–4.8)
   [/opus/i, '#a86e00'], // legacy opus (3.0/4.0/4.1) — deep amber, see the note above
-  [/sonnet-5/i, '#008300'], // green
-  [/sonnet/i, '#199e70'], // older sonnets — green family, aqua step
+  [/sonnet-5-5|sonnet-5\.5/i, '#008300'], // green — sonnet 5.5 takes the canonical hue
+  [/sonnet/i, '#199e70'], // superseded sonnets (5, 4.x, 3.x) — green family, aqua step
   [/haiku-4/i, '#3987e5'], // blue
   [/haiku-3/i, '#2a78d6'], // blue, deeper step
   [/haiku/i, '#1f5fa8'], // legacy haiku — deepest blue

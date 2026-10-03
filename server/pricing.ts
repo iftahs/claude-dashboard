@@ -23,7 +23,8 @@ const TABLE: Array<[RegExp, Price]> = [
   [/opus-5|opus-4-[5-8]|opus-4\.[5-8]/i, { input: 5, output: 25, cacheWrite: 6.25, cacheRead: 0.5 }],
   // Legacy Claude Opus (3.0, 4.0, 4.1) priced at 15 / 75
   [/opus/i, { input: 15, output: 75, cacheWrite: 18.75, cacheRead: 1.5 }],
-  // Claude Sonnet 5 priced at 2 / 10 — the launch "introductory" rate is now the
+  // Claude Sonnet 5.5 and Sonnet 5 priced at 2 / 10 (Sonnet 5.5 launched at Sonnet 5's
+  // prices). Sonnet 5's launch "introductory" rate is now the
   // standard price; the scheduled 2026-09-01 increase to 3 / 15 was cancelled.
   [/sonnet-5/i, { input: 2, output: 10, cacheWrite: 2.50, cacheRead: 0.2 }],
   // Older Claude Sonnet (3.0, 3.5, 4.0, 4.5, 4.6) priced at 3 / 15

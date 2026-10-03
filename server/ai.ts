@@ -203,6 +203,14 @@ function runViaCli(input: AiCallInput, model: string): Promise<string> {
 const THINKS_BY_DEFAULT = new Set(['claude-opus-5', 'claude-sonnet-5']);
 
 /**
+ * Models that think by default but reject `thinking:{type:'disabled'}` with a 400
+ * pointing to `between_tools` — their lowest setting, which turns off up-front
+ * thinking and (our requests carry no tools) returns plain text, like `disabled` on
+ * Sonnet 5. Legal at effort ≤ high; we never send effort, and the default is high.
+ */
+const THINKS_BETWEEN_TOOLS = new Set(['claude-sonnet-5-5']);
+
+/**
  * Models where thinking is always on and every explicit `thinking` setting is a
  * 400. The only lever that keeps the visible answer from being crowded out of our
  * small `max_tokens` is effort, so these get `output_config.effort: 'low'`.
@@ -233,6 +241,10 @@ function thinksByDefault(model: string): boolean {
   return THINKS_BY_DEFAULT.has(modelAlias(model));
 }
 
+function thinksBetweenTools(model: string): boolean {
+  return THINKS_BETWEEN_TOOLS.has(modelAlias(model));
+}
+
 function alwaysThinks(model: string): boolean {
   return ALWAYS_THINKS.has(modelAlias(model));
 }
@@ -247,7 +259,7 @@ function alwaysThinks(model: string): boolean {
 const THINKING_HEADROOM = 2048;
 
 function messagesBody(input: AiCallInput, model: string, extra?: Record<string, unknown>) {
-  const thinkingOff = thinksByDefault(model);
+  const thinkingOff = thinksByDefault(model) ? 'disabled' : thinksBetweenTools(model) ? 'between_tools' : null;
   const budget = input.maxTokens ?? MAX_OUTPUT_TOKENS;
   return {
     model,
@@ -256,7 +268,7 @@ function messagesBody(input: AiCallInput, model: string, extra?: Record<string, 
       ? `${input.system}\n\nDo not include internal or system XML tags in your response.`
       : input.system,
     messages: [{ role: 'user', content: input.user }],
-    ...(thinkingOff ? { thinking: { type: 'disabled' } } : {}),
+    ...(thinkingOff ? { thinking: { type: thinkingOff } } : {}),
     ...(alwaysThinks(model) ? { output_config: { effort: 'low' } } : {}),
     ...extra,
   };

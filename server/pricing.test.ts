@@ -22,6 +22,7 @@ test('specific Claude rows win over their generic family row', () => {
   assert.equal(rates('claude-mythos-5-1').cacheRead, 0.25);
   assert.equal(rates('claude-mythos-5').cacheRead, 1);
   assert.deepEqual(rates('claude-sonnet-5'), { input: 2, output: 10, cacheWrite: 2.5, cacheRead: 0.2 });
+  assert.deepEqual(rates('claude-sonnet-5-5'), { input: 2, output: 10, cacheWrite: 2.5, cacheRead: 0.2 });
   assert.equal(rates('claude-sonnet-4-5').input, 3);
 });
 
