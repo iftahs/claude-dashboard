@@ -3,6 +3,7 @@ import type { ReactNode } from 'react';
 import { usePolling } from './usePolling';
 import { track } from '../lib/analytics';
 import type { SourcesInfo, UsageSource } from '../types';
+import type { Platform, SourceFilter } from '../lib/platform';
 
 /**
  * Two levels of scoping:
@@ -17,8 +18,7 @@ import type { SourcesInfo, UsageSource } from '../types';
  * `codex`, Both → no parameter. For Claude-only users the URLs stay byte-for-byte
  * what they were before Codex support existed.
  */
-export type Platform = 'claude' | 'codex' | 'both';
-export type SourceFilter = 'all' | UsageSource;
+export type { Platform, SourceFilter };
 
 export const PLATFORM_LABELS: Record<Platform, string> = { claude: 'Claude', codex: 'Codex', both: 'Both' };
 export const PLATFORM_OPTIONS: { value: Platform; label: string; title: string }[] = [

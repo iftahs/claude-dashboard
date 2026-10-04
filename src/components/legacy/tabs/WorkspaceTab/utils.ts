@@ -1,4 +1,4 @@
-import type { Platform } from '@/hooks/useSource';
+import type { Platform } from '@/lib/platform';
 
 /** `?source=` for the workspace routes: one platform, or both merged (`all`). Always explicit. */
 export function workspaceSource(platform: Platform): 'claude' | 'codex' | 'all' {

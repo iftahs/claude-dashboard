@@ -1,4 +1,4 @@
-import type { Platform } from '@/hooks/useSource';
+import type { Platform } from '@/lib/platform';
 import type { InsightPlatform } from '@/types';
 
 // Same clay/teal pair as the Trends platform comparison, so Claude and Codex read the same in every Both chart.

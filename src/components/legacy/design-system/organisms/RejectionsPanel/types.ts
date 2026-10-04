@@ -1,5 +1,5 @@
 import type { InsightsRejections } from '@/types';
-import type { Platform } from '@/hooks/useSource';
+import type { Platform } from '@/lib/platform';
 
 export interface RejectionsPanelProps {
   data: InsightsRejections | null;

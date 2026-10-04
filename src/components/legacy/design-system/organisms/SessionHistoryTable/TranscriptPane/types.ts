@@ -1,11 +1,4 @@
-import type { SessionTranscript } from '@/types';
-import type { SessionNoun } from '../types';
-
-export interface TranscriptState {
-  data: SessionTranscript | null;
-  loading: boolean;
-  error: string | null;
-}
+import type { SessionNoun, TranscriptState } from '@/lib/sessions';
 
 export interface TranscriptPaneProps {
   sessionId: string;

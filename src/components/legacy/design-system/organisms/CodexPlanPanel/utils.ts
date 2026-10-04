@@ -1,13 +1,7 @@
 import { ago, compact } from '@/lib/format';
-import { windowName } from '@/lib/limits';
-import type { BlockGaugeLabels, GaugeLive } from '@/components/legacy/design-system/organisms/BlockGauge/types';
-import type { PlanGateRow } from '@/components/legacy/design-system/molecules/PlanUsage/types';
+import { CODEX_COVERAGE, type PlanGateRow } from '@/lib/gauge';
 import type { CodexLiveData, CodexProfileStats, CodexWindow, LiveUsageData } from '@/types';
 import type { CodexStat } from './types';
-
-/** What the Codex numbers cover — shared by the plan card and the gauge InfoTips. */
-const CODEX_COVERAGE =
-  "Local figures come from the Codex rollouts the ChatGPT desktop app writes under ~/.codex — every thread run on this machine, with each turn's Guardian auto-review folded into its parent thread. Codex usage from the ChatGPT mobile and web apps never reaches this machine: it moves the % used, but not the local token counts. Costs are estimates at OpenAI's list API prices (a plan has no per-token bill).";
 
 /** InfoTip copy for the Codex rate-limit card (overrides PlanUsage's Claude.ai default). */
 export const CODEX_PLAN_HELP = `Your ChatGPT plan's Codex rate-limit windows: the 5-hour window and the weekly window, each with % used and time to reset, plus any premium model the plan gates separately. Read from OpenAI's usage API with the token the ChatGPT desktop app stores locally — surfaced for awareness, never enforced or refreshed by this dashboard. ${CODEX_COVERAGE}`;
@@ -37,50 +31,12 @@ export function codexModelGates(live: CodexLiveData): PlanGateRow[] {
     }));
 }
 
-/** Error strings containing "expired" mean the local Codex token lapsed (see server/codex-live.ts). */
-export function isTokenExpired(err: string): boolean {
-  return /expired/i.test(err);
-}
-
 /** Footnote for a passive (rollout-snapshot) reading of the limits, with the server's reason when it sent one. */
 export function snapshotNote(live: CodexLiveData): string {
   const at = live.snapshotAt ? Date.parse(live.snapshotAt) : NaN;
   const age = Number.isNaN(at) ? 'age unknown' : ago(at);
   const why = live.warning ? ` · ${live.warning}` : '';
   return `passive snapshot · ${age} — from the newest local rollout; open the ChatGPT app for live numbers${why}`;
-}
-
-/** The window the Codex gauge rings: the 5-hour one, else the weekly one ('go' plan). */
-export function codexGaugeWindow(live: CodexLiveData | null | undefined): CodexWindow | null {
-  if (!live || live.error) return null;
-  return live.fiveHour ?? live.weekly;
-}
-
-/** The Codex gauge's live ring value, or null when the limits could not be read. */
-export function codexGaugeLive(live: CodexLiveData | null | undefined): GaugeLive | null {
-  const w = codexGaugeWindow(live);
-  return w ? { pct: w.usedPct, resetsAt: w.resetsAt } : null;
-}
-
-/** BlockGauge wording for Codex — no Claude block, session or slash-command vocabulary. */
-export function codexGaugeLabels(live: CodexLiveData | null | undefined, windowSec: number): Partial<BlockGaugeLabels> {
-  const name = windowName(windowSec);
-  const passive = !!live && !live.error && live.origin === 'passive';
-  const snapAt = live?.snapshotAt ? Date.parse(live.snapshotAt) : NaN;
-  return {
-    title: `Codex · ${name} window`,
-    apiTitle: `Codex · spend this ${name} window`,
-    help: `The ring is the live % of your ChatGPT plan's ${name} Codex window, from OpenAI's usage API (offline: the newest local rollout snapshot). The rows count this window's effective tokens (input + output) on this machine; the previous window is the equally long stretch before it. The limit ETA extrapolates the live % at its average pace since the window opened. ${CODEX_COVERAGE}`,
-    apiHelp: `Estimated cost of your Codex usage in the current ${name} window, at OpenAI's list API prices, from local rollouts — you are signed in with an API key, so there are no plan windows. The ring fills against your daily spending cap when one is set in ⚙ Settings.`,
-    apiBadge: 'API key · estimated from local rollouts',
-    liveBadge: passive ? `Snapshot · ${Number.isNaN(snapAt) ? 'age unknown' : ago(snapAt)}` : 'Live from ChatGPT',
-    livePulse: !passive,
-    expiredBadge: '⚠️ Codex token expired — open the ChatGPT app',
-    offlineBadge: '⚠️ Local rollouts only (hover for details)',
-    connectingBadge: 'Local rollouts (connecting to ChatGPT...)',
-    current: 'This window',
-    previous: 'Prev window',
-  };
 }
 
 // Not rendered on Live (lifetime figures belong on Trends/Sessions/Models); kept for tabs showing Claude equivalents.

@@ -1,6 +1,6 @@
 import type { SessionMeta, ProjectStat } from '@/types';
 import type { TagsApi } from '@/hooks/useTags';
-import { buildProjectStats } from '../ProjectBreakdown/utils';
+import { buildProjectStats } from '@/lib/project';
 import type { TagGroup } from './types';
 
 /** Sentinel tag for projects the user hasn't tagged. */

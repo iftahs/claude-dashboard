@@ -4,14 +4,13 @@ import { InfoTip } from '@/components/legacy/design-system/atoms/InfoTip/InfoTip
 import { Badge } from '@/components/legacy/design-system/atoms/Badge/Badge';
 import { ProgressBar } from '@/components/legacy/design-system/atoms/ProgressBar/ProgressBar';
 import { Skeleton, BarsSkeleton } from '@/components/legacy/design-system/atoms/Skeleton/Skeleton';
-import type { StatCardProps } from '@/components/legacy/design-system/atoms/StatCard/types';
 import { compact, usd, shortModel, dayLabel, timeAgoOrDate, toolLabel } from '@/lib/format';
 import { modelColor } from '@/lib/palette';
 import { useConfigMode } from '@/hooks/useConfigMode';
 import { useAgentDetail } from '@/hooks/useAgentDetail';
-import { elapsedSec, formatElapsed, displayModel } from '@/components/legacy/design-system/organisms/AgentActivity/utils';
+import { elapsedSec, formatElapsed, displayModel } from '@/lib/agents';
 import type { WorkflowAgentDetail, WorkflowAgentInfo, WorkflowRun, WorkflowStats } from '@/types';
-import type { WorkflowsViewProps, WorkflowCardProps } from './types';
+import type { StatTileProps, WorkflowsViewProps, WorkflowCardProps } from './types';
 import { buildPhaseGroups, defaultActivePhaseIndex, doneAgentCount, agentMetrics, groupRunsByDate } from './utils';
 import type { PhaseGroup } from './utils';
 
@@ -530,7 +529,7 @@ function RecentWorkflowRow({ run }: WorkflowCardProps) {
 }
 
 /** Compact stat tile (denser than the shared StatCard atom). */
-function StatTile({ label, value, sub, accent, help }: StatCardProps) {
+function StatTile({ label, value, sub, accent, help }: StatTileProps) {
   return (
     <div className="card p-3">
       <div className="flex items-center gap-1 text-[10px] font-medium uppercase tracking-wider text-zinc-500">
@@ -565,7 +564,7 @@ function StatsGrid({ stats, loading }: { stats?: WorkflowStats | null; loading: 
   if (!stats || stats.totalRuns === 0) return null;
 
   const dash = '—';
-  const tiles: StatCardProps[] = [
+  const tiles: StatTileProps[] = [
     { label: 'Runs', value: compact(stats.totalRuns) },
     {
       label: 'Success rate',

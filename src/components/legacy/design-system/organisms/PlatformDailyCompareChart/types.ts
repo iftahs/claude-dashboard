@@ -1,5 +1,5 @@
 import type { WeeklyData } from '@/types';
-import type { DailyMetric } from '@/components/legacy/design-system/organisms/DailyTrendChart/types';
+import type { DailyMetric } from '@/lib/views/trends';
 
 export interface PlatformDailyCompareChartProps {
   /** `/api/usage/weekly?source=claude` — Claude Code + Cowork. */

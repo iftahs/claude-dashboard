@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import type { SubagentStats } from '@/types';
+import type { HistoryUnit } from '@/lib/views/agents';
 
 export interface AgentHistoryStripProps {
   /** /api/insights/subagents for one platform over `days`. */
@@ -15,8 +16,6 @@ export interface AgentHistoryStripProps {
   /** What one conversation is called on this platform. */
   unit: HistoryUnit;
 }
-
-export type HistoryUnit = 'session' | 'thread';
 
 export interface MiniStatProps {
   label: string;

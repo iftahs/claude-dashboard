@@ -1,14 +1,7 @@
-import type { CapPlatform, Limits, PlatformLimits } from '@/hooks/useLimits';
+import type { CapPlatform, Limits, PlatformLimits } from '@/lib/limits';
 import type { Settings } from '@/hooks/useSettings';
 import type { AiConfig, ArchiveSummary } from '@/types';
-
-export interface StatusRow {
-  label: string;
-  value: string;
-  /** Smaller explanation under the value. */
-  note?: string;
-  tone: 'ok' | 'warn' | 'muted';
-}
+import type { StatusRow } from '@/lib/views/settings';
 
 /** The history-archive row: GET /api/archive + the forget action. */
 export interface ArchiveView {

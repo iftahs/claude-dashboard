@@ -1,12 +1,12 @@
 import { PlanUsage } from '@/components/legacy/design-system/molecules/PlanUsage/PlanUsage';
 import { InfoTip } from '@/components/legacy/design-system/atoms/InfoTip/InfoTip';
 import { Skeleton } from '@/components/legacy/design-system/atoms/Skeleton/Skeleton';
+import { isTokenExpired } from '@/lib/gauge';
 import type { CodexPlanCardProps } from './types';
 import {
   CODEX_PLAN_HELP,
   CODEX_PLAN_LABELS,
   codexModelGates,
-  isTokenExpired,
   snapshotNote,
   toPlanUsageLive,
 } from './utils';

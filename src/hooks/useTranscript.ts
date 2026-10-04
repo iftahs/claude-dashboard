@@ -1,11 +1,6 @@
 import { useState, useCallback } from 'react';
 import type { SessionTranscript } from '../types';
-
-interface TranscriptState {
-  data: SessionTranscript | null;
-  loading: boolean;
-  error: string | null;
-}
+import type { TranscriptState } from '../lib/sessions';
 
 // Module-level caches so they survive re-renders
 const cache = new Map<string, SessionTranscript>();

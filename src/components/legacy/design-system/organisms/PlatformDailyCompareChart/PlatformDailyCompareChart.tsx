@@ -6,9 +6,10 @@ import { LegendDot } from '@/components/legacy/design-system/atoms/LegendDot/Leg
 import { ToggleGroup } from '@/components/legacy/design-system/atoms/ToggleGroup/ToggleGroup';
 import { ChartSkeleton } from '@/components/legacy/design-system/atoms/Skeleton/Skeleton';
 import { compact, usd } from '@/lib/format';
-import type { DailyMetric } from '@/components/legacy/design-system/organisms/DailyTrendChart/types';
+import { CLAUDE_COLOR, CODEX_COLOR } from '@/lib/platform';
+import type { DailyMetric } from '@/lib/views/trends';
 import type { CompareRow, CompareTooltipProps, PlatformDailyCompareChartProps } from './types';
-import { CLAUDE_COLOR, CODEX_COLOR, mergePlatformDaily, platformTotals } from './utils';
+import { mergePlatformDaily, platformTotals } from './utils';
 
 const METRIC_OPTIONS: { value: DailyMetric; label: string }[] = [
   { value: 'tokens', label: 'tokens' },

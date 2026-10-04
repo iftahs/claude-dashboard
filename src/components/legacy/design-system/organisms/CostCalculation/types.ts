@@ -1,4 +1,4 @@
-import type { Platform } from '@/hooks/useSource';
+import type { Platform } from '@/lib/platform';
 
 /** Which vendor's rate card a row comes from. Drives grouping, order and labels. */
 export type PricePlatform = 'claude' | 'openai';

@@ -1,8 +1,8 @@
 import { compact, usd } from '@/lib/format';
 import { InfoTip } from '@/components/legacy/design-system/atoms/InfoTip/InfoTip';
 import { useBlockGauge } from '@/hooks/useBlockGauge';
+import type { BlockGaugeProps } from '@/lib/gauge';
 import { GATEWAY_API_HELP } from './utils';
-import type { BlockGaugeProps } from './types';
 
 // Every platform-specific string comes from `labels` (Claude by default).
 export function BlockGauge(props: BlockGaugeProps) {

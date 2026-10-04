@@ -1,6 +1,6 @@
 import { useLiveData } from './useLiveData';
 import { useSource } from './useSource';
-import { isYourTurn } from '@/components/legacy/design-system/organisms/AgentActivity/utils';
+import { isYourTurn } from '../lib/agents';
 import type { AgentTrafficStatus, LiveSubagents } from '../types';
 
 export interface PlatformTraffic {

@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import type { ActiveBlock, WeeklyData, LiveUsageData } from '@/types';
 import type { WeekStart } from '@/lib/week';
+import type { PlanGateRow } from '@/lib/gauge';
 
 /** Row labels for the two rate-limit windows. Defaults are the Claude.ai strings. */
 export interface PlanUsageLabels {
@@ -8,13 +9,6 @@ export interface PlanUsageLabels {
   block?: string;
   /** The long (weekly) window row. Default: "Weekly · all models". */
   weekly?: string;
-}
-
-// A gate, not a meter — the provider only says whether the model can run right now (Codex premium models).
-export interface PlanGateRow {
-  label: string;
-  status: string;
-  tone: 'ok' | 'muted' | 'danger';
 }
 
 export interface PlanUsageProps {

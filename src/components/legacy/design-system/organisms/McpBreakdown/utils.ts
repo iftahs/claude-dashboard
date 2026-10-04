@@ -1,4 +1,4 @@
-import type { Platform } from '@/hooks/useSource';
+import type { Platform } from '@/lib/platform';
 
 /** Whose native tools "built-in" means, and what they are, per platform. */
 export function builtInCopy(platform: Platform): { agentNoun: string; examples: string } {

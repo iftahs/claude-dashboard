@@ -1,7 +1,6 @@
 import { Section } from '@/components/legacy/design-system/molecules/Section/Section';
 import { ModelBreakdown } from '@/components/legacy/design-system/organisms/ModelBreakdown/ModelBreakdown';
 import { EffortBreakdown } from '@/components/legacy/design-system/organisms/EffortBreakdown/EffortBreakdown';
-import { effortHelp } from '@/components/legacy/design-system/organisms/EffortBreakdown/utils';
 import { CostCalculation } from '@/components/legacy/design-system/organisms/CostCalculation/CostCalculation';
 import { DonutSkeleton, BarsSkeleton } from '@/components/legacy/design-system/atoms/Skeleton/Skeleton';
 import { usePolling } from '@/hooks/usePolling';
@@ -9,6 +8,7 @@ import { useSource } from '@/hooks/useSource';
 import { useLiveData } from '@/hooks/useLiveData';
 import { useAiInsightCtx } from '@/hooks/useAiInsightContext';
 import { titleScope } from '@/lib/platform';
+import { effortHelp } from '@/lib/views/models';
 import type { EffortData } from '@/types';
 
 // Model stats only — tool-call counts are not a model statistic and live on Insights.

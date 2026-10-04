@@ -1,5 +1,5 @@
 import type { SubagentStats } from '@/types';
-import type { Platform } from '@/hooks/useSource';
+import type { Platform } from '@/lib/platform';
 
 export interface SubagentStatsPanelProps {
   data: SubagentStats | null;

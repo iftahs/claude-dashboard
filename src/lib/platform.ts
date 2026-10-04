@@ -1,4 +1,20 @@
-import type { Platform } from '@/hooks/useSource';
+import type { UsageSource } from '@/types';
+
+export type Platform = 'claude' | 'codex' | 'both';
+export type SourceFilter = 'all' | UsageSource;
+
+// Neutral (shows Claude, Codex or both) — keep in sync with useDocumentTitle and index.html's first-paint title.
+export const BRAND = 'AI Usage';
+
+/**
+ * Series colours. Claude takes the dashboard's clay accent (the same hue the
+ * Sources split gives Claude Code); Codex takes the teal that split already uses
+ * for the Codex surface, so a reader who has seen one chart recognises the other.
+ * These are platform colours, deliberately NOT the per-model palette — this chart
+ * compares two vendors, not two models.
+ */
+export const CLAUDE_COLOR = '#d97757';
+export const CODEX_COLOR = '#14b8a6';
 
 /**
  * How the header platform switcher's value reads in body copy — section titles,

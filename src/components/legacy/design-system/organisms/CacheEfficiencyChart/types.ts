@@ -1,17 +1,4 @@
-export interface CacheEfficiencyPoint {
-  date: string;
-  hitRate: number;
-  cacheReadTokens: number;
-  totalTokens: number;
-}
-
-/** One platform's line when the chart compares platforms (the *Both* view). */
-export interface CacheSeries {
-  key: string;
-  label: string;
-  color: string;
-  points: CacheEfficiencyPoint[];
-}
+import type { CacheEfficiencyPoint, CacheSeries } from '@/lib/views/trends';
 
 export interface CacheEfficiencyChartProps {
   /** The single-line chart (one platform, or a pooled figure). */

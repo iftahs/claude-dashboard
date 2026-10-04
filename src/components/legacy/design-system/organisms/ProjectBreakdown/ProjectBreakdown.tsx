@@ -3,9 +3,10 @@ import { compact, usd } from '@/lib/format';
 import { ToggleGroup } from '@/components/legacy/design-system/atoms/ToggleGroup/ToggleGroup';
 import { InfoTip } from '@/components/legacy/design-system/atoms/InfoTip/InfoTip';
 import { TagEditor } from '@/components/legacy/design-system/molecules/TagEditor/TagEditor';
-import { formatDurationMs, sinceLabel } from '../SessionHistoryTable/utils';
+import { buildProjectStats } from '@/lib/project';
+import { formatDurationMs, sinceLabel } from '@/lib/sessions';
 import type { ProjectBreakdownProps } from './types';
-import { buildProjectStats, projectsHelp, sessionCountLabel } from './utils';
+import { projectsHelp, sessionCountLabel } from './utils';
 
 type SortMode = 'cost' | 'time' | 'tokens' | 'files';
 

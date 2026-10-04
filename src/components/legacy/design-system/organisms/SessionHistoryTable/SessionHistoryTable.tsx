@@ -9,9 +9,9 @@ import { SessionSearchStrip } from './SessionSearchStrip/SessionSearchStrip';
 import { SessionDetail } from './SessionDetail/SessionDetail';
 import type { SessionHistoryTableProps } from './types';
 import type { SessionMeta } from '@/types';
+import { sessionTokens, sinceLabel, singularNoun } from '@/lib/sessions';
 import {
   ITEMS_PER_PAGE, durationCell, exportJson, exportRows, formatDate, matchesQuery, sessionHeadline, sessionLabel,
-  sessionTokens, sinceLabel, singularNoun,
 } from './utils';
 
 export function SessionHistoryTable({

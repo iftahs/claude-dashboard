@@ -6,7 +6,8 @@ import { localeDefaultWeekStart } from '@/lib/week';
 import { resolveLimitAlerts, type LimitAlertConfig } from '@/lib/limits';
 import type { Settings } from '@/hooks/useSettings';
 import type { AiProvider } from '@/types';
-import type { SettingsViewProps, StatusRow } from './types';
+import type { StatusRow } from '@/lib/views/settings';
+import type { SettingsViewProps } from './types';
 import { THRESHOLD_CHOICES, archiveLine, toggleThreshold } from './utils';
 
 const inputCls = 'w-full bg-transparent px-2 py-2 text-sm text-zinc-200 outline-none';

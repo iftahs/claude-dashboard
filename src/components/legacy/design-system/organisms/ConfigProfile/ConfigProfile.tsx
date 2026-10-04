@@ -4,7 +4,7 @@ import { Skeleton } from '@/components/legacy/design-system/atoms/Skeleton/Skele
 import type { ConfigProfileProps } from './types';
 import { TONE_CLASS } from './utils';
 
-// Platform decides the content (claudeProfileView / codexProfileView in utils.ts), never the layout.
+// Platform decides the content (claudeProfileView / codexProfileView in @/lib/views/workspace), never the layout.
 export function ConfigProfile({ profile }: ConfigProfileProps) {
   if (!profile) {
     return (

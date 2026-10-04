@@ -1,7 +1,5 @@
 import { Section } from '@/components/legacy/design-system/molecules/Section/Section';
 import { ConfigProfile } from '@/components/legacy/design-system/organisms/ConfigProfile/ConfigProfile';
-import { claudeProfileView, codexProfileView } from '@/components/legacy/design-system/organisms/ConfigProfile/utils';
-import type { ConfigProfileView } from '@/components/legacy/design-system/organisms/ConfigProfile/types';
 import { TasksPanel } from '@/components/legacy/design-system/organisms/TasksPanel/TasksPanel';
 import { PluginsInventory } from '@/components/legacy/design-system/organisms/PluginsInventory/PluginsInventory';
 import { usePolling } from '@/hooks/usePolling';
@@ -10,6 +8,8 @@ import { useConfigMode } from '@/hooks/useConfigMode';
 import { useLiveData } from '@/hooks/useLiveData';
 import { useSource } from '@/hooks/useSource';
 import { titleScope } from '@/lib/platform';
+import { claudeProfileView, codexProfileView } from '@/lib/views/workspace';
+import type { ConfigProfileView } from '@/lib/views/workspace';
 import type { CodexConfigData, InventoryData, WorkspaceTasksData } from '@/types';
 import { EMPTY_TASKS, INVENTORY_HELP, TASKS_HELP, workspaceSource } from './utils';
 

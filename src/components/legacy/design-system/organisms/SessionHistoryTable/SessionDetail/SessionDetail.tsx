@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { compact, toolLabel } from '@/lib/format';
 import { InfoTip } from '@/components/legacy/design-system/atoms/InfoTip/InfoTip';
 import { TranscriptPane } from '../TranscriptPane/TranscriptPane';
-import { formatDurationMs, prLabel, sessionTokens, singularNoun } from '../utils';
+import { formatDurationMs, prLabel, sessionTokens, singularNoun } from '@/lib/sessions';
 import type { SessionDetailProps } from './types';
 
 export function SessionDetail({ session: s, transcript, onFetchTranscript, noun }: SessionDetailProps) {

@@ -1,5 +1,5 @@
 import type { SidebarProps } from './types';
-import { BRAND } from './utils';
+import { BRAND } from '@/lib/platform';
 
 const faviconUrl = '/favicon.svg';
 

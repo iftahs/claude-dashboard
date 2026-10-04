@@ -1,5 +1,5 @@
 import type { InsightsTurns } from '@/types';
-import type { Platform } from '@/hooks/useSource';
+import type { Platform } from '@/lib/platform';
 
 export interface TurnLatencyProps {
   data: InsightsTurns | null;

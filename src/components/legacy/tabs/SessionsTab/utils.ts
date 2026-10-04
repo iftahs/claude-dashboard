@@ -1,8 +1,8 @@
 import { compact } from '@/lib/format';
-import type { Platform } from '@/hooks/useSource';
+import type { Platform } from '@/lib/platform';
 import type { TagMove } from '@/hooks/useTags';
 import type { ProjectStat, SessionSummary, SessionSummaryPart } from '@/types';
-import { formatDurationMs, formatTurnMs, sinceLabel } from '@/components/legacy/design-system/organisms/SessionHistoryTable/utils';
+import { formatDurationMs, formatTurnMs, sinceLabel } from '@/lib/sessions';
 
 export interface SummaryCard {
   key: string;

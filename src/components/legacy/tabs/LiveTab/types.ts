@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import type { Limits } from '@/hooks/useLimits';
+import type { Limits } from '@/lib/limits';
 import type { PollState } from '@/hooks/usePolling';
 import type { CodexBlock } from '@/types';
 

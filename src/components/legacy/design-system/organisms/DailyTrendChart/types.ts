@@ -1,7 +1,6 @@
 import type { WeeklyData } from '@/types';
 import type { SectionAiProps } from '@/hooks/useAiInsightContext';
-
-export type DailyMetric = 'tokens' | 'cost';
+import type { DailyMetric } from '@/lib/views/trends';
 
 export interface DailyTrendChartProps {
   data: WeeklyData | null;

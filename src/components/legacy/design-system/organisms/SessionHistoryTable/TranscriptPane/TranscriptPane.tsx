@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { TranscriptTurn } from '../TranscriptTurn/TranscriptTurn';
-import { singularNoun } from '../utils';
+import { singularNoun } from '@/lib/sessions';
 import type { TranscriptPaneProps } from './types';
 
 /** The lazily fetched transcript of one session (Claude transcript or Codex rollout — same shape). */

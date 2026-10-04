@@ -1,4 +1,4 @@
-import type { Platform } from '@/hooks/useSource';
+import type { Platform } from '@/lib/platform';
 import { compact, longDateLabel } from '@/lib/format';
 import type { UsageSummary, UsageSummaryData } from '@/types';
 import type { SummaryCard } from './types';

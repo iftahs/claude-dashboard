@@ -1,5 +1,5 @@
 import type { ComplexityPoint } from '@/types';
-import type { Platform } from '@/hooks/useSource';
+import type { Platform } from '@/lib/platform';
 
 export interface ComplexityScatterProps {
   data: ComplexityPoint[] | null;

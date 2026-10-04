@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import type { Platform } from '@/hooks/useSource';
+import type { Platform } from '@/lib/platform';
 import type { UsageSummaryData } from '@/types';
 
 export interface ActivitySummaryProps {

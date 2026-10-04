@@ -1,7 +1,7 @@
 import type { WorkflowAgentInfo, WorkflowRun } from '@/types';
 import type { WeekStart } from '@/lib/week';
 import { compact } from '@/lib/format';
-import { formatElapsed } from '@/components/legacy/design-system/organisms/AgentActivity/utils';
+import { formatElapsed } from '@/lib/agents';
 
 /** A relative-date bucket of recent runs, newest-first. */
 export interface DateBucket {

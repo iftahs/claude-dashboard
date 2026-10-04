@@ -1,14 +1,8 @@
-import type { SessionMeta, UsageSource } from '@/types';
-import { codexProjectLabel, projectName } from '@/lib/project';
-import type { SessionNoun } from './types';
+import type { SessionMeta } from '@/types';
+import { chatFolder, projectName } from '@/lib/project';
+import { formatDurationMs, sessionTokens } from '@/lib/sessions';
 
 export const ITEMS_PER_PAGE = 5;
-
-/** 'session' / 'thread' ('Session' / 'Thread' when `capital`). */
-export function singularNoun(noun: SessionNoun, capital = false): string {
-  const one = noun === 'threads' ? 'thread' : 'session';
-  return capital ? one[0].toUpperCase() + one.slice(1) : one;
-}
 
 export function formatDate(dateStr: string): string {
   try {
@@ -22,44 +16,6 @@ export function formatDate(dateStr: string): string {
   } catch {
     return dateStr;
   }
-}
-
-/** "Sep 3" — the start of the span a "since …" label covers. */
-export function sinceLabel(since: number | null): string {
-  if (since === null) return '';
-  return new Date(since).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-}
-
-/** "<1m" / "45m" / "3h 12m" / "4d 6h" for a duration in milliseconds. */
-export function formatDurationMs(ms: number): string {
-  const m = Math.floor(Math.max(0, ms) / 60_000);
-  if (m < 1) return '<1m';
-  if (m < 60) return `${m}m`;
-  const h = Math.floor(m / 60);
-  if (h < 48) return `${h}h ${m % 60}m`;
-  return `${Math.floor(h / 24)}d ${h % 24}h`;
-}
-
-/** "4s" / "1m 23s" for a short span (a single turn). */
-export function formatTurnMs(ms: number): string {
-  const s = Math.round(Math.max(0, ms) / 1000);
-  if (s < 60) return `${s}s`;
-  const m = Math.floor(s / 60);
-  if (m < 60) return `${m}m ${s % 60}s`;
-  return `${Math.floor(m / 60)}h ${m % 60}m`;
-}
-
-// Matches the Claude Desktop scratch-workspace path, e.g. `.../Claude/scratch-workspaces/<ids>/scratch-<date>-<hash>`.
-const CLAUDE_CHAT_DIR = /[\\/]Claude[\\/]scratch-workspaces[\\/](?:[^\\/]+[\\/])*(scratch-[^\\/]+)[\\/]?$/i;
-
-/** The desktop app whose per-chat scratch folder `path` is, with the folder's slug; null for a real project. */
-export function chatFolder(path: string, source: UsageSource | undefined): { app: 'Codex' | 'Claude'; slug: string } | null {
-  if (!path) return null;
-  if (source === 'codex') {
-    return codexProjectLabel(path) !== projectName(path) ? { app: 'Codex', slug: projectName(path) } : null;
-  }
-  const m = path.match(CLAUDE_CHAT_DIR);
-  return m ? { app: 'Claude', slug: m[1] } : null;
 }
 
 // A desktop chat's scratch folder reads "Codex chat" / "Claude chat" (slug only when there's no title).
@@ -84,10 +40,6 @@ export function durationCell(s: SessionMeta): { text: string; tooltip: string; a
   }
   const active = formatDurationMs(s.active_ms);
   return { text: active, tooltip: `Active ${active} · wall clock ${wall}`, active: true };
-}
-
-export function sessionTokens(s: SessionMeta): number {
-  return s.effective_tokens ?? (s.input_tokens ?? 0) + (s.output_tokens ?? 0);
 }
 
 /** Case-insensitive match on the title, first prompt or project path. */
@@ -125,10 +77,4 @@ export function exportRows(data: SessionMeta[]) {
 /** The JSON export: every field but the title and the PR URLs. */
 export function exportJson(data: SessionMeta[]): Array<Omit<SessionMeta, 'title' | 'pr_urls'> & { pull_requests: number }> {
   return data.map(({ title: _title, pr_urls: prs, ...rest }) => ({ ...rest, pull_requests: prs?.length ?? 0 }));
-}
-
-/** "owner/repo#12" for a GitHub-style PR URL; the URL itself otherwise. */
-export function prLabel(url: string): string {
-  const m = url.match(/^https?:\/\/[^/]+\/([^/]+\/[^/]+)\/pull\/(\d+)/);
-  return m ? `${m[1]}#${m[2]}` : url;
 }

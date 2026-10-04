@@ -1,6 +1,5 @@
 import type { SessionMeta } from '@/types';
-import type { TranscriptState } from '../TranscriptPane/types';
-import type { SessionNoun } from '../types';
+import type { SessionNoun, TranscriptState } from '@/lib/sessions';
 
 export interface SessionDetailProps {
   session: SessionMeta;

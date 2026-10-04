@@ -5,20 +5,16 @@ import { Section } from '@/components/legacy/design-system/molecules/Section/Sec
 import { PlanUsage } from '@/components/legacy/design-system/molecules/PlanUsage/PlanUsage';
 import { AccountsLivePanel } from '@/components/legacy/design-system/organisms/AccountsLivePanel/AccountsLivePanel';
 import { ExtraUsageCard } from '@/components/legacy/design-system/molecules/ExtraUsageCard/ExtraUsageCard';
-import { claudeExtraUsageView, codexCreditsView } from '@/components/legacy/design-system/molecules/ExtraUsageCard/utils';
 import { LimitsContributors } from '@/components/legacy/design-system/organisms/LimitsContributors/LimitsContributors';
 import { LimitHits } from '@/components/legacy/design-system/organisms/LimitHits/LimitHits';
 import { SpendingLimits } from '@/components/legacy/design-system/molecules/SpendingLimits/SpendingLimits';
 import { CodexPlanCard } from '@/components/legacy/design-system/organisms/CodexPlanPanel/CodexPlanPanel';
-import {
-  codexGaugeLabels,
-  codexGaugeLive,
-  codexGaugeWindow,
-} from '@/components/legacy/design-system/organisms/CodexPlanPanel/utils';
 import { GaugeSkeleton, ChartSkeleton } from '@/components/legacy/design-system/atoms/Skeleton/Skeleton';
 import { hourLabel } from '@/lib/format';
 import { buildBudgetRows } from '@/lib/budget';
+import { codexGaugeLabels, codexGaugeLive, codexGaugeWindow } from '@/lib/gauge';
 import { titleScope } from '@/lib/platform';
+import { claudeExtraUsageView, codexCreditsView } from '@/lib/views/live';
 import { useLiveData } from '@/hooks/useLiveData';
 import { useConfigMode } from '@/hooks/useConfigMode';
 import { useCostMetrics } from '@/hooks/useCostMetrics';

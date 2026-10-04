@@ -12,7 +12,8 @@ import {
 import { ChartTooltip } from '@/components/legacy/design-system/molecules/ChartTooltip/ChartTooltip';
 import { LegendDot } from '@/components/legacy/design-system/atoms/LegendDot/LegendDot';
 import { compact } from '@/lib/format';
-import type { CacheEfficiencyChartProps, CacheEfficiencyPoint, CacheSeries, CompareTooltipProps, TooltipProps } from './types';
+import type { CacheEfficiencyPoint, CacheSeries } from '@/lib/views/trends';
+import type { CacheEfficiencyChartProps, CompareTooltipProps, TooltipProps } from './types';
 import { avgHitRate, mergeCacheSeries } from './utils';
 
 function CustomTooltip({ active, payload }: TooltipProps) {

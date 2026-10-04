@@ -1,8 +1,35 @@
-import type { Platform } from '@/hooks/useSource';
+import type { Platform } from '@/lib/platform';
 import type { CodexSplit, SourceSplit, TokenTotals, UsageSource } from '@/types';
-import type { SplitSegment } from './types';
 
-/** Per-surface series colors (kept beside their only consumer). */
+export type DailyMetric = 'tokens' | 'cost';
+
+export interface CacheEfficiencyPoint {
+  date: string;
+  hitRate: number;
+  cacheReadTokens: number;
+  totalTokens: number;
+}
+
+/** One platform's line when the chart compares platforms (the *Both* view). */
+export interface CacheSeries {
+  key: string;
+  label: string;
+  color: string;
+  points: CacheEfficiencyPoint[];
+}
+
+/** One segment of the split bar — a surface (Code / Cowork / Codex) or a Codex thread kind. */
+export interface SplitSegment {
+  key: string;
+  label: string;
+  color: string;
+  effectiveTokens: number;
+  cost: number;
+  /** Share of the bar, 0–100. */
+  pct: number;
+}
+
+/** Per-surface series colors. */
 export const SOURCE_COLOR: Record<UsageSource, string> = { code: '#d97757', cowork: '#6366f1', codex: '#14b8a6' };
 
 export const SOURCE_LABEL: Record<UsageSource, string> = { code: 'Code', cowork: 'Cowork', codex: 'Codex' };

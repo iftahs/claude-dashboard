@@ -3,7 +3,7 @@ import { InfoTip } from '@/components/legacy/design-system/atoms/InfoTip/InfoTip
 import { extraUsageBarColor } from './utils';
 import type { ExtraUsageCardProps } from './types';
 
-// Fed a provider-neutral view (see ./utils) so Claude and Codex render identically.
+// Fed a provider-neutral view (see @/lib/views/live) so Claude and Codex render identically.
 export function ExtraUsageCard({ view }: ExtraUsageCardProps) {
   const { title, help, enabled, usage, disabledCopy, rows, disclaimer } = view;
   const pct = usage?.pct ?? null;

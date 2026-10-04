@@ -3,7 +3,8 @@ import { UsageBarChart } from '@/components/legacy/design-system/organisms/Usage
 import { ExportButton } from '@/components/legacy/design-system/molecules/ExportButton/ExportButton';
 import { ChartSkeleton } from '@/components/legacy/design-system/atoms/Skeleton/Skeleton';
 import { dayLabel, dayLabelWithYear } from '@/lib/format';
-import type { DailyMetric, DailyTrendChartProps } from './types';
+import type { DailyMetric } from '@/lib/views/trends';
+import type { DailyTrendChartProps } from './types';
 import { trendDelta, trendExport } from './utils';
 
 // Every token figure here is effective tokens; the cache-read-inclusive total is tooltip-only.

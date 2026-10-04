@@ -1,15 +1,17 @@
 import { useMemo } from 'react';
 import { AgentActivity } from '@/components/legacy/design-system/organisms/AgentActivity/AgentActivity';
+import { AgentHistoryStrip } from '@/components/legacy/design-system/organisms/AgentHistoryStrip/AgentHistoryStrip';
+import { toDisplayAgents } from '@/lib/agents';
 import {
+  AGENT_HISTORY_DAYS,
   AGENT_TITLE,
   CLAUDE_AGENTS_HELP,
   CLAUDE_AGENT_LABELS,
   CODEX_AGENTS_HELP,
   CODEX_AGENT_LABELS,
-  toDisplayAgents,
-} from '@/components/legacy/design-system/organisms/AgentActivity/utils';
-import { AgentHistoryStrip } from '@/components/legacy/design-system/organisms/AgentHistoryStrip/AgentHistoryStrip';
-import { AGENT_HISTORY_DAYS, historyHelp, historyUnit } from '@/components/legacy/design-system/organisms/AgentHistoryStrip/utils';
+  historyHelp,
+  historyUnit,
+} from '@/lib/views/agents';
 import { PLATFORM_NOUN, titleScope } from '@/lib/platform';
 import { useLiveData } from '@/hooks/useLiveData';
 import { usePolling } from '@/hooks/usePolling';

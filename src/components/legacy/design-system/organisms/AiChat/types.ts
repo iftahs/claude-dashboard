@@ -1,5 +1,5 @@
 import type { AiConfig, AiStatus } from '@/types';
-import type { Platform, SourceFilter } from '@/hooks/useSource';
+import type { Platform, SourceFilter } from '@/lib/platform';
 
 export interface AiChatProps {
   status: AiStatus | null;

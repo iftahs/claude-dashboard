@@ -1,5 +1,5 @@
 import { compact } from '@/lib/format';
-import type { Platform } from '@/hooks/useSource';
+import type { Platform } from '@/lib/platform';
 import type { InsightKpis, InsightsSummary } from '@/types';
 
 export type InsightDays = '7' | '14' | '30';

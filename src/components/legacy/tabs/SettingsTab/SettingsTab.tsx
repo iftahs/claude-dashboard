@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import { SettingsView } from '@/components/legacy/design-system/organisms/SettingsView/SettingsView';
-import { codexStatusRows } from '@/components/legacy/design-system/organisms/SettingsView/utils';
 import { useConfigMode } from '@/hooks/useConfigMode';
 import { useAiInsightCtx } from '@/hooks/useAiInsightContext';
 import { useArchive } from '@/hooks/useArchive';
@@ -9,6 +8,7 @@ import { useLiveData } from '@/hooks/useLiveData';
 import { usePolling } from '@/hooks/usePolling';
 import { useSource } from '@/hooks/useSource';
 import { isOptedOut, setOptOut } from '@/lib/analytics';
+import { codexStatusRows } from '@/lib/views/settings';
 import type { CodexConfigData, SourcesInfo } from '@/types';
 
 export function SettingsTab() {

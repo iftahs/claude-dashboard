@@ -1,7 +1,7 @@
 import { Badge } from '@/components/legacy/design-system/atoms/Badge/Badge';
 import { codexProjectLabel } from '@/lib/project';
 import { useSearch } from '@/hooks/useSearch';
-import { singularNoun } from '../utils';
+import { singularNoun } from '@/lib/sessions';
 import type { SessionSearchStripProps } from './types';
 
 /** Full-text transcript matches for the table's search box, scoped to the selected platform. */

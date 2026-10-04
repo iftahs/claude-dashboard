@@ -1,5 +1,5 @@
 import { toolLabel } from '@/lib/format';
-import type { Platform } from '@/hooks/useSource';
+import type { Platform } from '@/lib/platform';
 
 /** The tool name a Codex guardian deny is recorded under (server GUARDIAN_DENY_TOOL). */
 const GUARDIAN_DENY_TOOL = 'GuardianReview';

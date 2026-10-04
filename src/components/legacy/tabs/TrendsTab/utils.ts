@@ -1,4 +1,4 @@
-import type { Platform } from '@/hooks/useSource';
+import type { Platform } from '@/lib/platform';
 import type { Bucket, ModelShare, SourceSplit, WeeklyData } from '@/types';
 
 export { PLATFORM_NOUN } from '@/lib/platform';

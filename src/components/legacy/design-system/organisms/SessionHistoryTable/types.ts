@@ -1,6 +1,5 @@
 import type { SessionMeta } from '@/types';
-
-export type SessionNoun = 'sessions' | 'threads';
+import type { SessionNoun } from '@/lib/sessions';
 
 export interface SessionHistoryTableProps {
   sessions: SessionMeta[];

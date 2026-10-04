@@ -1,17 +1,7 @@
 import { dayLabel } from '@/lib/format';
 import type { WeeklyData } from '@/types';
 import type { CompareRow } from './types';
-import type { DailyMetric } from '@/components/legacy/design-system/organisms/DailyTrendChart/types';
-
-/**
- * Series colours. Claude takes the dashboard's clay accent (the same hue the
- * Sources split gives Claude Code); Codex takes the teal that split already uses
- * for the Codex surface, so a reader who has seen one chart recognises the other.
- * These are platform colours, deliberately NOT the per-model palette — this chart
- * compares two vendors, not two models.
- */
-export const CLAUDE_COLOR = '#d97757';
-export const CODEX_COLOR = '#14b8a6';
+import type { DailyMetric } from '@/lib/views/trends';
 
 /**
  * One row per day bucket, joining the two per-platform `/api/usage/weekly`

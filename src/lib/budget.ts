@@ -1,4 +1,4 @@
-import type { Limits } from '@/hooks/useLimits';
+import type { Limits } from './limits';
 import type { WeekStart } from './week';
 import { nextDayReset, nextWeekReset, nextMonthReset, sumCostToday, sumCostThisWeek } from './week';
 

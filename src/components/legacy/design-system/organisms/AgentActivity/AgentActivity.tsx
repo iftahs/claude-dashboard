@@ -7,15 +7,8 @@ import { compact } from '@/lib/format';
 import { modelColor } from '@/lib/palette';
 import type { AgentTrafficStatus } from '@/types';
 import type { AgentActivityProps } from './types';
-import {
-  AGENT_TITLE,
-  CLAUDE_AGENTS_HELP,
-  CLAUDE_AGENT_LABELS,
-  elapsedSec,
-  formatElapsed,
-  displayModel,
-  isYourTurn,
-} from './utils';
+import { elapsedSec, formatElapsed, displayModel, isYourTurn } from '@/lib/agents';
+import { AGENT_TITLE, CLAUDE_AGENTS_HELP, CLAUDE_AGENT_LABELS } from '@/lib/views/agents';
 import { useCountUp } from '@/hooks/useCountUp';
 import { useFlashOnIncrease } from '@/hooks/useFlashOnIncrease';
 

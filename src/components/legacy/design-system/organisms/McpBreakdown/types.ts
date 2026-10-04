@@ -1,5 +1,5 @@
 import type { InsightsMcp } from '@/types';
-import type { Platform } from '@/hooks/useSource';
+import type { Platform } from '@/lib/platform';
 
 export interface McpBreakdownProps {
   data: InsightsMcp | null;

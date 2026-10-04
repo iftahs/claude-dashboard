@@ -3,25 +3,19 @@ import { StatCard } from '@/components/legacy/design-system/atoms/StatCard/StatC
 import { Section } from '@/components/legacy/design-system/molecules/Section/Section';
 import { ExportButton } from '@/components/legacy/design-system/molecules/ExportButton/ExportButton';
 import { CacheEfficiencyChart } from '@/components/legacy/design-system/organisms/CacheEfficiencyChart/CacheEfficiencyChart';
-import type { CacheSeries } from '@/components/legacy/design-system/organisms/CacheEfficiencyChart/types';
 import { PeakHoursHeatmap } from '@/components/legacy/design-system/organisms/PeakHoursHeatmap/PeakHoursHeatmap';
 import { ActivityHeatmap } from '@/components/legacy/design-system/organisms/ActivityHeatmap/ActivityHeatmap';
 import { ActivitySummary } from '@/components/legacy/design-system/organisms/ActivitySummary/ActivitySummary';
 import { LiteLlmActualBilled } from '@/components/legacy/design-system/organisms/LiteLlmActualBilled/LiteLlmActualBilled';
 import { CodexDailyCompareChart } from '@/components/legacy/design-system/organisms/CodexDailyCompareChart/CodexDailyCompareChart';
 import { SourcesSplitChart } from '@/components/legacy/design-system/organisms/SourcesSplitChart/SourcesSplitChart';
-import {
-  computeCodexSplit,
-  computeSourceSplit,
-  sourcesHelp,
-} from '@/components/legacy/design-system/organisms/SourcesSplitChart/utils';
 import { PlatformDailyCompareChart } from '@/components/legacy/design-system/organisms/PlatformDailyCompareChart/PlatformDailyCompareChart';
-import { CLAUDE_COLOR, CODEX_COLOR } from '@/components/legacy/design-system/organisms/PlatformDailyCompareChart/utils';
 import { DailyTrendChart } from '@/components/legacy/design-system/organisms/DailyTrendChart/DailyTrendChart';
-import type { DailyMetric } from '@/components/legacy/design-system/organisms/DailyTrendChart/types';
 import { StatCardSkeleton, HeatmapSkeleton } from '@/components/legacy/design-system/atoms/Skeleton/Skeleton';
 import { compact, usd, shortModel } from '@/lib/format';
-import { titleScope } from '@/lib/platform';
+import { CLAUDE_COLOR, CODEX_COLOR, titleScope } from '@/lib/platform';
+import { computeCodexSplit, computeSourceSplit, sourcesHelp } from '@/lib/views/trends';
+import type { CacheSeries, DailyMetric } from '@/lib/views/trends';
 import { buildSpendReport } from '@/lib/report';
 import { usePolling } from '@/hooks/usePolling';
 import { useSource } from '@/hooks/useSource';

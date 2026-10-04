@@ -1,4 +1,4 @@
-import type { Platform } from '@/hooks/useSource';
+import type { Platform } from '@/lib/platform';
 import type { ModelPrice, PriceGroup, PricePlatform } from './types';
 
 /**

@@ -1,4 +1,4 @@
-import type { Platform } from '@/hooks/useSource';
+import type { Platform } from '@/lib/platform';
 
 // Each question must be answerable on its platform — no workflow question under Codex (Claude Code only).
 export const SUGGESTIONS: Record<Platform, string[]> = {

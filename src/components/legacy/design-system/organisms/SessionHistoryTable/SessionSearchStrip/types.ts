@@ -1,4 +1,4 @@
-import type { SessionNoun } from '../types';
+import type { SessionNoun } from '@/lib/sessions';
 
 export interface SessionSearchStripProps {
   query: string;

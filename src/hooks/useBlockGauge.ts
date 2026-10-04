@@ -8,8 +8,8 @@ import {
   DEFAULT_BLOCK_LIMIT,
   formatMins,
   formatRemaining,
-} from '@/components/legacy/design-system/organisms/BlockGauge/utils';
-import type { BlockGaugeLabels, BlockGaugeProps } from '@/components/legacy/design-system/organisms/BlockGauge/types';
+} from '../lib/gauge';
+import type { BlockGaugeLabels, BlockGaugeProps } from '../lib/gauge';
 
 export interface BlockGaugeView {
   labels: BlockGaugeLabels;

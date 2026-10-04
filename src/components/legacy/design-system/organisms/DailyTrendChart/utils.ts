@@ -1,6 +1,6 @@
 import { localYmd } from '@/lib/week';
 import type { WeeklyData } from '@/types';
-import type { DailyMetric } from './types';
+import type { DailyMetric } from '@/lib/views/trends';
 
 /** Percent change vs the previous period for the selected metric (null if no prev). */
 export function trendDelta(data: WeeklyData | null, metric: DailyMetric): number | null {

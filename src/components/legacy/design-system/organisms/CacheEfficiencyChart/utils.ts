@@ -1,4 +1,5 @@
-import type { CacheCompareRow, CacheEfficiencyPoint, CacheSeries } from './types';
+import type { CacheEfficiencyPoint, CacheSeries } from '@/lib/views/trends';
+import type { CacheCompareRow } from './types';
 
 /** Mean of the daily hit rates (days without usage are absent, not zero). */
 export function avgHitRate(points: CacheEfficiencyPoint[]): number {
