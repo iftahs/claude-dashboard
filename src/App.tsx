@@ -1,25 +1,25 @@
 import { lazy, Suspense, useMemo } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { LiveBadge } from './components/design-system/atoms/LiveBadge/LiveBadge';
-import { ToggleGroup } from './components/design-system/atoms/ToggleGroup/ToggleGroup';
-import { Skeleton } from './components/design-system/atoms/Skeleton/Skeleton';
-import { Sidebar } from './components/design-system/organisms/Sidebar/Sidebar';
-import { AgentTrafficSignal } from './components/design-system/organisms/AgentTrafficSignal/AgentTrafficSignal';
+import { LiveBadge } from './components/legacy/design-system/atoms/LiveBadge/LiveBadge';
+import { ToggleGroup } from './components/legacy/design-system/atoms/ToggleGroup/ToggleGroup';
+import { Skeleton } from './components/legacy/design-system/atoms/Skeleton/Skeleton';
+import { Sidebar } from './components/legacy/design-system/organisms/Sidebar/Sidebar';
+import { AgentTrafficSignal } from './components/legacy/design-system/organisms/AgentTrafficSignal/AgentTrafficSignal';
 
 // Tabs are code-split: only one is ever mounted, but statically importing all
 // of them pulled every chart and the whole of recharts into the first chunk
 // (1.19 MB) before anything could paint. Each is now its own lazily-fetched chunk.
 // They use named exports, so the module is remapped to the default lazy() expects.
-const LiveTab = lazy(() => import('./components/tabs/LiveTab/LiveTab').then((m) => ({ default: m.LiveTab })));
-const AgentsTab = lazy(() => import('./components/tabs/AgentsTab/AgentsTab').then((m) => ({ default: m.AgentsTab })));
-const WorkflowsTab = lazy(() => import('./components/tabs/WorkflowsTab/WorkflowsTab').then((m) => ({ default: m.WorkflowsTab })));
-const TrendsTab = lazy(() => import('./components/tabs/TrendsTab/TrendsTab').then((m) => ({ default: m.TrendsTab })));
-const ModelsTab = lazy(() => import('./components/tabs/ModelsTab/ModelsTab').then((m) => ({ default: m.ModelsTab })));
-const InsightsTab = lazy(() => import('./components/tabs/InsightsTab/InsightsTab').then((m) => ({ default: m.InsightsTab })));
-const WorkspaceTab = lazy(() => import('./components/tabs/WorkspaceTab/WorkspaceTab').then((m) => ({ default: m.WorkspaceTab })));
-const AiTab = lazy(() => import('./components/tabs/AiTab/AiTab').then((m) => ({ default: m.AiTab })));
-const SessionsTab = lazy(() => import('./components/tabs/SessionsTab/SessionsTab').then((m) => ({ default: m.SessionsTab })));
-const SettingsTab = lazy(() => import('./components/tabs/SettingsTab/SettingsTab').then((m) => ({ default: m.SettingsTab })));
+const LiveTab = lazy(() => import('./components/legacy/tabs/LiveTab/LiveTab').then((m) => ({ default: m.LiveTab })));
+const AgentsTab = lazy(() => import('./components/legacy/tabs/AgentsTab/AgentsTab').then((m) => ({ default: m.AgentsTab })));
+const WorkflowsTab = lazy(() => import('./components/legacy/tabs/WorkflowsTab/WorkflowsTab').then((m) => ({ default: m.WorkflowsTab })));
+const TrendsTab = lazy(() => import('./components/legacy/tabs/TrendsTab/TrendsTab').then((m) => ({ default: m.TrendsTab })));
+const ModelsTab = lazy(() => import('./components/legacy/tabs/ModelsTab/ModelsTab').then((m) => ({ default: m.ModelsTab })));
+const InsightsTab = lazy(() => import('./components/legacy/tabs/InsightsTab/InsightsTab').then((m) => ({ default: m.InsightsTab })));
+const WorkspaceTab = lazy(() => import('./components/legacy/tabs/WorkspaceTab/WorkspaceTab').then((m) => ({ default: m.WorkspaceTab })));
+const AiTab = lazy(() => import('./components/legacy/tabs/AiTab/AiTab').then((m) => ({ default: m.AiTab })));
+const SessionsTab = lazy(() => import('./components/legacy/tabs/SessionsTab/SessionsTab').then((m) => ({ default: m.SessionsTab })));
+const SettingsTab = lazy(() => import('./components/legacy/tabs/SettingsTab/SettingsTab').then((m) => ({ default: m.SettingsTab })));
 
 import { useSource, type Platform, type SourceFilter } from './hooks/useSource';
 import { useLiveData } from './hooks/useLiveData';

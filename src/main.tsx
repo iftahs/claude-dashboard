@@ -10,7 +10,7 @@ import { SourceProvider } from './hooks/useSource';
 import { ConfigModeProvider } from './hooks/useConfigMode';
 import { LiveDataProvider } from './hooks/useLiveData';
 import { AiInsightProvider } from './hooks/useAiInsightContext';
-import { NotificationHost } from './components/design-system/organisms/NotificationHost/NotificationHost';
+import { NotificationHost } from './components/legacy/design-system/organisms/NotificationHost/NotificationHost';
 import './index.css';
 
 initAnalytics();

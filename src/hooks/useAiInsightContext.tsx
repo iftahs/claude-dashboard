@@ -4,7 +4,7 @@ import { useAiStatus } from './useAiStatus';
 import { useAiConfig } from './useAiConfig';
 import { useAiInsight } from './useAiInsight';
 import type { PollState } from './usePolling';
-import { AiInsightInline } from '@/components/design-system/molecules/AiInsightInline/AiInsightInline';
+import { AiInsightInline } from '@/components/legacy/design-system/molecules/AiInsightInline/AiInsightInline';
 import { track } from '../lib/analytics';
 import type { AiConfig, AiStatus } from '../types';
 

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { parseDollar, fmt } from '@/components/design-system/molecules/LimitsPanel/utils';
+import { parseDollar, fmt } from '@/components/legacy/design-system/molecules/LimitsPanel/utils';
 import { PROVIDER_LABELS, PROVIDER_MODELS } from './useAiConfig';
 import { NO_LIMITS, type CapPlatform, type Limits, type PlatformLimits } from './useLimits';
 import type { AiConfig, AiProvider } from '../types';

@@ -9,7 +9,7 @@ import { useAgentTraffic } from './useAgentTraffic';
 import { useAgentAlerts } from './useAgentAlerts';
 import { useBudgetAlerts } from './useBudgetAlerts';
 import { useLimitAlerts } from './useLimitAlerts';
-import { isTokenExpired } from '@/components/design-system/organisms/CodexPlanPanel/utils';
+import { isTokenExpired } from '@/components/legacy/design-system/organisms/CodexPlanPanel/utils';
 
 /**
  * App-level side effects: anonymous analytics + the toast notifications that

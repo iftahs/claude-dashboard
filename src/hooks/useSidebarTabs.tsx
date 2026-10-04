@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
-import { SidebarBadge } from '@/components/design-system/atoms/SidebarBadge/SidebarBadge';
-import type { SidebarTab } from '@/components/design-system/organisms/Sidebar/types';
+import { SidebarBadge } from '@/components/legacy/design-system/atoms/SidebarBadge/SidebarBadge';
+import type { SidebarTab } from '@/components/legacy/design-system/organisms/Sidebar/types';
 import { limitTone } from '@/lib/limits';
 import { useLiveMetrics } from './useLiveMetrics';
 import { useAgentTraffic } from './useAgentTraffic';

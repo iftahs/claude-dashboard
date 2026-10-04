@@ -2,7 +2,7 @@ import { useEffect } from 'react';
 import { useLiveMetrics } from './useLiveMetrics';
 import { useSource } from './useSource';
 import { PLATFORM_NOUN } from '../lib/platform';
-import { BRAND } from '@/components/design-system/organisms/Sidebar/utils';
+import { BRAND } from '@/components/legacy/design-system/organisms/Sidebar/utils';
 
 /**
  * Mirrors the binding rate-limit window of the platform on screen into the browser tab, the same % the sidebar Live badge shows.
