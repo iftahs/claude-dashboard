@@ -10,7 +10,11 @@ import { SourceProvider } from './hooks/useSource';
 import { ConfigModeProvider } from './hooks/useConfigMode';
 import { LiveDataProvider } from './hooks/useLiveData';
 import { AiInsightProvider } from './hooks/useAiInsightContext';
+import { ThemeProvider } from './hooks/useTheme';
 import { NotificationHost } from './components/legacy/design-system/organisms/NotificationHost/NotificationHost';
+import '@fontsource-variable/inter';
+import '@fontsource-variable/jetbrains-mono';
+import './styles/tokens.css';
 import './index.css';
 
 initAnalytics();
@@ -18,20 +22,22 @@ initAnalytics();
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <PostHogProvider client={posthog}>
-      <BrowserRouter>
-        <NotificationProvider>
-          <SourceProvider>
-            <ConfigModeProvider>
-              <LiveDataProvider>
-                <AiInsightProvider>
-                  <App />
-                  <NotificationHost />
-                </AiInsightProvider>
-              </LiveDataProvider>
-            </ConfigModeProvider>
-          </SourceProvider>
-        </NotificationProvider>
-      </BrowserRouter>
+      <ThemeProvider>
+        <BrowserRouter>
+          <NotificationProvider>
+            <SourceProvider>
+              <ConfigModeProvider>
+                <LiveDataProvider>
+                  <AiInsightProvider>
+                    <App />
+                    <NotificationHost />
+                  </AiInsightProvider>
+                </LiveDataProvider>
+              </ConfigModeProvider>
+            </SourceProvider>
+          </NotificationProvider>
+        </BrowserRouter>
+      </ThemeProvider>
     </PostHogProvider>
   </StrictMode>
 );

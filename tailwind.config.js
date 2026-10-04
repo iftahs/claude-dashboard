@@ -96,6 +96,16 @@ export default {
       maxWidth: {
         content: '1200px',
       },
+      keyframes: {
+        'live-ping': {
+          '0%': { boxShadow: '0 0 0 0 rgb(var(--success) / 0.5)' },
+          '70%': { boxShadow: '0 0 0 8px rgb(var(--success) / 0)' },
+          '100%': { boxShadow: '0 0 0 0 rgb(var(--success) / 0)' },
+        },
+      },
+      animation: {
+        'live-ping': 'live-ping 2s infinite',
+      },
     },
   },
   plugins: [],

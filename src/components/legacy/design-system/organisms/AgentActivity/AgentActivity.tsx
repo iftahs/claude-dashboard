@@ -38,7 +38,7 @@ function ModelChip({ model }: { model: string }) {
   return (
     <span
       className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs ring-1 ring-white/10"
-      style={{ backgroundColor: `${color}18` }}
+      style={{ backgroundColor: `color-mix(in srgb, ${color} 9%, transparent)` }}
     >
       <span
         className="h-1.5 w-1.5 rounded-full flex-none"
