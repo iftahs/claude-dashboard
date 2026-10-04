@@ -22,7 +22,7 @@ body {
   .pulse-dot {
     @apply inline-block h-2 w-2 rounded-full bg-emerald-400;
     box-shadow: 0 0 0 0 rgba(52, 211, 153, 0.6);
-    animation: live-ping 2s infinite;
+    animation: legacy-ping 2s infinite;
   }
   .skeleton {
     @apply relative overflow-hidden bg-white/10;
@@ -46,8 +46,7 @@ body {
   }
 }
 
-/* Same frames as `live-ping` in tailwind.config.js: this later copy is the one the cascade keeps. */
-@keyframes live-ping {
+@keyframes legacy-ping {
   0% {
     box-shadow: 0 0 0 0 rgb(var(--success) / 0.5);
   }

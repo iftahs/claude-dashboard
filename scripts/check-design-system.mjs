@@ -68,6 +68,11 @@ const STYLE_BANS = {
       fix: 'use the type scale',
     },
     {
+      name: 'default Tailwind scale',
+      pattern: /(?<![\w-])(?:text-(?:xs|sm|base|lg|[2-9]?xl)|rounded-(?:sm|md|lg|[23]?xl)|shadow-(?:sm|md|lg|2?xl))(?![\w-])/g,
+      fix: 'use the design-system type, radius and shadow scales',
+    },
+    {
       name: 'dark: variant',
       pattern: /(?<![\w-])dark:(?=[\w[!-])/g,
       fix: 'tokens switch with the theme',
