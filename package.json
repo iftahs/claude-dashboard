@@ -36,15 +36,27 @@
     "docker:logs": "docker compose logs -f"
   },
   "dependencies": {
+    "@fontsource-variable/inter": "^5.3.0",
+    "@fontsource-variable/jetbrains-mono": "^5.3.0",
     "@posthog/react": "^1.10.2",
+    "@radix-ui/react-dialog": "^1.1.23",
+    "@radix-ui/react-dropdown-menu": "^2.1.24",
+    "@radix-ui/react-popover": "^1.1.23",
+    "@radix-ui/react-select": "^2.3.7",
+    "@radix-ui/react-tabs": "^1.1.21",
+    "@radix-ui/react-tooltip": "^1.2.16",
     "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "cmdk": "^1.1.1",
     "express": "^4.21.2",
     "framer-motion": "^12.40.0",
+    "lucide-react": "^1.52.0",
     "posthog-js": "^1.390.2",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-router-dom": "^7.17.0",
-    "recharts": "^2.13.3"
+    "recharts": "^2.13.3",
+    "tailwind-merge": "^2.6.1"
   },
   "devDependencies": {
     "@types/express": "^5.0.0",
