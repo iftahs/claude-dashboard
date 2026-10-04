@@ -24,6 +24,7 @@
     "test": "tsx --test \"server/**/*.test.ts\"",
     "lint": "node scripts/check-design-system.mjs",
     "docs:ds": "node scripts/generate-design-index.mjs",
+    "tokens": "node scripts/build-tokens.mjs",
     "verify": "tsc -b && npm test && npm run lint",
     "//docker:up": "Rebuild image from current code and (re)start the container in the background. Run this after any code change.",
     "predocker:up": "node scripts/sync-macos-keychain.mjs && node scripts/token-sync-agent.mjs ensure && node scripts/write-host-repo-dir.mjs",
