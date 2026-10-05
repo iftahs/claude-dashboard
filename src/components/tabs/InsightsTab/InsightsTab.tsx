@@ -55,7 +55,7 @@ export function InsightsTab() {
   const summary = usePolling<InsightsSummary>(q('/api/insights/summary'), POLL);
   const insightErrors = usePolling<InsightsErrors>(q('/api/insights/errors'), POLL);
   const tools = usePolling<ToolsData>(q('/api/insights/tools'), POLL);
-  const insightMcp = usePolling<InsightsMcp>(q('/api/insights/mcp'), POLL);
+  const insightMcp = usePolling<InsightsMcp>(q('/api/insights/mcp-servers'), POLL);
   const insightRejections = usePolling<InsightsRejections>(q('/api/insights/rejections'), POLL);
   const insightRetries = usePolling<InsightsRetries>(q('/api/insights/retries'), POLL);
   const insightLanguages = usePolling<InsightsLanguages[]>(q('/api/insights/languages'), POLL);
