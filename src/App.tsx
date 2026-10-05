@@ -20,6 +20,9 @@ const WorkspaceTab = lazy(() => import('./components/legacy/tabs/WorkspaceTab/Wo
 const AiTab = lazy(() => import('./components/legacy/tabs/AiTab/AiTab').then((m) => ({ default: m.AiTab })));
 const SessionsTab = lazy(() => import('./components/legacy/tabs/SessionsTab/SessionsTab').then((m) => ({ default: m.SessionsTab })));
 const SettingsTab = lazy(() => import('./components/legacy/tabs/SettingsTab/SettingsTab').then((m) => ({ default: m.SettingsTab })));
+const DesignSystemPage = import.meta.env.DEV
+  ? lazy(() => import('./pages/DesignSystemPage/DesignSystemPage').then((m) => ({ default: m.DesignSystemPage })))
+  : null;
 
 import { useSource, type Platform, type SourceFilter } from './hooks/useSource';
 import { useLiveData } from './hooks/useLiveData';
@@ -86,6 +89,17 @@ function TabFallback() {
 }
 
 export default function App() {
+  if (DesignSystemPage && window.location.pathname === '/__ds') {
+    return (
+      <Suspense fallback={null}>
+        <DesignSystemPage />
+      </Suspense>
+    );
+  }
+  return <Dashboard />;
+}
+
+function Dashboard() {
   const location = useLocation();
   const navigate = useNavigate();
   const {
