@@ -23,7 +23,7 @@ export interface LimitWindowView {
   label: string;
   percent: number;
   tone: OverviewTone;
-  resetText: string;
+  reset: string[];
   binding: boolean;
 }
 
@@ -59,6 +59,8 @@ export interface RunningBadgeView {
   tone: 'neutral' | 'danger';
 }
 
+export type RunningSinceFormat = 'elapsed' | 'ago';
+
 export interface RunningRowView {
   key: string;
   waiting: boolean;
@@ -68,6 +70,7 @@ export interface RunningRowView {
   model: string;
   modelColor: string | null;
   since: number;
+  sinceFormat: RunningSinceFormat;
 }
 
 export interface RunningNowView {
@@ -111,6 +114,12 @@ export interface SpendTodayView {
 
 export type BindingPicker = (readings: readonly LimitReading[]) => { pct: number; label: string; reached: boolean } | null;
 
+export interface BindingMark {
+  platform: string;
+  label: string;
+  pct: number;
+}
+
 export interface ClaudeLimitsInput {
   live: LiveUsageData | null;
   loading: boolean;
@@ -147,6 +156,7 @@ export interface RunningInput {
 
 export interface TodayInput {
   platform: Platform;
+  coworkOnly: boolean;
   weekly: WeeklyData | null;
   loading: boolean;
   claudeWeekly: WeeklyData | null;
@@ -166,9 +176,14 @@ const PLATFORM_COLOR: Record<OverviewPlatform, string> = {
   codex: 'rgb(var(--platform-codex))',
 };
 const USAGE_HINT: Record<Platform, string> = {
-  claude: 'Use Claude Code and today fills in here.',
-  codex: 'Run a thread in the ChatGPT desktop app and today fills in here.',
-  both: 'Use Claude Code or Codex and today fills in here.',
+  claude: 'Use Claude Code',
+  codex: 'Run a thread in the ChatGPT desktop app',
+  both: 'Use Claude Code or Codex',
+};
+const COWORK_HINT = 'Use Cowork';
+const EMPTY_HINT: Record<SpendTodayView['key'], string> = {
+  cost: 'the estimated spend for today shows up here',
+  tokens: 'the tokens used today show up here',
 };
 const TOKENS_FOOTNOTE: Record<Platform, string> = {
   claude: 'Input, output and cache writes. Cache reads do not count toward limits.',
@@ -215,42 +230,26 @@ interface WindowSlot {
   usedPct: number;
 }
 
-function bindingKeyOf(readings: LimitReading[], pickBinding: BindingPicker): string | null {
-  const binding = pickBinding(readings);
-  if (!binding) return null;
-  const match = readings.find((reading) => reading.label === binding.label && pickBinding([reading])?.pct === binding.pct);
-  return match?.key ?? null;
-}
-
-function windowView(
-  slot: WindowSlot,
-  reading: LimitReading | undefined,
-  binding: boolean,
-  pickBinding: BindingPicker,
-  now: number,
-): LimitWindowView {
+function windowView(slot: WindowSlot, reading: LimitReading | undefined, pickBinding: BindingPicker, now: number): LimitWindowView {
   const shown = reading ? pickBinding([reading]) : null;
   const idle = Math.max(0, Math.min(100, Math.round(Number.isFinite(slot.usedPct) ? slot.usedPct : 0)));
   const percent = shown ? shown.pct : idle;
-  const resets =
+  const reset =
     reading && reading.resetsAt !== null
-      ? `Resets in ${untilFull(reading.resetsAt)}, ${resetClock(reading.resetsAt, now)}`
-      : 'Opens with your next message';
+      ? [`Resets in ${untilFull(reading.resetsAt)},`, resetClock(reading.resetsAt, now)]
+      : ['Opens with your next message'];
   return {
     key: slot.key,
     label: slot.label,
     percent,
     tone: toneFor(percent),
-    resetText: shown?.reached ? `Limit reached. ${resets}` : resets,
-    binding,
+    reset: shown?.reached ? ['Limit reached.', ...reset] : reset,
+    binding: false,
   };
 }
 
 function windowViews(slots: WindowSlot[], readings: LimitReading[], pickBinding: BindingPicker, now: number): LimitWindowView[] {
-  const bindingKey = slots.length > 1 ? bindingKeyOf(readings, pickBinding) : null;
-  return slots.map((slot) =>
-    windowView(slot, readings.find((reading) => reading.key === slot.key), bindingKey === slot.key, pickBinding, now),
-  );
+  return slots.map((slot) => windowView(slot, readings.find((reading) => reading.key === slot.key), pickBinding, now));
 }
 
 function claudeWindows(live: LiveUsageData, pickBinding: BindingPicker, now: number): LimitWindowView[] {
@@ -379,6 +378,18 @@ export function buildCodexLimits({
   return limitCard(base, { status: 'error', message: { title: 'Could not load Codex limits', description: SERVER_DOWN } });
 }
 
+export function markBinding(cards: LimitGlanceView[], binding: BindingMark | null): LimitGlanceView[] {
+  const rows = cards.reduce((count, card) => count + card.windows.length, 0);
+  if (!binding || rows < 2) return cards;
+  const label = binding.label.toLowerCase();
+  return cards.map((card) => {
+    if (card.name !== binding.platform) return card;
+    const index = card.windows.findIndex((row) => row.label.toLowerCase() === label && row.percent === binding.pct);
+    if (index < 0) return card;
+    return { ...card, windows: card.windows.map((row, at) => (at === index ? { ...row, binding: true } : row)) };
+  });
+}
+
 export function limitsNote(cards: LimitGlanceView[]): string {
   if (cards.some((card) => card.windows.length > 0)) return 'How much of each window is used';
   if (cards.some((card) => card.caps.length > 0)) return 'Spend against your caps';
@@ -406,7 +417,8 @@ function platformRows(data: LiveSubagents | null, platform: OverviewPlatform, ta
   const shownKeys = new Set(shown.map((main) => main.key));
   const sessions = shown.map((main): RunningRowView => {
     const waiting = main.traffic === 'waiting';
-    const children = data.running.filter((agent) => agent.parentKey === main.key).length;
+    const kids = data.running.filter((agent) => agent.parentKey === main.key);
+    const children = kids.length;
     const title = main.title || 'Untitled';
     return {
       key: `${platform}:${main.key}`,
@@ -415,7 +427,8 @@ function platformRows(data: LiveSubagents | null, platform: OverviewPlatform, ta
       task: children > 0 ? `${title}, ${children} ${plural(children, 'subagent', 'subagents')} running` : title,
       badge: waiting ? { label: 'Waiting on you', tone: 'danger' } : tag,
       ...modelChip(main.model),
-      since: waiting ? main.lastActivity : main.startedAt,
+      since: waiting ? main.lastActivity : Math.max(main.lastActivity, ...kids.map((agent) => agent.lastActivity)),
+      sinceFormat: 'ago',
     };
   });
   const orphans = data.running
@@ -429,6 +442,7 @@ function platformRows(data: LiveSubagents | null, platform: OverviewPlatform, ta
         badge: tag,
         ...modelChip(agent.model),
         since: agent.startedAt,
+        sinceFormat: 'elapsed',
       }),
     );
   return { sessions, orphans };
@@ -448,6 +462,7 @@ function workflowRow(run: WorkflowRun): RunningRowView {
     badge: { label: 'Workflow', tone: 'neutral' },
     ...modelChip(run.defaultModel),
     since: run.startedAt,
+    sinceFormat: 'elapsed',
   };
 }
 
@@ -547,7 +562,16 @@ function splitLegend(
   ];
 }
 
-export function buildToday({ platform, weekly, loading, claudeWeekly, codexWeekly, dayBudget, now }: TodayInput): SpendTodayView[] {
+export function buildToday({
+  platform,
+  coworkOnly,
+  weekly,
+  loading,
+  claudeWeekly,
+  codexWeekly,
+  dayBudget,
+  now,
+}: TodayInput): SpendTodayView[] {
   const shells: Pick<SpendTodayView, 'key' | 'label' | 'trendLabel' | 'footnote'>[] = [
     {
       key: 'cost',
@@ -569,8 +593,14 @@ export function buildToday({ platform, weekly, loading, claudeWeekly, codexWeekl
     return shells.map((shell) => ({ ...shell, ...blank, status: loading ? 'loading' : 'error', message }));
   }
   if (weekly.totals.totalTokens === 0) {
-    const message = { title: `No usage in the last ${TREND_DAYS} days`, description: USAGE_HINT[platform] };
-    return shells.map((shell) => ({ ...shell, ...blank, status: 'empty', message }));
+    const title = `No usage in the last ${TREND_DAYS} days`;
+    const hint = coworkOnly ? COWORK_HINT : USAGE_HINT[platform];
+    return shells.map((shell) => ({
+      ...shell,
+      ...blank,
+      status: 'empty',
+      message: { title, description: `${hint} and ${EMPTY_HINT[shell.key]}.` },
+    }));
   }
 
   const days = coverageDays(weekly, TREND_DAYS, now);

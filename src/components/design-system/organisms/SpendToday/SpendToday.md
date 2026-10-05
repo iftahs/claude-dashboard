@@ -43,7 +43,7 @@
 - `loading` - a `SkeletonPreset` stat beside a sparkline-sized chart skeleton; the footnote stays real.
 - `error` - the label and an `ErrorState`.
 - `empty` - the label and an `EmptyState` that says what makes the number appear.
-- `ready` - label, `metric-lg` value, delta badge and comparison on the left, the sparkline on the right, then the cap meter, the legend and the footnote under a divider.
+- `ready` - label and `metric-lg` value on the left, the sparkline on the right, the delta badge and the comparison on a full-width line under them, then the cap meter, the legend and the footnote under a divider.
 
 ## Usage
 
@@ -77,5 +77,6 @@ A single card:
 ## Notes
 
 - The value never wraps; the comparison truncates with an ellipsis and keeps its full text in `title`.
+- The sparkline column is 120px wide, 96px below 640px.
 - Cost values are estimates and arrive prefixed with a tilde; the footnote says so.
 - Presentational: no hooks, no routing, no fetching.

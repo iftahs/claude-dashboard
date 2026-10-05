@@ -15,8 +15,12 @@ export function LimitGlanceWindow({ row }: LimitGlanceWindowProps) {
         <span className="flex-none whitespace-nowrap text-metric text-fg">{row.percent}%</span>
       </div>
       <ProgressBar value={row.percent} tone={row.tone} size="lg" label={row.label} />
-      <span title={row.resetText} className="truncate text-caption text-fg-subtle">
-        {row.resetText}
+      <span className="flex flex-wrap gap-x-1 text-caption text-fg-subtle">
+        {row.reset.map((phrase) => (
+          <span key={phrase} className="whitespace-nowrap">
+            {phrase}
+          </span>
+        ))}
       </span>
     </div>
   );

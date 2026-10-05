@@ -26,7 +26,7 @@ export const LimitGlance = memo(function LimitGlance({ view, href, onNavigate, c
               href={href}
               aria-label={`${view.name} limits, open live usage`}
               onClick={(event) => onNavigate?.(event, href)}
-              className="whitespace-nowrap outline-none after:absolute after:inset-0 after:rounded-card focus-visible:after:outline focus-visible:after:outline-2 focus-visible:after:outline-offset-2 focus-visible:after:outline-focus"
+              className="whitespace-nowrap outline-none after:absolute after:-inset-px after:rounded-card focus-visible:after:outline focus-visible:after:outline-2 focus-visible:after:outline-offset-2 focus-visible:after:outline-focus"
             >
               {view.name}
             </a>

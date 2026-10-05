@@ -29,7 +29,7 @@
 |---|---|---|
 | `status` | `'loading' \| 'error' \| 'ready'` | Which state the body shows. |
 | `stats` | `RunningStatView[]` | Inline counts: `value`, `label`, and `alert` for the danger tone with an alert icon. |
-| `rows` | `RunningRowView[]` | Up to five rows, waiting ones first: `waiting`, `project`, `task`, `badge`, `model`, `modelColor`, `since`. |
+| `rows` | `RunningRowView[]` | Up to five rows, waiting ones first: `waiting`, `project`, `task`, `badge`, `model`, `modelColor`, `since`, `sinceFormat`. |
 | `more` | `number` | How many running items did not fit; shown as a caption when above zero. |
 | `message` | `{ title, description } \| null` | The error text. |
 
@@ -37,7 +37,7 @@
 
 - `loading` - a `SkeletonPreset` text block under the header link.
 - `error` - an `ErrorState` inside the card.
-- `ready` with rows - the inline stats, then one 44px row per item: a `StatusDot` (danger when waiting, pulsing success when running), the project, the task, a `Badge` ("Waiting on you", "Workflow", "Codex"), the model `Chip` and a ticking `ElapsedTime`.
+- `ready` with rows - the inline stats, then one 44px row per item: a `StatusDot` (danger when waiting, pulsing success when running), the project, the task, a `Badge` ("Waiting on you", "Workflow", "Codex"), the model `Chip` and a ticking `ElapsedTime`. When more items run than fit, a caption counts the rest ("3 more running").
 - `ready` with no rows - the stats and the line "Nothing is running right now."
 
 ## Usage
@@ -63,7 +63,7 @@ With plain browser navigation:
 - The card is a `<section>` labelled "Running now"; the rows are a `<ul>`.
 - A waiting row says "Waiting on you" in its badge and a running row carries a visually hidden "Running" on its dot, so the status never rests on colour alone. The waiting count pairs its danger tone with an alert icon and the words "waiting on you".
 - "Open agents" is a native `<a href>` with the 2px focus ring; middle-click and "open in new tab" keep working.
-- The elapsed time is plain ticking text, not a live region.
+- The time is plain ticking text, not a live region, and its cell carries a `title` that says what it measures.
 
 ## Private parts
 
@@ -73,6 +73,7 @@ With plain browser navigation:
 ## Notes
 
 - The project and the task truncate with an ellipsis and keep their full text in `title`; the badge, the chip and the elapsed time never wrap.
-- Below 640px the task and the model chip are hidden so the row keeps the project, the badge and the elapsed time on one line.
+- The time follows `sinceFormat`. `ago` reads "active 12s ago": the time since a session's last activity (its running subagents count), because a session has no per-turn start; on a waiting row it is how long the session has been waiting. `elapsed` reads "15m 21s": the running time of a subagent or a workflow, counted from its real start.
+- Below 640px the task, the model chip and the word "active" are hidden so the row keeps the project, the badge and the time on one line.
 - `modelColor` is a token colour string from `modelColor()`; a null value draws the chip without a dot.
 - Presentational: no hooks, no routing, no fetching.

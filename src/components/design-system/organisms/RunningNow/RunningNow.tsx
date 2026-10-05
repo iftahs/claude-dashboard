@@ -15,7 +15,7 @@ export const RunningNow = memo(function RunningNow({ view, href, onNavigate, cla
 
   return (
     <Card aria-label="Running now" className={cn('flex flex-col', className)}>
-      <div className="flex items-center justify-between gap-6">
+      <div className="flex min-h-6 items-center justify-between gap-6">
         <div className="flex min-w-0 flex-wrap items-center gap-x-8 gap-y-2">
           {ready ? stats.map((stat) => <RunningNowStat key={stat.key} stat={stat} />) : null}
         </div>

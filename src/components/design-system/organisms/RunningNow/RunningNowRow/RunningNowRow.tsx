@@ -2,6 +2,7 @@ import { Badge } from '@/components/design-system/atoms/Badge/Badge';
 import { Chip } from '@/components/design-system/atoms/Chip/Chip';
 import { ElapsedTime } from '@/components/design-system/atoms/ElapsedTime/ElapsedTime';
 import { StatusDot } from '@/components/design-system/atoms/StatusDot/StatusDot';
+import { SINCE_TITLE } from '../utils';
 import type { RunningNowRowProps } from './types';
 
 export function RunningNowRow({ row }: RunningNowRowProps) {
@@ -18,7 +19,13 @@ export function RunningNowRow({ row }: RunningNowRowProps) {
       <Chip color={row.modelColor ?? undefined} className="hidden sm:inline-flex">
         {row.model}
       </Chip>
-      <ElapsedTime since={row.since} className="w-16 flex-none text-right font-mono text-mono text-fg-muted" />
+      <span
+        title={SINCE_TITLE[row.sinceFormat]}
+        className="flex w-16 flex-none items-baseline justify-end gap-1 whitespace-nowrap sm:w-24"
+      >
+        {row.sinceFormat === 'ago' ? <span className="hidden text-caption text-fg-subtle sm:inline">active</span> : null}
+        <ElapsedTime since={row.since} format={row.sinceFormat} className="font-mono text-mono text-fg-muted" />
+      </span>
     </li>
   );
 }

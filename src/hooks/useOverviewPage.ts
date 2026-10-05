@@ -20,6 +20,7 @@ import {
   buildRunning,
   buildToday,
   limitsNote,
+  markBinding,
   type LimitGlanceView,
   type RunningNowView,
   type SpendTodayView,
@@ -62,7 +63,7 @@ function scopedBudget(
 
 export function useOverviewPage(): OverviewPageView {
   const navigate = useNavigate();
-  const { platform, showClaude, showCodex } = useSource();
+  const { platform, showClaude, showCodex, effectiveSource } = useSource();
   const { configData, configLoading, isApi, weekStart } = useConfigMode();
   const { liveUsage, codexLive, liveWeekly, liveSubagents, codexAgents, workflows } = useLiveData();
   const [caps] = usePlatformLimits();
@@ -70,7 +71,7 @@ export function useOverviewPage(): OverviewPageView {
   const { costPerDay } = useCostMetrics();
   const { litellmActual } = useLiteLlmActual();
   const traffic = useAgentTraffic();
-  const { liveWorkflowCount } = useLiveMetrics();
+  const { liveWorkflowCount, binding } = useLiveMetrics();
 
   const both = platform === 'both';
   const claudeScoped = usePolling<WeeklyData>(both ? `${WEEKLY_7D}&source=claude` : '', weeklyPollMs(TREND_DAYS));
@@ -161,10 +162,10 @@ export function useOverviewPage(): OverviewPageView {
         }),
       );
     }
-    return cards;
+    return markBinding(cards, binding);
   }, [
     showClaude, showCodex, claudeLive, claudeLoading, plan, isApi, claudeBudget, claudeBudgetFailed,
-    codexLiveData, codexLoading, codexApiKey, codexBudget, codexBudgetFailed, tick,
+    codexLiveData, codexLoading, codexApiKey, codexBudget, codexBudgetFailed, binding, tick,
   ]);
 
   const claudeAgents = showClaude ? liveSubagents.data : null;
@@ -192,10 +193,12 @@ export function useOverviewPage(): OverviewPageView {
     ],
   );
 
+  const coworkOnly = effectiveSource === 'cowork';
   const today = useMemo(
     () =>
       buildToday({
         platform,
+        coworkOnly,
         weekly: liveWeekly.data,
         loading: liveWeekly.loading,
         claudeWeekly: both ? claudeScoped.data : null,
@@ -203,7 +206,7 @@ export function useOverviewPage(): OverviewPageView {
         dayBudget: viewBudget?.find((row) => row.key === 'day') ?? null,
         now: Date.now(),
       }),
-    [platform, liveWeekly.data, liveWeekly.loading, both, claudeScoped.data, codexScoped.data, viewBudget],
+    [platform, coworkOnly, liveWeekly.data, liveWeekly.loading, both, claudeScoped.data, codexScoped.data, viewBudget],
   );
 
   const onNavigate = useCallback<OverviewNavigate>(

@@ -27,36 +27,35 @@ export const SpendToday = memo(function SpendToday({ view, className }: SpendTod
             <h3 title={view.label} className="truncate text-label uppercase text-fg-subtle">
               {view.label}
             </h3>
-            {ready ? (
-              <>
-                <span className="whitespace-nowrap text-metric-lg text-fg">{view.value}</span>
-                <span className="flex min-w-0 items-center gap-2 text-small text-fg-muted">
-                  {view.delta ? (
-                    <Badge>
-                      {view.deltaUp ? <Icon name="trending" size={12} /> : null}
-                      {view.delta}
-                    </Badge>
-                  ) : null}
-                  <span title={view.comparison} className="min-w-0 truncate">
-                    {view.comparison}
-                  </span>
-                </span>
-              </>
-            ) : null}
+            {ready ? <span className="whitespace-nowrap text-metric-lg text-fg">{view.value}</span> : null}
           </div>
         )}
         {loading ? (
-          <div aria-hidden="true" className="w-[120px] flex-none">
+          <div aria-hidden="true" className="w-24 flex-none sm:w-[120px]">
             <SkeletonPreset variant="chart" rows={SKELETON_BARS} className="h-9" />
           </div>
         ) : null}
         {ready ? (
-          <div className="flex w-[120px] flex-none flex-col gap-1">
+          <div className="flex w-24 flex-none flex-col gap-1 sm:w-[120px]">
             <Sparkline values={view.trend} highlightLast label={view.trendLabel} />
             <span className="whitespace-nowrap text-right text-caption text-fg-subtle">{TREND_CAPTION}</span>
           </div>
         ) : null}
       </div>
+
+      {ready ? (
+        <div className="mt-1.5 flex min-w-0 items-center gap-2 text-small text-fg-muted">
+          {view.delta ? (
+            <Badge>
+              {view.deltaUp ? <Icon name="trending" size={12} /> : null}
+              {view.delta}
+            </Badge>
+          ) : null}
+          <span title={view.comparison} className="min-w-0 truncate">
+            {view.comparison}
+          </span>
+        </div>
+      ) : null}
 
       {status === 'error' && message ? <ErrorState title={message.title} description={message.description} className="py-6" /> : null}
 
