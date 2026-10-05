@@ -20,6 +20,7 @@
 | `state` | `'live' \| 'paused' \| 'error'` | required | Which state to show. |
 | `label` | `string` | `'Live'`, `'Paused'` or `'Offline'` | Replaces the default caption, for example "Updated 2m ago". |
 | `className` | `string` | - | Extra classes merged onto the root. |
+| `captionClassName` | `string` | - | Classes for the caption alone, for example `max-xl:sr-only` to keep only the dot where space is tight. |
 
 ## Variants
 

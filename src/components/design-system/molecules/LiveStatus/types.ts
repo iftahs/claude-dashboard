@@ -4,4 +4,5 @@ export interface LiveStatusProps {
   state: LiveStatusState;
   label?: string;
   className?: string;
+  captionClassName?: string;
 }

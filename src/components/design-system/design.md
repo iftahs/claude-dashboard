@@ -65,6 +65,7 @@ rather than writing raw markup.
 | NavItem | Sidebar link with an icon, a label and an optional badge, which collapses to an icon with a tooltip in the rail. | [NavItem.md](molecules/NavItem/NavItem.md) |
 | SkeletonPreset | Ready-made loading placeholder in the shape of common content: text, a stat, a chart, meter rows, a table or a limit gauge. | [SkeletonPreset.md](molecules/SkeletonPreset/SkeletonPreset.md) |
 | StatTile | Card that shows one number under an uppercase label, with an optional line of context and a help popover. | [StatTile.md](molecules/StatTile/StatTile.md) |
+| StatusChip | Compact link on a soft status fill that names a live state and leads to the page that explains it. | [StatusChip.md](molecules/StatusChip/StatusChip.md) |
 | ThemeToggle | Icon button that switches between the dark and light themes and names the theme it switches to. | [ThemeToggle.md](molecules/ThemeToggle/ThemeToggle.md) |
 | Toast | Floating notice with a status icon, a title and a sentence, an optional action and a dismiss button. | [Toast.md](molecules/Toast/Toast.md) |
 
@@ -72,6 +73,13 @@ rather than writing raw markup.
 
 | Component | Purpose | Doc |
 |---|---|---|
+| CommandPalette | Modal search box that filters grouped commands as the reader types and runs the chosen one from the keyboard or with a click. | [CommandPalette.md](organisms/CommandPalette/CommandPalette.md) |
+| LimitGlance | Card that shows one platform's plan limits at a glance: a row per rate-limit window with its percentage, meter and reset time, or the spending caps when there are no plan windows. | [LimitGlance.md](organisms/LimitGlance/LimitGlance.md) |
+| RunningNow | Card that summarises what is running right now: counts of running agents, agents waiting on you and running workflows, then a short list of the sessions and workflows behind them. | [RunningNow.md](organisms/RunningNow/RunningNow.md) |
+| Sidebar | App navigation: the product name with the collapse button, grouped page links with live badges, pinned links at the bottom and a footer with the data folders, version and credit. | [Sidebar.md](organisms/Sidebar/Sidebar.md) |
+| SpendToday | Card that shows one of today's totals as a large number with its change against the recent daily average, a seven-day sparkline, and an optional daily cap meter and platform split. | [SpendToday.md](organisms/SpendToday/SpendToday.md) |
+| ToastStack | Stack of toasts pinned to the bottom right of the viewport, oldest on top, each with its own dismiss button and optional action. | [ToastStack.md](organisms/ToastStack/ToastStack.md) |
+| Topbar | Row of global controls for the app shell: the page title, the platform and surface switchers, limit and agent status chips, the command palette button, the theme toggle and the live indicator. | [Topbar.md](organisms/Topbar/Topbar.md) |
 
 ## Templates
 

@@ -121,7 +121,7 @@ export function useDashboardNotifications(activeTab: string) {
         timeoutMs: 9000,
         title: 'API · pay-as-you-go',
         message:
-          "No Claude.ai subscription detected — dollar figures are estimated from local logs at Anthropic's API rates. Set spending caps in ⚙ Settings.",
+          "No Claude.ai subscription detected — dollar figures are estimated from local logs at Anthropic's API rates. Set spending caps in Settings.",
       });
     }
   }, [isApi, configData, showClaude, sourcesLoaded, notify, dismiss]);

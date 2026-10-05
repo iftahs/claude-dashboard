@@ -11,7 +11,7 @@ import { ConfigModeProvider } from './hooks/useConfigMode';
 import { LiveDataProvider } from './hooks/useLiveData';
 import { AiInsightProvider } from './hooks/useAiInsightContext';
 import { ThemeProvider } from './hooks/useTheme';
-import { NotificationHost } from './components/legacy/design-system/organisms/NotificationHost/NotificationHost';
+import { NotificationHost } from './components/common/NotificationHost/NotificationHost';
 import '@fontsource-variable/inter';
 import '@fontsource-variable/jetbrains-mono';
 import './styles/tokens.css';
