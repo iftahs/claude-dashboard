@@ -10,6 +10,7 @@ import { SourceProvider } from './hooks/useSource';
 import { ConfigModeProvider } from './hooks/useConfigMode';
 import { LiveDataProvider } from './hooks/useLiveData';
 import { AiInsightProvider } from './hooks/useAiInsightContext';
+import { PageActionsProvider } from './hooks/usePageActions';
 import { ThemeProvider } from './hooks/useTheme';
 import { NotificationHost } from './components/common/NotificationHost/NotificationHost';
 import '@fontsource-variable/inter';
@@ -29,8 +30,10 @@ createRoot(document.getElementById('root')!).render(
               <ConfigModeProvider>
                 <LiveDataProvider>
                   <AiInsightProvider>
-                    <App />
-                    <NotificationHost />
+                    <PageActionsProvider>
+                      <App />
+                      <NotificationHost />
+                    </PageActionsProvider>
                   </AiInsightProvider>
                 </LiveDataProvider>
               </ConfigModeProvider>

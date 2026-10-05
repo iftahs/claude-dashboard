@@ -9,6 +9,7 @@ import { CardHeader } from '@/components/design-system/molecules/CardHeader/Card
 import { EmptyState } from '@/components/design-system/molecules/EmptyState/EmptyState';
 import { ErrorState } from '@/components/design-system/molecules/ErrorState/ErrorState';
 import { FormField } from '@/components/design-system/molecules/FormField/FormField';
+import { KeyValueRow } from '@/components/design-system/molecules/KeyValueRow/KeyValueRow';
 import { LiveStatus } from '@/components/design-system/molecules/LiveStatus/LiveStatus';
 import { MeterRow } from '@/components/design-system/molecules/MeterRow/MeterRow';
 import { NavItem } from '@/components/design-system/molecules/NavItem/NavItem';
@@ -71,10 +72,7 @@ export function DataMolecules() {
             />
             <div className="flex flex-col gap-2">
               {WINDOW_FACTS.map((fact) => (
-                <div key={fact.label} className="flex items-baseline justify-between gap-3">
-                  <span className="text-small text-fg-muted">{fact.label}</span>
-                  <span className="whitespace-nowrap font-mono text-mono text-fg">{fact.value}</span>
-                </div>
+                <KeyValueRow key={fact.label} label={fact.label} value={fact.value} />
               ))}
             </div>
           </Card>

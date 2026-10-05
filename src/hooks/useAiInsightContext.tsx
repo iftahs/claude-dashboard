@@ -6,6 +6,8 @@ import { useAiInsight } from './useAiInsight';
 import type { PollState } from './usePolling';
 import { AiInsightInline } from '@/components/legacy/design-system/molecules/AiInsightInline/AiInsightInline';
 import { track } from '../lib/analytics';
+import { aiBackendLabel } from '../lib/section';
+import type { SectionAi } from '../lib/section';
 import type { AiConfig, AiStatus } from '../types';
 
 /** Props bundle a <Section> needs to render its AI-insight affordance. */
@@ -27,6 +29,7 @@ interface AiInsightCtx {
   aiInline: (section: string) => ReactNode;
   /** One call yields every AI prop a <Section> needs — spread it in. */
   aiProps: (section: string, data: unknown) => SectionAiProps;
+  sectionAi: (section: string, data: unknown) => SectionAi;
 }
 
 const AiInsightContext = createContext<AiInsightCtx | null>(null);
@@ -68,7 +71,24 @@ export function AiInsightProvider({ children }: { children: ReactNode }) {
       onAiInsight: () => onAiInsight(section, data),
       aiInsight: aiInline(section),
     });
-    return { ai, aiConfig, setAiConfig, aiStatus, aiDisabled, onAiInsight, aiInline, aiProps };
+    const sectionAi = (section: string, data: unknown): SectionAi => {
+      const s = ai.states.get(section);
+      return {
+        onAsk: () => onAiInsight(section, data),
+        loading: s?.loading ?? false,
+        disabled: aiDisabled,
+        result: s
+          ? {
+              text: s.text ?? undefined,
+              loading: s.loading,
+              error: s.error ?? undefined,
+              backendLabel: aiBackendLabel(s.backend),
+              onDismiss: () => ai.dismiss(section),
+            }
+          : null,
+      };
+    };
+    return { ai, aiConfig, setAiConfig, aiStatus, aiDisabled, onAiInsight, aiInline, aiProps, sectionAi };
   }, [ai, aiConfig, setAiConfig, aiStatus, aiDisabled]);
 
   return <AiInsightContext.Provider value={value}>{children}</AiInsightContext.Provider>;

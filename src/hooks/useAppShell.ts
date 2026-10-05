@@ -6,6 +6,7 @@ import { ROUTE_GROUPS } from '@/routes';
 import type { RouteIcon } from '@/routes';
 import { useActiveRoute } from './useActiveRoute';
 import { PALETTE_SHORTCUT, useCommandPalette } from './useCommandPalette';
+import type { PaletteCommand } from './useCommandPalette';
 import { useDashboardNotifications } from './useDashboardNotifications';
 import { useDocumentTitle } from './useDocumentTitle';
 import { useLiveData } from './useLiveData';
@@ -16,15 +17,6 @@ import { useSidebarTabs } from './useSidebarTabs';
 import type { SidebarTab } from './useSidebarTabs';
 import { PLATFORM_LABELS, SOURCE_LABELS, useSource } from './useSource';
 import { useTheme } from './useTheme';
-
-interface ShellCommand {
-  id: string;
-  label: string;
-  icon: RouteIcon;
-  keywords?: string[];
-  current?: boolean;
-  onSelect: () => void;
-}
 
 const CREDIT = { name: 'Iftah Saar', href: 'https://iftah.dev' };
 const PLATFORM_HELP =
@@ -45,7 +37,7 @@ export function useAppShell() {
   const tabs = useSidebarTabs();
   const status = useShellStatus();
   const { collapsed, toggle: toggleCollapsed } = useSidebarCollapsed();
-  const { open: paletteOpen, setOpen: setPaletteOpen } = useCommandPalette();
+  const { open: paletteOpen, setOpen: setPaletteOpen, exportCommands } = useCommandPalette();
   const hasSidebarColumn = useMediaQuery(SIDEBAR_COLUMN_QUERY);
   const [drawerOpen, setDrawerOpen] = useState(false);
 
@@ -97,7 +89,7 @@ export function useAppShell() {
   const sidebarDirs = dataDirs.length ? dataDirs : recent.claudeDir ? [{ label: 'Claude', path: recent.claudeDir }] : [];
 
   const commandGroups = useMemo(() => {
-    const go: ShellCommand[] = tabs.map((tab) => ({
+    const go: PaletteCommand[] = tabs.map((tab) => ({
       id: `go-${tab.id}`,
       label: tab.label,
       icon: tab.icon,
@@ -105,7 +97,7 @@ export function useAppShell() {
       current: tab.id === route.id,
       onSelect: () => navigateTo(tab.path),
     }));
-    const actions: ShellCommand[] = [];
+    const actions: PaletteCommand[] = [];
     // The setters track a change, so picking the scope already on screen must not call them.
     for (const option of platformOptions) {
       actions.push({
@@ -148,13 +140,14 @@ export function useAppShell() {
         onSelect: toggleCollapsed,
       });
     }
+    actions.push(...exportCommands);
     return [
       { id: 'go', heading: 'Go to', items: go },
       { id: 'actions', heading: 'Actions', items: actions },
     ];
   }, [
     tabs, route.id, navigateTo, platformOptions, platform, setPlatform, surfaceShown, sourceOptions, source, setSource,
-    theme, toggleTheme, hasSidebarColumn, collapsed, toggleCollapsed,
+    theme, toggleTheme, hasSidebarColumn, collapsed, toggleCollapsed, exportCommands,
   ]);
 
   const toggleIcon: RouteIcon = drawerOpen ? 'x' : 'panel';

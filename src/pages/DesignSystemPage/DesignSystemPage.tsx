@@ -11,11 +11,13 @@ import { ControlAtoms } from './ControlAtoms/ControlAtoms';
 import { DataMolecules } from './DataMolecules/DataMolecules';
 import { GallerySidebar } from './GallerySidebar/GallerySidebar';
 import { GalleryTopbar } from './GalleryTopbar/GalleryTopbar';
+import { OrganismSpecimens } from './OrganismSpecimens/OrganismSpecimens';
 import { OverlayMolecules } from './OverlayMolecules/OverlayMolecules';
+import { SectionParts } from './SectionParts/SectionParts';
 import { StatusAtoms } from './StatusAtoms/StatusAtoms';
 import { TemplateSpecimens } from './TemplateSpecimens/TemplateSpecimens';
 import type { GallerySectionId } from './types';
-import { GALLERY_SECTIONS, sectionFromHash } from './utils';
+import { GALLERY_COMPONENT_COUNT, GALLERY_SECTIONS, sectionFromHash } from './utils';
 
 export function DesignSystemPage() {
   const { theme, toggleTheme } = useTheme();
@@ -31,7 +33,7 @@ export function DesignSystemPage() {
     setDrawerOpen(false);
   }, []);
 
-  const [atoms, molecules, templates] = GALLERY_SECTIONS;
+  const [atoms, molecules, organisms, templates] = GALLERY_SECTIONS;
   const collapseLabel = sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar';
 
   return (
@@ -63,8 +65,8 @@ export function DesignSystemPage() {
       <PageLayout
         header={
           <PageHeader
-            description="Every atom, molecule and template in its meaningful states. This page exists in development only."
-            actions={<Badge>44 components</Badge>}
+            description="Every atom, molecule, shared organism and template in its meaningful states. This page exists in development only."
+            actions={<Badge>{GALLERY_COMPONENT_COUNT} components</Badge>}
           />
         }
       >
@@ -77,7 +79,13 @@ export function DesignSystemPage() {
           title={<CardHeader title={molecules.label} titleId={molecules.id} description={molecules.description} className="mb-0" />}
         >
           <DataMolecules />
+          <SectionParts />
           <OverlayMolecules />
+        </SectionStackLayout>
+        <SectionStackLayout
+          title={<CardHeader title={organisms.label} titleId={organisms.id} description={organisms.description} className="mb-0" />}
+        >
+          <OrganismSpecimens />
         </SectionStackLayout>
         <SectionStackLayout
           title={<CardHeader title={templates.label} titleId={templates.id} description={templates.description} className="mb-0" />}

@@ -3,10 +3,13 @@ import type { SegmentedControlOption } from '@/components/design-system/atoms/Se
 import type { SelectOption } from '@/components/design-system/atoms/Select/types';
 import type { TabItem } from '@/components/design-system/atoms/Tabs/types';
 import type { ChartTooltipRow } from '@/components/design-system/molecules/ChartTooltip/types';
+import type { LegendItem } from '@/components/design-system/molecules/Legend/types';
+import type { ExportSource } from '@/lib/export';
 import { modelColor } from '@/lib/palette';
 import type {
   AgentFilter,
   BadgeSample,
+  CalloutSample,
   GallerySection,
   GallerySectionId,
   InsightView,
@@ -41,8 +44,15 @@ export const GALLERY_SECTIONS: readonly GallerySection[] = [
     id: 'molecules',
     label: 'Molecules',
     icon: 'layout',
-    count: 14,
+    count: 20,
     description: 'Atoms wired into one focused job.',
+  },
+  {
+    id: 'organisms',
+    label: 'Organisms',
+    icon: 'workflow',
+    count: 3,
+    description: 'The shared building blocks of every page. Page-specific organisms are shown on their pages.',
   },
   {
     id: 'templates',
@@ -52,6 +62,8 @@ export const GALLERY_SECTIONS: readonly GallerySection[] = [
     description: 'Layout only. This page is arranged with all five.',
   },
 ];
+
+export const GALLERY_COMPONENT_COUNT = GALLERY_SECTIONS.reduce((sum, section) => sum + section.count, 0);
 
 export function sectionFromHash(hash: string): GallerySectionId {
   const id = hash.replace(/^#/, '');
@@ -251,7 +263,59 @@ export const SKELETONS: readonly SkeletonSample[] = [
 ];
 
 export const WINDOW_FACTS: readonly KeyValueSample[] = [
-  { label: 'Effective tokens', value: '12.4M tok' },
+  { label: 'Effective tokens', value: '12.4M tok', help: 'Input, output and cache writes. Cache reads do not count toward limits.' },
   { label: 'Est. cost', value: '~$18.20' },
-  { label: 'Projected at reset', value: '71%' },
+  { label: 'Projected at reset', value: '71%', tone: 'warning' },
 ];
+
+export const TONED_FACTS: readonly KeyValueSample[] = [
+  { label: 'Completed runs', value: '67', tone: 'success' },
+  { label: 'Failed runs', value: '2', tone: 'danger' },
+  { label: 'Largest share of this week, a label long enough to truncate before it reaches the value', value: 'opus 5.5', tone: 'accent' },
+  { label: 'Last run', value: '2h ago', tone: 'muted' },
+];
+
+export const CHIP_MODELS: readonly (string | null)[] = [...MODELS.map((model) => model.id), 'claude-opus-4-8', 'inherit', 'unknown', null];
+
+export const MODEL_LEGEND: readonly LegendItem[] = [
+  { label: 'opus 5.5', color: modelColor('claude-opus-5-5'), value: '812K' },
+  { label: 'sonnet 5.5', color: modelColor('claude-sonnet-5-5'), value: '431K' },
+  { label: 'haiku 4.5', color: modelColor('claude-haiku-4-5'), value: '96K' },
+  { label: 'gpt-5.6-terra', color: modelColor('gpt-5.6-terra'), value: '58K' },
+  { label: 'fable 5.1', color: modelColor('claude-fable-5-1'), value: '12K' },
+];
+
+export const PLATFORM_LEGEND: readonly LegendItem[] = [
+  { label: 'Claude', color: PLATFORM_COLORS.claude, shape: 'round' },
+  { label: 'Codex', color: PLATFORM_COLORS.codex, shape: 'round' },
+];
+
+export const CALLOUTS: readonly CalloutSample[] = [
+  { tone: 'info', body: 'No local usage yet. The plan limits here are read live from your account.' },
+  { tone: 'success', title: 'History archive is on', body: 'Usage from transcripts Claude Code deletes is kept from now on.' },
+  { tone: 'warning', title: 'History starts on Sep 12', body: 'Older transcripts were already deleted, so totals before that day are missing.' },
+  { tone: 'danger', title: 'Claude.ai sign-in expired', body: 'Run claude in a terminal to sign in again. Live limits are paused until then.' },
+  { tone: 'neutral', body: 'Claude Code only. Codex records no workflow runs, so this page shows the Claude side.' },
+];
+
+export const AI_INSIGHT_SAMPLE = [
+  'Workflow subagents drove **38%** of this window, almost all of it on `opus 5.5`.',
+  '',
+  '- Two research phases ran in parallel between 14:00 and 15:00.',
+  '- At this pace the window reaches about _71%_ before it resets.',
+].join('\n');
+
+export const AI_ERROR_SAMPLE = 'The model did not answer in time. Try again in a minute.';
+
+export const AI_ANSWER_DELAY_MS = 1400;
+
+export const GALLERY_EXPORT: ExportSource = () => ({
+  filename: 'design-system-sample',
+  csv: SESSIONS.map((session) => ({
+    session: session.title,
+    model: session.model.label,
+    tokens: session.tokens,
+    cost: session.cost,
+  })),
+  json: SESSIONS,
+});

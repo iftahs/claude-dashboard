@@ -53,6 +53,9 @@ rather than writing raw markup.
 
 | Component | Purpose | Doc |
 |---|---|---|
+| AiInsightButton | Small ghost button with the sparkles icon that asks the model to explain the section it sits on, with a busy state while the answer is on its way. | [AiInsightButton.md](molecules/AiInsightButton/AiInsightButton.md) |
+| AiInsightInline | Result block for an AI explanation under a card's content: a label with the backend that answered, a dismiss button, and the answer as markdown, as skeleton lines while it loads or as an error message. | [AiInsightInline.md](molecules/AiInsightInline/AiInsightInline.md) |
+| Callout | Inline notice inside a page or a card: an icon, an optional title and a sentence on a soft status fill, with an optional action. | [Callout.md](molecules/Callout/Callout.md) |
 | CardHeader | Top row of a card: its title and one-line description on the left, a help popover beside the title and an actions slot on the right. | [CardHeader.md](molecules/CardHeader/CardHeader.md) |
 | ChartTooltip | Floating read-out for a chart's hovered point: a title, one row per series with its value, and an optional footer. | [ChartTooltip.md](molecules/ChartTooltip/ChartTooltip.md) |
 | Dialog | Modal panel over a dimmed page with a title, a scrolling body, an optional footer of actions and a close button. | [Dialog.md](molecules/Dialog/Dialog.md) |
@@ -60,8 +63,11 @@ rather than writing raw markup.
 | EmptyState | Centred icon, title and sentence that say what is missing and what makes it appear, with an optional action. | [EmptyState.md](molecules/EmptyState/EmptyState.md) |
 | ErrorState | Centred alert that says what failed and what to do, with an optional retry button. | [ErrorState.md](molecules/ErrorState/ErrorState.md) |
 | FormField | Wraps one form control with its label and a helper line that an error message replaces. | [FormField.md](molecules/FormField/FormField.md) |
+| KeyValueRow | One fact on a line: a muted label on the left and its value in monospace on the right, with an optional help popover and a status tone for the value. | [KeyValueRow.md](molecules/KeyValueRow/KeyValueRow.md) |
+| Legend | Wrapping row of chart legend entries, each a colour swatch with the series name and an optional value. | [Legend.md](molecules/Legend/Legend.md) |
 | LiveStatus | Status dot and a caption that say whether the page is receiving live data, paused or failing. | [LiveStatus.md](molecules/LiveStatus/LiveStatus.md) |
 | MeterRow | Labelled meter: a name on the left, its value in monospace on the right, a progress bar underneath and an optional note. | [MeterRow.md](molecules/MeterRow/MeterRow.md) |
+| ModelChip | Chip that names a model in its short form with that model's fixed series colour, or a plain "inherit" chip when no model is set. | [ModelChip.md](molecules/ModelChip/ModelChip.md) |
 | NavItem | Sidebar link with an icon, a label and an optional badge, which collapses to an icon with a tooltip in the rail. | [NavItem.md](molecules/NavItem/NavItem.md) |
 | SkeletonPreset | Ready-made loading placeholder in the shape of common content: text, a stat, a chart, meter rows, a table or a limit gauge. | [SkeletonPreset.md](molecules/SkeletonPreset/SkeletonPreset.md) |
 | StatTile | Card that shows one number under an uppercase label, with an optional line of context and a help popover. | [StatTile.md](molecules/StatTile/StatTile.md) |
@@ -74,8 +80,10 @@ rather than writing raw markup.
 | Component | Purpose | Doc |
 |---|---|---|
 | CommandPalette | Modal search box that filters grouped commands as the reader types and runs the chosen one from the keyboard or with a click. | [CommandPalette.md](organisms/CommandPalette/CommandPalette.md) |
+| ExportMenu | Small "Export" button that opens a menu with two choices, CSV and JSON, and reports the chosen format. | [ExportMenu.md](organisms/ExportMenu/ExportMenu.md) |
 | LimitGlance | Card that shows one platform's plan limits at a glance: a row per rate-limit window with its percentage, meter and reset time, or the spending caps when there are no plan windows. | [LimitGlance.md](organisms/LimitGlance/LimitGlance.md) |
 | RunningNow | Card that summarises what is running right now: counts of running agents, agents waiting on you and running workflows, then a short list of the sessions and workflows behind them. | [RunningNow.md](organisms/RunningNow/RunningNow.md) |
+| Section | The standard data card of a page: a titled card with a description, help, an actions slot and an AI explanation, whose body shows the content or a built-in loading, error or empty state. | [Section.md](organisms/Section/Section.md) |
 | Sidebar | App navigation: the product name with the collapse button, grouped page links with live badges, pinned links at the bottom and a footer with the data folders, version and credit. | [Sidebar.md](organisms/Sidebar/Sidebar.md) |
 | SpendToday | Card that shows one of today's totals as a large number with its change against the recent daily average, a seven-day sparkline, and an optional daily cap meter and platform split. | [SpendToday.md](organisms/SpendToday/SpendToday.md) |
 | ToastStack | Stack of toasts pinned to the bottom right of the viewport, oldest on top, each with its own dismiss button and optional action. | [ToastStack.md](organisms/ToastStack/ToastStack.md) |

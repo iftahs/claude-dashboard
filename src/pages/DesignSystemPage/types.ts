@@ -1,5 +1,7 @@
 import type { BadgeTone } from '@/components/design-system/atoms/Badge/types';
+import type { CalloutTone } from '@/components/design-system/molecules/Callout/types';
 import type { IconName } from '@/components/design-system/atoms/Icon/types';
+import type { KeyValueRowTone } from '@/components/design-system/molecules/KeyValueRow/types';
 import type { ProgressBarTone } from '@/components/design-system/atoms/ProgressBar/types';
 import type { StatusDotTone } from '@/components/design-system/atoms/StatusDot/types';
 import type { DropdownMenuItemTone } from '@/components/design-system/molecules/DropdownMenu/types';
@@ -7,7 +9,7 @@ import type { SkeletonPresetVariant } from '@/components/design-system/molecules
 import type { StatTileTone } from '@/components/design-system/molecules/StatTile/types';
 import type { ToastTone } from '@/components/design-system/molecules/Toast/types';
 
-export type GallerySectionId = 'atoms' | 'molecules' | 'templates';
+export type GallerySectionId = 'atoms' | 'molecules' | 'organisms' | 'templates';
 
 export interface GallerySection {
   id: GallerySectionId;
@@ -89,4 +91,14 @@ export interface SkeletonSample {
 export interface KeyValueSample {
   label: string;
   value: string;
+  help?: string;
+  tone?: KeyValueRowTone;
 }
+
+export interface CalloutSample {
+  tone: CalloutTone;
+  title?: string;
+  body: string;
+}
+
+export type AskState = 'idle' | 'loading' | 'done';

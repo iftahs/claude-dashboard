@@ -1,5 +1,5 @@
 import { Card } from '@/components/design-system/atoms/Card/Card';
-import { Icon } from '@/components/design-system/atoms/Icon/Icon';
+import { Callout } from '@/components/design-system/molecules/Callout/Callout';
 import { EmptyState } from '@/components/design-system/molecules/EmptyState/EmptyState';
 import { ErrorState } from '@/components/design-system/molecules/ErrorState/ErrorState';
 import { PageLayout } from '@/components/design-system/templates/PageLayout/PageLayout';
@@ -36,10 +36,7 @@ export function PageGate({ routeId, children }: PageGateProps) {
       {gate.liveOnly ? (
         // Pages own their PageLayout, so the notice repeats its width and gutters to line up above it.
         <div className="mx-auto w-full max-w-content flex-none px-4 pt-6 lg:px-8">
-          <Card as="div" padding="sm" role="status" className="flex items-start gap-3 text-small text-fg-muted">
-            <Icon name="info" className="mt-px text-info-fg" />
-            <p>{liveOnlyCopy(gate.platform)}</p>
-          </Card>
+          <Callout role="status">{liveOnlyCopy(gate.platform)}</Callout>
         </div>
       ) : null}
       {children}

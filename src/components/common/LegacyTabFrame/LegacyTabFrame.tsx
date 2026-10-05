@@ -1,3 +1,4 @@
+import { Callout } from '@/components/design-system/molecules/Callout/Callout';
 import { PageLayout } from '@/components/design-system/templates/PageLayout/PageLayout';
 import { useLimits } from '@/hooks/useLimits';
 import { useSource } from '@/hooks/useSource';
@@ -10,9 +11,7 @@ export function LegacyTabFrame({ routeId, children }: LegacyTabFrameProps) {
   return (
     <PageLayout>
       {routeId === 'workflows' && platform === 'both' ? (
-        <p className="text-caption text-fg-muted">
-          Claude Code only — Codex records no workflow runs, so this page shows the Claude side.
-        </p>
+        <Callout tone="neutral">Claude Code only — Codex records no workflow runs, so this page shows the Claude side.</Callout>
       ) : null}
       {typeof children === 'function' ? children({ limits }) : children}
     </PageLayout>
