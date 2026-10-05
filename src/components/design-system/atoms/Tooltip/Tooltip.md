@@ -53,5 +53,5 @@ Below the trigger, no delay:
 
 ## Notes
 
-- The bubble sits on `surface-raised` with `border-line` and `shadow-pop`, in `text-small`, at most 260px wide, in a portal at `z-50`.
+- The bubble sits on `surface-raised` with `border-line` and `shadow-pop`, in `text-small` with tabular numerals, at most 260px wide, in a portal at `z-50`.
 - Each tooltip carries its own Radix `Provider`, so it works with no setup. Function components used as the trigger must forward their ref.

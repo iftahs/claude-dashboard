@@ -21,7 +21,7 @@
 |---|---|---|---|
 | `label` | `string` | required | What the number is, in sentence case. Uppercased by the style; truncates with an ellipsis. |
 | `value` | `ReactNode` | required | The number, already formatted: `69`, `97%`, `~$1,332`. Never wraps. |
-| `sub` | `ReactNode` | - | One line of context under the value. Truncates with an ellipsis. |
+| `sub` | `ReactNode` | - | One line of context under the value. Truncates with an ellipsis; a string keeps its full text in `title`. |
 | `tone` | `'default' \| 'success' \| 'warning' \| 'danger' \| 'accent'` | `'default'` | Colour of the value. |
 | `help` | `ReactNode` | - | Explanation shown in an `InfoTip` beside the label. |
 | `size` | `'md' \| 'sm'` | `'md'` | `md`: 16px padding, `text-metric` value. `sm`: 12px padding, `text-heading` value. |
@@ -60,7 +60,7 @@ Dense secondary number:
 - Renders a plain `<div>` card: the label, the value and the sub line are read in that order.
 - The tone only colours the value, so the label or the sub line must say what makes it good or bad ("2 failed").
 - The help button is named "About <label>" and opens on click, Enter or Space.
-- The label carries its full text in `title`, for when it is truncated.
+- The label, and a `sub` passed as a string, carry their full text in `title`, for when they are truncated.
 
 ## Notes
 

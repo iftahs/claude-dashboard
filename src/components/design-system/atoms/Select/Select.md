@@ -71,4 +71,4 @@ With a placeholder, small:
 
 - Controlled only: the consumer owns `value` and updates it in `onValueChange`.
 - An option `value` of `''` is not allowed by Radix (it means "no selection"); use a sentinel such as `'all'`.
-- The list renders in a portal at `z-50`.
+- The list renders in a portal at `z-50`, outside the app shell, so it sets its own `text-body`, `fg` and tabular numerals.

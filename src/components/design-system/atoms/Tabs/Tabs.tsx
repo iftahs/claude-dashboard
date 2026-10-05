@@ -38,7 +38,7 @@ export function Tabs<T extends string = string>({ items, value, onChange, ariaLa
             onKeyDown={(event) => handleKeyDown(event, index)}
           >
             {item.label}
-            {item.count !== undefined ? <span className="font-mono text-mono text-fg-subtle">{item.count}</span> : null}
+            {item.count !== undefined ? <span className="font-mono text-mono font-normal text-fg-subtle">{item.count}</span> : null}
           </button>
         );
       })}

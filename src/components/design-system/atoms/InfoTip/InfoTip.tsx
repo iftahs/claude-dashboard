@@ -22,7 +22,7 @@ export function InfoTip({ content, label = 'More information', side = 'top', cla
           sideOffset={6}
           collisionPadding={8}
           aria-label={label}
-          className="z-50 max-w-[260px] rounded-control border border-line bg-surface-raised px-3 py-2 text-small text-fg shadow-pop outline-none"
+          className="z-50 max-w-[260px] rounded-control border border-line bg-surface-raised px-3 py-2 text-small tabular-nums text-fg shadow-pop outline-none"
         >
           {content}
         </PopoverPrimitive.Content>

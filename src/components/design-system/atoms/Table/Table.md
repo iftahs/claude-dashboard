@@ -55,5 +55,6 @@ import { Table } from '@/components/design-system/atoms/Table/Table';
 
 ## Notes
 
-- `w-full`, collapsed borders, `text-body` in `fg`, tabular numerals.
+- `w-full`, `text-body` in `fg`, tabular numerals.
+- Borders are separate with no spacing, not collapsed: a collapsed table lays its hairlines out on half pixels and blurs everything under it. A border on a `<tr>` therefore draws nothing - `TableRow` puts its hairline on its cells.
 - Put it in a `Card` with `padding="none"` and `overflow-hidden` for the standard look; wrap it in an `overflow-x-auto` element when it can be wider than its container.

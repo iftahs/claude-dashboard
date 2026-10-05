@@ -86,3 +86,5 @@ Minimal, no rail and no drawer:
 - The drawer is always 240px wide and appears without animation.
 - Layering: topbar `z-10`, drawer `z-40`, skip link `z-50`. Popovers and tooltips at `z-50` stay above the drawer.
 - The scrolling column has `scroll-pt-topbar`, so anchors and focused elements are not hidden under the pinned topbar.
+- The sidebar column and the scrolling column are positioned (`relative`), so absolutely positioned content inside them, such as visually hidden text, scrolls with them and can never make the document itself scroll.
+- The sidebar column's width includes its 1px hairline: the slot is 239px wide, or 55px in the rail. In the rail, pad the slot 12px on the left and 11px on the right so 32px items sit on whole pixels.

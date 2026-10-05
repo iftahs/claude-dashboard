@@ -49,5 +49,6 @@ Smaller, inside a card footnote:
 - Underscore emphasis is ignored inside a word, so `snake_case` names and file paths stay literal.
 - A blank line or any non-list line ends the current list.
 - Body text is `text-body` in `fg-muted`; headings, bold and code are `fg`.
+- Spacing: 8px above a heading, 4px around a list, 2px between paragraphs. The first block has no top margin and the last no bottom margin, so the text lines up with its container's padding.
 - Output is built from React elements only, so HTML in the source is shown as text.
 - Parsing lives in `utils.ts` (`parseBlocks`, `parseInline`) and returns plain data.

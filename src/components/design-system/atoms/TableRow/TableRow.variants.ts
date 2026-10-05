@@ -1,6 +1,6 @@
 import { cva } from 'class-variance-authority';
 
-export const tableRowVariants = cva('border-t border-line [thead_&]:border-t-0', {
+export const tableRowVariants = cva('[&>*]:border-t [&>*]:border-line [thead_&>*]:border-t-0', {
   variants: {
     state: {
       default: '',

@@ -26,7 +26,7 @@
 ## Variants
 
 - Button: a 14px help glyph in `fg-subtle` that turns `fg` on hover and while open.
-- Bubble: `surface-raised`, `line` border, `shadow-pop`, `text-small`, at most 260px wide.
+- Bubble: `surface-raised`, `line` border, `shadow-pop`, `text-small` with tabular numerals, at most 260px wide.
 
 ## Usage
 

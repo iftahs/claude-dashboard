@@ -63,13 +63,14 @@ A form:
 
 ## a11y
 
-- Built on Radix Dialog: `role="dialog"`, `aria-modal`, named by the title and described by the description when there is one.
-- Focus is trapped inside while it is open, moves to the first focusable element on open (the close button, unless the body or footer sets `autoFocus`), and returns to the element that opened it on close.
+- Built on Radix Dialog: `role="dialog"`, named by the title and described by the description when there is one. While it is open the rest of the page is hidden from assistive tech.
+- Focus is trapped inside while it is open, moves to the first focusable element on open (the close button, unless the body or footer sets `autoFocus`), and returns on close to the element that had focus when it opened, normally the button that opened it.
 - Escape and a click on the overlay close it through `onOpenChange(false)`. The page behind is inert and does not scroll.
 - The close button is a native `<button>` named by `closeLabel`. It has no tooltip, because focus lands on it when the dialog opens and the tooltip would open every time.
 
 ## Notes
 
 - Controlled only: the consumer owns `open` and renders the element that opens it.
-- Renders in a portal at `z-50`; popovers, selects and menus opened from inside it stack above it.
+- Renders in a portal at `z-50`; popovers, selects and menus opened from inside it stack above it. The portal is outside the app shell, so the panel sets its own `text-body`, `fg` and tabular numerals.
+- Centred with auto margins, not a transform, so the panel sits on whole pixels and its text stays sharp.
 - It does not animate.

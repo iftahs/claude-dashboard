@@ -31,7 +31,7 @@
 
 - Selected tab: `fg` text over a 2px `accent` underline.
 - Other tabs: `fg-muted` text that turns `fg` on hover, no underline.
-- `count` renders after the label in monospace `fg-subtle`.
+- `count` renders after the label in regular-weight monospace `fg-subtle`.
 - The list draws a `line` hairline along its bottom edge; the selected underline sits on top of it.
 
 ## Usage

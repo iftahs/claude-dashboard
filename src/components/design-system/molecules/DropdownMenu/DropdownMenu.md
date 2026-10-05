@@ -77,6 +77,7 @@ Export formats from a button:
 
 - The trigger is passed through Radix `asChild`, so a function component used as the trigger must forward its ref (`Button` and `IconButton` do).
 - Uncontrolled: it opens and closes itself. Renders in a portal at `z-50` and scrolls when taller than the space available.
+- The portal is outside the app shell, so the list sets its own `text-body`, `fg` and tabular numerals.
 
 ## Exports
 

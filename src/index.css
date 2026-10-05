@@ -126,13 +126,13 @@ body {
   height: 6px;
 }
 ::-webkit-scrollbar-track {
-  background: #0a0a0d; /* bg-ink-900 */
+  background: transparent;
   border-radius: 8px;
 }
 ::-webkit-scrollbar-thumb {
-  background: #353541; /* bg-ink-600 */
+  background: rgb(var(--border-strong));
   border-radius: 8px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #d97757; /* bg-clay-500 */
+  background: rgb(var(--border-control));
 }

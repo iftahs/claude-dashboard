@@ -30,6 +30,7 @@ Spreads remaining `HTMLAttributes<HTMLTableRowElement>` onto the `<tr>`.
 - `selected` - `accent-soft` fill, `accent-fg` text; numeric cells stay `fg-muted`.
 - `interactive` - hover fill on unselected rows.
 - A row inside `<thead>` drops its top hairline.
+- The hairline is drawn as the top border of the row's cells, inside the cell height, so a body row is exactly 40px tall.
 
 ## Usage
 

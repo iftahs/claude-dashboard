@@ -14,7 +14,11 @@ export function StatTile({ label, value, sub, tone, help, size, className }: Sta
         {help ? <InfoTip label={`About ${label}`} content={help} /> : null}
       </div>
       <span className={statTileValueVariants({ tone, size })}>{value}</span>
-      {sub ? <span className="truncate text-caption text-fg-muted">{sub}</span> : null}
+      {sub ? (
+        <span title={typeof sub === 'string' ? sub : undefined} className="truncate text-caption text-fg-muted">
+          {sub}
+        </span>
+      ) : null}
     </Card>
   );
 }

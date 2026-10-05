@@ -24,11 +24,11 @@ export function Markdown({ text, className }: MarkdownProps) {
     });
 
   return (
-    <div className={cn('space-y-0.5 text-body text-fg-muted', className)}>
+    <div className={cn('text-body text-fg-muted', className)}>
       {parseBlocks(text).map((block) => {
         if (block.kind === 'heading') {
           return (
-            <p key={block.key} className={cn('mt-2 text-fg', block.level === 1 ? 'text-heading' : 'text-body font-medium')}>
+            <p key={block.key} className={cn('mt-2 text-fg first:mt-0', block.level === 1 ? 'text-heading' : 'text-body font-medium')}>
               {renderInline(block.inline)}
             </p>
           );
@@ -36,7 +36,7 @@ export function Markdown({ text, className }: MarkdownProps) {
         if (block.kind === 'list') {
           const ListTag = block.ordered ? 'ol' : 'ul';
           return (
-            <ListTag key={block.key} className={cn('my-1 space-y-0.5 pl-5', block.ordered ? 'list-decimal' : 'list-disc')}>
+            <ListTag key={block.key} className={cn('my-1 space-y-0.5 pl-5 first:mt-0 last:mb-0', block.ordered ? 'list-decimal' : 'list-disc')}>
               {block.items.map((item, itemIndex) => (
                 <li key={itemIndex}>{renderInline(item)}</li>
               ))}
@@ -44,7 +44,7 @@ export function Markdown({ text, className }: MarkdownProps) {
           );
         }
         return (
-          <p key={block.key} className="my-0.5">
+          <p key={block.key} className="my-0.5 first:mt-0 last:mb-0">
             {renderInline(block.inline)}
           </p>
         );

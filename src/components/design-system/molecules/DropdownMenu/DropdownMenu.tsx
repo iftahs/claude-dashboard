@@ -12,7 +12,7 @@ export function DropdownMenu({ trigger, items, align = 'start' }: DropdownMenuPr
           align={align}
           sideOffset={4}
           collisionPadding={8}
-          className="z-50 max-h-[var(--radix-dropdown-menu-content-available-height)] min-w-[180px] overflow-y-auto rounded-control border border-line bg-surface-raised p-1 shadow-pop"
+          className="z-50 max-h-[var(--radix-dropdown-menu-content-available-height)] min-w-[180px] overflow-y-auto rounded-control border border-line bg-surface-raised p-1 text-body tabular-nums text-fg shadow-pop"
         >
           {items.map((item) => (
             <DropdownMenuPrimitive.Item
