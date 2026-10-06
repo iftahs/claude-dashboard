@@ -20,7 +20,7 @@
 
 ## States
 
-- `ready`: one `StatTile` per entry. `lines` stack under the value, each truncating on its own with its full text in `title`: the tile's own context, then the Claude and Codex split under both platforms, then OpenAI's server-side lifetime count on the first tile when it is available.
+- `ready`: one `StatTile` per entry. `lines` stack under the value, each truncating on its own with its full text in `title`: the tile's own context, then the Claude and Codex split under both platforms (two parts that wrap onto two lines in a narrow tile), then OpenAI's server-side lifetime count on the first tile when it is available ("OpenAI 483M", "vs 410M local", also wrapping).
 - `loading`: four stat-shaped skeleton tiles.
 - `error`: one card across the whole row that says what failed.
 - `hidden`: renders nothing. The page leaves the group out when there is no history at all.

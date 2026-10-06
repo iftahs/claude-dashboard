@@ -39,11 +39,21 @@ export const SpendKpiTiles = memo(function SpendKpiTiles({ view }: SpendKpiTiles
           sub={
             tile.lines.length > 0 ? (
               <span className="flex min-w-0 flex-col gap-0.5">
-                {tile.lines.map((line) => (
-                  <span key={line} title={line} className="truncate">
-                    {line}
-                  </span>
-                ))}
+                {tile.lines.map((line) =>
+                  typeof line === 'string' ? (
+                    <span key={line} title={line} className="truncate">
+                      {line}
+                    </span>
+                  ) : (
+                    <span key={line.join()} className="flex min-w-0 flex-wrap gap-x-2 gap-y-0.5">
+                      {line.map((part) => (
+                        <span key={part} title={part} className="truncate">
+                          {part}
+                        </span>
+                      ))}
+                    </span>
+                  ),
+                )}
               </span>
             ) : undefined
           }

@@ -27,7 +27,7 @@
 ## States
 
 - Ready: the stacked chart with its legend. When the last bucket is today, up to three projected days follow it behind a dashed "Today" line.
-- `view.delta`: a neutral badge in the header, "+12% vs previous period", led by the trending icon when usage went up. Hidden below 768px.
+- `view.delta`: a neutral badge after the description, "+12% vs previous period", led by the trending icon when usage went up. It wraps under the description when the card is narrow.
 - `view.state` loading, error or empty: the `Section` shows the matching state; the switch and the export menu stay, and the export menu is disabled while there is nothing to export.
 
 ## Usage

@@ -1,8 +1,9 @@
 import { Fragment, memo } from 'react';
+import { Tooltip } from '@/components/design-system/atoms/Tooltip/Tooltip';
 import { Section } from '@/components/design-system/organisms/Section/Section';
 import { cn } from '@/lib/cn';
 import type { PeakHoursHeatmapProps } from './types';
-import { GRID_CLASS, GRID_LABEL, HEAT_CLASS, HEAT_LEVELS, LEGEND_INSET } from './utils';
+import { GRID_CLASS, GRID_LABEL, HEAT_CLASS, HEAT_LEVELS, LEGEND_INSET, TOOLTIP_DELAY_MS } from './utils';
 
 export const PeakHoursHeatmap = memo(function PeakHoursHeatmap({ view, className }: PeakHoursHeatmapProps) {
   return (
@@ -25,13 +26,13 @@ export const PeakHoursHeatmap = memo(function PeakHoursHeatmap({ view, className
             <Fragment key={row.key}>
               <span className="flex items-center text-caption text-fg-muted">{row.label}</span>
               {row.cells.map((cell) => (
-                <span
-                  key={cell.key}
-                  role="img"
-                  aria-label={cell.label}
-                  title={cell.label}
-                  className={cn('h-5 rounded-[2px] hover:outline hover:outline-1 hover:outline-fg-muted', HEAT_CLASS[cell.level])}
-                />
+                <Tooltip key={cell.key} content={cell.label} delay={TOOLTIP_DELAY_MS}>
+                  <span
+                    role="img"
+                    aria-label={cell.label}
+                    className={cn('h-5 rounded-[2px] hover:outline hover:outline-1 hover:outline-fg-muted', HEAT_CLASS[cell.level])}
+                  />
+                </Tooltip>
               ))}
             </Fragment>
           ))}

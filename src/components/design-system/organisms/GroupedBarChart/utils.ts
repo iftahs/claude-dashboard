@@ -9,6 +9,7 @@ export const BAR_CATEGORY_GAP = '35%';
 export const MAX_BAR_SIZE = 12;
 export const MIN_TICK_GAP = 28;
 export const LEGEND_LABEL = 'Series';
+export const PLOT_CLASS = 'relative w-full min-w-0 [&_.recharts-surface]:overflow-visible';
 
 export const ROW_LABEL = '__label';
 export const ROW_TITLE = '__title';
@@ -18,11 +19,13 @@ const AXIS_WIDTH: Record<GroupedBarUnit, number> = { tokens: 44, cost: 56 };
 const LEGEND_INSET: Record<GroupedBarUnit, string> = { tokens: 'pl-11', cost: 'pl-14' };
 
 export function axisValue(value: number, unit: GroupedBarUnit): string {
-  return unit === 'cost' ? usd(value) : compact(value);
+  if (unit === 'cost') return value === 0 ? '$0' : usd(value);
+  return compact(value);
 }
 
 export function readoutValue(value: number, unit: GroupedBarUnit): string {
-  return unit === 'cost' ? `~${usd(value)}` : compact(value);
+  if (unit === 'cost') return value === 0 ? '~$0' : `~${usd(value)}`;
+  return compact(value);
 }
 
 export function axisWidth(unit: GroupedBarUnit): number {

@@ -43,12 +43,13 @@ import { ActivityHeatmap } from '@/components/design-system/organisms/ActivityHe
 
 ## a11y
 
-- The grid is a named group; every cell is an image whose name gives the full date with its effective tokens, messages and tool calls, repeated in `title` for pointer users.
+- The grid is a named group; every cell is an image whose name gives the full date with its effective tokens, messages and tool calls, shown in a tooltip on hover.
 - The busiest day is also written as a sentence, so the headline does not depend on reading colours.
-- Text on the cells switches colour with the step so it stays readable on every fill in both themes.
+- Text on the cells switches colour with the step and reads at 4.5:1 or better on every fill in both themes. `heat-3` in the dark theme is tuned for that; re-measure the cells if a heat token changes.
 
 ## Notes
 
 - Memoised on `view`: build it in a `useMemo` in the page hook.
+- Every cell is wrapped in the `Tooltip` atom (150ms delay). Measured in the dev build, the two grids together (294 cells) add about 100ms to mounting the Activity view compared with a native `title`; re-measure before adding more cells. The cells are not in the tab order; assistive tech reads each one's `aria-label`.
 - The window is fixed (18 weeks, aligned to the reader's first day of the week) and does not follow the page's range picker; the description says so.
-- Below about 900px of card width the grid keeps its size and scrolls sideways inside the card; the page itself never scrolls.
+- Below about 900px of card width the grid keeps its size and scrolls sideways inside the card, starting at the newest weeks with the weekday labels pinned to the left edge; the page itself never scrolls.

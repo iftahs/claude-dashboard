@@ -57,11 +57,13 @@ export interface TrendsLegendItem {
   value: string;
 }
 
+export type TrendsTileLine = string | string[];
+
 export interface TrendsTileView {
   key: string;
   label: string;
   value: string;
-  lines: string[];
+  lines: TrendsTileLine[];
   help: string;
   tone: 'default' | 'accent';
 }
@@ -160,6 +162,7 @@ export interface CodexCompareInput {
   server: { date: string; tokens: number }[];
   local: DailyActivity[];
   loading: boolean;
+  failed: boolean;
   days: number;
   now: number;
 }
@@ -300,6 +303,7 @@ export interface LiteLlmFactView {
   label: string;
   value: string;
   tone: 'default' | 'success' | 'warning' | 'danger';
+  help: string | null;
 }
 
 export interface LiteLlmMonthView {
@@ -445,15 +449,15 @@ const HOURS_IN_DAY = 24;
 const HOUR_LABEL_EVERY = 3;
 
 function estimate(n: number): string {
-  return `~${usd(n)}`;
+  return n === 0 ? '~$0' : `~${usd(n)}`;
 }
 
 function signed(percent: number): string {
   return `${percent >= 0 ? '+' : ''}${percent}%`;
 }
 
-function present(...items: (string | null)[]): string[] {
-  return items.filter((item): item is string => !!item);
+function present(...items: (TrendsTileLine | null)[]): TrendsTileLine[] {
+  return items.filter((item): item is TrendsTileLine => !!item && item.length > 0);
 }
 
 function pending(loading: boolean, title: string, skeleton: SectionSkeleton, rows?: number): SectionState {
@@ -540,19 +544,19 @@ export function platformSplitLabel(
   field: 'cost' | 'effectiveTokens',
   fmt: (n: number) => string,
   scale = 1,
-): string | null {
+): string[] | null {
   if (!bySource) return null;
   const claude = (bySource.code[field] + bySource.cowork[field]) * scale;
   const codex = bySource.codex[field] * scale;
   if (claude === 0 && codex === 0) return null;
-  return `Claude ${fmt(claude)} · Codex ${fmt(codex)}`;
+  return [`Claude ${fmt(claude)}`, `Codex ${fmt(codex)}`];
 }
 
 // Compares against the preceding N rolling days, so past two weeks it names the days: "previous month" would imply a calendar month.
 export function prevPeriodLabel(days: number): string {
-  if (days === 7) return 'Previous week';
-  if (days === 14) return 'Previous 2 weeks';
-  return `Previous ${days} days`;
+  if (days === 7) return 'Prior week';
+  if (days === 14) return 'Prior 2 weeks';
+  return `Prior ${days} days`;
 }
 
 export function buildSpendKpis({
@@ -579,10 +583,10 @@ export function buildSpendKpis({
   const tiles: TrendsTileView[] = [
     {
       key: 'cost',
-      label: `Est. cost · ${weekDays}d`,
+      label: 'Est. cost',
       value: estimate(weekly.totals.cost),
       lines: present(
-        top ? `Top: ${shortModel(top.model)}, ${top.pct}%` : null,
+        top ? `Top: ${shortModel(top.model)}, ${top.pct}%` : rangeText(weekDays),
         platformSplitLabel(split, 'cost', estimate),
       ),
       help: costBasisHelp(platform, litellmAvailable),
@@ -590,7 +594,7 @@ export function buildSpendKpis({
     },
     {
       key: 'tokens',
-      label: `Effective tokens · ${weekDays}d`,
+      label: 'Effective tokens',
       value: compact(weekly.totals.effectiveTokens),
       lines: present(
         previous > 0 ? `${prevPeriodLabel(weekDays)}: ${compact(previous)}` : `${compact(weekly.totals.outputTokens)} output`,
@@ -601,10 +605,10 @@ export function buildSpendKpis({
     },
     {
       key: 'perDay',
-      label: 'Avg cost per day',
+      label: 'Cost per day',
       value: estimate(costPerDay),
       lines: present(
-        coverageDays < weekDays ? `Over ${coverageDays} days with history` : `Over ${weekDays} days`,
+        coverageDays < weekDays ? `${coverageDays} days of history` : `Over ${weekDays} days`,
         platformSplitLabel(split, 'cost', estimate, 1 / coverageDays),
       ),
       help: costPerDayHelp(platform),
@@ -612,7 +616,7 @@ export function buildSpendKpis({
     },
     {
       key: 'projected',
-      label: 'Projected this month',
+      label: `Projected ${new Date(now).toLocaleDateString('en-US', { month: 'short' })}`,
       value: estimate(projectedMonthCost),
       lines: present(
         `${daysLeftInMonth} days left in month`,
@@ -777,7 +781,7 @@ export function mergeCodexDaily(
   return rows;
 }
 
-export function buildCodexCompare({ server, local, loading, days, now }: CodexCompareInput): CodexCompareView {
+export function buildCodexCompare({ server, local, loading, failed, days, now }: CodexCompareInput): CodexCompareView {
   const rows = mergeCodexDaily(server, local, days, now);
   const serverTotal = rows.reduce((sum, row) => sum + row.values.server, 0);
   const localTotal = rows.reduce((sum, row) => sum + row.values.local, 0);
@@ -796,6 +800,7 @@ export function buildCodexCompare({ server, local, loading, days, now }: CodexCo
     delta: deltaPct === null ? null : `Local ${signed(deltaPct)} vs server`,
   };
   if (loading) return { ...view, state: { kind: 'loading', skeleton: 'chart', rows: Math.min(days, 30) } };
+  if (failed) return { ...view, state: pending(false, 'Could not load the local Codex days', 'chart') };
   if (hasData) return view;
   return {
     ...view,
@@ -1114,12 +1119,13 @@ function dayKeyLabel(key: string): string {
   return year && month && day ? longDateLabel(new Date(year, month - 1, day).getTime()) : key;
 }
 
-function summarySplit(summary: UsageSummaryData, fmt: (part: UsageSummary) => string): string | null {
+function summarySplit(summary: UsageSummaryData, fmt: (part: UsageSummary) => string): string[] | null {
   const parts = summary.byPlatform;
   if (!parts) return null;
-  return `Claude ${parts.claude.firstEventTs == null ? '-' : fmt(parts.claude)} · Codex ${
-    parts.codex.firstEventTs == null ? '-' : fmt(parts.codex)
-  }`;
+  return [
+    `Claude ${parts.claude.firstEventTs == null ? '-' : fmt(parts.claude)}`,
+    `Codex ${parts.codex.firstEventTs == null ? '-' : fmt(parts.codex)}`,
+  ];
 }
 
 function retentionNote(platform: Platform): string {
@@ -1144,7 +1150,7 @@ export function summaryTiles(
         : undefined;
   const serverLine =
     platform !== 'claude' && codexServerLifetime != null && codexServerLifetime > 0
-      ? `OpenAI ${compact(codexServerLifetime)} vs local ${compact(codexLocalTotal ?? 0)} (all tokens)`
+      ? [`OpenAI ${compact(codexServerLifetime)}`, `vs ${compact(codexLocalTotal ?? 0)} local`]
       : null;
   const both = platform === 'both';
   const activePct = summary.spanDays > 0 ? Math.round((summary.activeDays / summary.spanDays) * 100) : 0;
@@ -1175,7 +1181,7 @@ export function summaryTiles(
     },
     {
       key: 'streak',
-      label: 'Current streak',
+      label: 'Streak',
       value: `${summary.currentStreakDays}d`,
       lines: present(
         `Longest ${summary.longestStreakDays}d`,
@@ -1219,33 +1225,47 @@ function billedMonth(spend: LiteLlmSpend): LiteLlmMonthView {
   const requests = spend.monthSuccessful + spend.monthFailed;
   const successPct = requests > 0 ? (spend.monthSuccessful / requests) * 100 : null;
   const facts: LiteLlmFactView[] = [
-    { key: 'requests', label: 'Requests since the 1st', value: spend.monthRequests.toLocaleString(), tone: 'default' },
+    { key: 'requests', label: 'Requests', value: spend.monthRequests.toLocaleString(), tone: 'default', help: null },
   ];
   if (delta !== null) {
     facts.push({
       key: 'delta',
-      label: `vs ${usd(previous)} in ${spend.prevMonthLabel}, same point`,
+      label: `vs ${spend.prevMonthLabel}`,
       value: signed(delta),
       tone: 'default',
+      help: `Compared with the ${usd(previous)} billed by the same day of ${spend.prevMonthLabel}.`,
     });
   }
   if (successPct !== null) {
-    facts.push({ key: 'success', label: 'Successful requests', value: rate(successPct), tone: successTone(successPct) });
+    facts.push({
+      key: 'success',
+      label: 'Successful requests',
+      value: rate(successPct),
+      tone: successTone(successPct),
+      help: null,
+    });
   }
   if (spend.monthFailed > 0) {
-    facts.push({ key: 'failed', label: 'Failed requests', value: spend.monthFailed.toLocaleString(), tone: 'default' });
+    facts.push({
+      key: 'failed',
+      label: 'Failed requests',
+      value: spend.monthFailed.toLocaleString(),
+      tone: 'default',
+      help: null,
+    });
   }
   if (spend.lifetime.user > 0) {
-    facts.push({ key: 'lifetime', label: 'Lifetime', value: usd(spend.lifetime.user), tone: 'default' });
+    facts.push({ key: 'lifetime', label: 'Lifetime', value: usd(spend.lifetime.user), tone: 'default', help: null });
   }
   return { label: `${spend.monthLabel}, month to date`, value: usd(spend.monthToDate), facts };
 }
 
 function billedDays(spend: LiteLlmSpend): LiteLlmDayView[] {
+  const long = spend.daily.length > LONG_RANGE_DAYS;
   return spend.daily.map((day, index) => ({
     key: day.date,
-    label: ymdLabel(day.date),
-    title: dayLabel(dateOfKey(day.date).getTime()),
+    label: ymdLabel(day.date, long),
+    title: long ? fullDay(day.date) : dayLabel(dateOfKey(day.date).getTime()),
     cost: day.cost,
     today: index === spend.daily.length - 1,
     color: index === spend.daily.length - 1 ? BILLED_TODAY_COLOR : BILLED_COLOR,

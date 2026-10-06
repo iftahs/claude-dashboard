@@ -175,12 +175,20 @@ export function useTrendsPage(): TrendsPageView {
   const serverDays = codexProfileOk ? (codexProfile.data?.dailyUsage ?? NO_SERVER_DAYS) : NO_SERVER_DAYS;
   const localDays = codexUtcActivity.data?.dailyActivity ?? NO_LOCAL_DAYS;
   const codexCompareLoading = waiting(codexProfile) || waiting(codexUtcActivity);
+  const codexCompareFailed = !codexUtcActivity.data && !!codexUtcActivity.error;
   const codexCompare = useMemo(
     () =>
       showCodexCompare
-        ? buildCodexCompare({ server: serverDays, local: localDays, loading: codexCompareLoading, days: weekDays, now: Date.now() })
+        ? buildCodexCompare({
+            server: serverDays,
+            local: localDays,
+            loading: codexCompareLoading,
+            failed: codexCompareFailed,
+            days: weekDays,
+            now: Date.now(),
+          })
         : null,
-    [showCodexCompare, serverDays, localDays, codexCompareLoading, weekDays],
+    [showCodexCompare, serverDays, localDays, codexCompareLoading, codexCompareFailed, weekDays],
   );
 
   // Split by what the platform has: Code and Cowork, Codex threads and guardian reviews, or all three under Both. A Code-only user gets no split.
@@ -215,16 +223,17 @@ export function useTrendsPage(): TrendsPageView {
   // One line per platform under Both: a pooled rate would describe neither vendor's cache.
   const cacheLoading = both ? scopedLoading : weeklyLoading;
   const cacheFailed = both ? scopedFailed : !weeklyData && !!weekly.error;
+  const cacheWeekly = both ? null : weeklyData;
   const cache = useMemo(
     () =>
       buildCacheEfficiency({
-        series: cacheSeriesFor(platform, weeklyData, claudeData, codexData),
+        series: cacheSeriesFor(platform, cacheWeekly, claudeData, codexData),
         loading: cacheLoading,
         failed: cacheFailed,
         weekDays,
         platform,
       }),
-    [platform, weeklyData, claudeData, codexData, cacheLoading, cacheFailed, weekDays],
+    [platform, cacheWeekly, claudeData, codexData, cacheLoading, cacheFailed, weekDays],
   );
 
   const grid = heatmap.data?.grid ?? null;

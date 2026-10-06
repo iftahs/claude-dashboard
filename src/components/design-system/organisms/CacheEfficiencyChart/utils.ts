@@ -6,10 +6,11 @@ export const CHART_HEIGHT = 200;
 export const CHART_MARGIN = { top: 8, right: 8, bottom: 0, left: 0 } as const;
 export const ANIMATION_MAX_ROWS = 60;
 export const MIN_TICK_GAP = 28;
-export const AXIS_WIDTH = 40;
+export const AXIS_WIDTH = 44;
 export const RATE_DOMAIN: [number, number] = [0, 100];
 export const ACTIVE_DOT_RADIUS = 4;
 export const LEGEND_LABEL = 'Platforms';
+export const PLOT_CLASS = 'relative w-full min-w-0 [&_.recharts-surface]:overflow-visible';
 
 export const ROW_LABEL = 'label';
 export const ROW_DATE = 'date';

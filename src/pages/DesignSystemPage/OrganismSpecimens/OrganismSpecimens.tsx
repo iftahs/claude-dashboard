@@ -24,6 +24,7 @@ import { AI_ANSWER_DELAY_MS, AI_ERROR_SAMPLE, AI_INSIGHT_SAMPLE, GALLERY_EXPORT,
 import { AgentWorkflowSpecimens } from './AgentWorkflowSpecimens/AgentWorkflowSpecimens';
 import { LiveSpecimens } from './LiveSpecimens/LiveSpecimens';
 import { SessionsSpecimens } from './SessionsSpecimens/SessionsSpecimens';
+import { TrendsSpecimens } from './TrendsSpecimens/TrendsSpecimens';
 import { WorkspaceAiSettingsSpecimens } from './WorkspaceAiSettingsSpecimens/WorkspaceAiSettingsSpecimens';
 
 export function OrganismSpecimens() {
@@ -214,6 +215,7 @@ export function OrganismSpecimens() {
       <AgentWorkflowSpecimens />
       <WorkspaceAiSettingsSpecimens />
       <SessionsSpecimens />
+      <TrendsSpecimens />
       <CommandPalette
         open={palette.open}
         onOpenChange={palette.setOpen}

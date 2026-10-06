@@ -22,7 +22,7 @@ export const LiteLlmBilledCard = memo(function LiteLlmBilledCard({ view, classNa
               <span className="whitespace-nowrap text-metric-lg tabular-nums text-fg">{month.value}</span>
               <div className="flex min-w-0 flex-col gap-2">
                 {month.facts.map((fact) => (
-                  <KeyValueRow key={fact.key} label={fact.label} value={fact.value} tone={fact.tone} />
+                  <KeyValueRow key={fact.key} label={fact.label} value={fact.value} tone={fact.tone} help={fact.help ?? undefined} />
                 ))}
               </div>
             </div>

@@ -8,7 +8,7 @@ import { UsageBarChart } from '@/components/design-system/organisms/UsageBarChar
 import { dayLabel, dayLabelWithYear } from '@/lib/format';
 import { DAILY_METRIC_OPTIONS, dayTitleWithYear } from '@/lib/views/trends';
 import type { DailyTrendChartProps } from './types';
-import { METRIC_LABEL } from './utils';
+import { CHART_CLASS, METRIC_LABEL } from './utils';
 
 export const DailyTrendChart = memo(function DailyTrendChart({
   view,
@@ -20,19 +20,25 @@ export const DailyTrendChart = memo(function DailyTrendChart({
   return (
     <Section
       title={view.title}
-      description={view.description}
+      description={
+        view.delta ? (
+          <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
+            {view.description}
+            <Badge>
+              {view.delta.up ? <Icon name="trending" size={12} /> : null}
+              {view.delta.label}
+            </Badge>
+          </span>
+        ) : (
+          view.description
+        )
+      }
       help={view.help}
       state={view.state}
       ai={ai}
       className={className}
       actions={
         <>
-          {view.delta ? (
-            <Badge className="max-md:hidden">
-              {view.delta.up ? <Icon name="trending" size={12} /> : null}
-              {view.delta.label}
-            </Badge>
-          ) : null}
           <SegmentedControl
             ariaLabel={METRIC_LABEL}
             size="sm"
@@ -52,6 +58,7 @@ export const DailyTrendChart = memo(function DailyTrendChart({
         projectionCostPerDay={view.costPerDay}
         projectionTokensPerDay={view.tokensPerDay}
         ariaLabel={`${view.title}. ${view.description}.`}
+        className={CHART_CLASS}
       />
     </Section>
   );

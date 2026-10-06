@@ -22,7 +22,7 @@
 ## States
 
 - Ready: the grouped chart, the legend with the server and local totals and "Local -N% vs server".
-- `view.state` loading or empty: the `Section` shows the matching state.
+- `view.state` loading, error or empty: the `Section` shows the matching state. The error state appears when the local day series fails to load, so a missing series is never drawn as "-100%".
 
 ## Usage
 

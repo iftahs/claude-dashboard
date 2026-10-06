@@ -50,5 +50,5 @@ import { CacheEfficiencyChart } from '@/components/design-system/organisms/Cache
 ## Notes
 
 - Memoised on `view`: build it in a `useMemo` in the page hook.
-- The hit rate is cache reads divided by all tokens, on a fixed 0 to 100% axis.
+- The hit rate is cache reads divided by all tokens, on a fixed 0 to 100% axis that is 44px wide so the "100%" tick is never clipped.
 - Styled only through `@/lib/chart-theme`: gridlines, axis ticks, the line cursor, line width, the active dot and the reference line.

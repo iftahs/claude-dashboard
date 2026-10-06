@@ -41,7 +41,7 @@ import { PeakHoursHeatmap } from '@/components/design-system/organisms/PeakHours
 
 ## a11y
 
-- The grid is a named group; every cell is an image whose name says the weekday, the hour and its effective tokens ("Monday 3pm: 1.2M effective tokens"), repeated in `title` for pointer users.
+- The grid is a named group; every cell is an image whose name says the weekday, the hour and its effective tokens ("Monday 3pm: 1.2M effective tokens"), shown in a tooltip on hover.
 - The busiest hour is also written as a sentence, so the headline does not depend on reading colours.
 
 ## Notes
@@ -49,3 +49,4 @@ import { PeakHoursHeatmap } from '@/components/design-system/organisms/PeakHours
 - Memoised on `view`: build it in a `useMemo` in the page hook.
 - The window is fixed (the last 90 days) and does not follow the page's range picker; the description says so.
 - The 24 columns share the card's width and never scroll.
+- Every cell is wrapped in the `Tooltip` atom (150ms delay). Measured in the dev build, the two grids together (294 cells) add about 100ms to mounting the Activity view compared with a native `title`; re-measure before adding more cells. The cells are not in the tab order; assistive tech reads each one's `aria-label`.

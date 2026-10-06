@@ -21,6 +21,7 @@ import {
   CHART_MARGIN,
   LEGEND_LABEL,
   MIN_TICK_GAP,
+  PLOT_CLASS,
   RATE_DOMAIN,
   ROW_LABEL,
   averageLabel,
@@ -45,7 +46,7 @@ export const CacheEfficiencyChart = memo(function CacheEfficiencyChart({ view, c
         <div
           role="img"
           aria-label={`${view.title}. ${view.description}.`}
-          className="relative w-full min-w-0"
+          className={PLOT_CLASS}
           style={{ height: CHART_HEIGHT }}
         >
           <div className="absolute inset-0">
@@ -87,7 +88,7 @@ export const CacheEfficiencyChart = memo(function CacheEfficiencyChart({ view, c
         {view.series.length > 1 ? (
           <Legend
             ariaLabel={LEGEND_LABEL}
-            className="pl-10"
+            className="pl-11"
             items={view.series.map((entry) => ({ key: entry.key, label: entry.label, color: entry.color, shape: 'round' }))}
           />
         ) : null}

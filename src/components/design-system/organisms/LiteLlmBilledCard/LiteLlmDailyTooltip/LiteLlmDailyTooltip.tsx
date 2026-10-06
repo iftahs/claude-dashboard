@@ -1,7 +1,6 @@
 import { Badge } from '@/components/design-system/atoms/Badge/Badge';
 import { ChartTooltip } from '@/components/design-system/molecules/ChartTooltip/ChartTooltip';
-import { usd } from '@/lib/format';
-import { DAY_SPEND_LABEL, TODAY_TEXT } from '../utils';
+import { DAY_SPEND_LABEL, TODAY_TEXT, axisValue } from '../utils';
 import type { LiteLlmDailyTooltipProps } from './types';
 
 export function LiteLlmDailyTooltip({ active, payload }: LiteLlmDailyTooltipProps) {
@@ -16,7 +15,7 @@ export function LiteLlmDailyTooltip({ active, payload }: LiteLlmDailyTooltipProp
           {day.today ? <Badge tone="success">{TODAY_TEXT}</Badge> : null}
         </span>
       }
-      rows={[{ label: DAY_SPEND_LABEL, value: usd(day.cost) }, ...day.models]}
+      rows={[{ label: DAY_SPEND_LABEL, value: axisValue(day.cost) }, ...day.models]}
       footer={day.successful}
     />
   );

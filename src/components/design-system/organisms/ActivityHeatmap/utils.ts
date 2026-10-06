@@ -15,3 +15,5 @@ export const HEAT_CLASS: Record<HeatLevel, string> = {
 };
 
 export const FUTURE_CLASS = 'border border-dashed border-line text-fg-subtle';
+export const LABEL_CLASS = 'sticky left-0 z-[1] bg-surface';
+export const TOOLTIP_DELAY_MS = 150;

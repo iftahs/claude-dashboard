@@ -72,4 +72,6 @@ import { GroupedBarChart } from '@/components/design-system/organisms/GroupedBar
 
 - Memoised: it re-renders only when a prop changes. The page re-renders about once a second, so `rows` and `series` must keep their identity between polls.
 - Styled only through `@/lib/chart-theme`: horizontal gridlines, axis ticks, cursor and bar radius.
+- The cost axis starts at `$0`, and a zero in the read-out is `~$0`.
+- The last axis label may reach a few pixels past the plot into the card's padding instead of being clipped.
 - It has no card of its own: place it inside a `Section`.

@@ -21,7 +21,7 @@
 
 ## Variants
 
-- Month panel (a sunken well, one third of the card from 1024px): the month-to-date amount as the card's one large number, then facts as rows: requests since the 1st, the change against the same point of last month, the share of successful requests in a status tone, failed requests and the lifetime total. A fact with no data is left out.
+- Month panel (a sunken well, one third of the card from 1024px): the month-to-date amount as the card's one large number, then facts as rows: requests, the change against the same day of last month with a help popover that names that month's amount, the share of successful requests in a status tone, failed requests and the lifetime total. A fact with no data is left out.
 - Daily chart: one bar per calendar day of the range, today's bar in a lighter tone. Hovering a day shows its spend, the split by model and the successful requests.
 - Token mix: one segmented bar and a legend with input, output, cache write and cache read tokens of the month. Left out when the gateway reports no tokens.
 - A warning callout under the chart when the gateway returned more rows than the dashboard pages through.

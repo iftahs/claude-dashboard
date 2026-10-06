@@ -14,6 +14,7 @@ import {
   LEGEND_LABEL,
   MAX_BAR_SIZE,
   MIN_TICK_GAP,
+  PLOT_CLASS,
   ROW_LABEL,
   axisValue,
   axisWidth,
@@ -35,7 +36,7 @@ export const GroupedBarChart = memo(function GroupedBarChart({
 
   return (
     <div className={cn('flex w-full min-w-0 flex-col gap-3', className)}>
-      <div role="img" aria-label={ariaLabel} className="relative w-full min-w-0" style={{ height }}>
+      <div role="img" aria-label={ariaLabel} className={PLOT_CLASS} style={{ height }}>
         <div className="absolute inset-0">
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={data} margin={CHART_MARGIN} barGap={BAR_GAP} barCategoryGap={BAR_CATEGORY_GAP}>
