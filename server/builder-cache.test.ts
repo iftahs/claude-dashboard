@@ -1,9 +1,11 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { MEMO_MAX, memoBuilder, memoSize } from './builder-cache.ts';
-import { canReuseMerge, memoToken, type MergeBasis } from './data.ts';
+import { canReuseMerge, freshness, memoToken, type MergeBasis } from './data.ts';
 
 const MINUTE = 60_000;
+const TTL = 5_000;
+const MAX_STALE = 30_000;
 /** An exact minute boundary; the clock is injected, never read. */
 const T0 = Date.UTC(2026, 8, 23, 12, 0, 0);
 
@@ -67,4 +69,17 @@ test('the merge re-runs on a first scan, a re-parse, a removal, or a changed inp
     'fingerprint moved: e.g. the previous merge threw after the rows changed',
   );
   assert.equal(canReuseMerge(basis, { ...basis, metaSig: 223 }, 0, 0), false, 'session-meta sidecars changed');
+});
+
+test('a merge is fresh inside the TTL, then served stale while a rescan runs, up to the bound', () => {
+  assert.equal(freshness(T0, T0), 'fresh');
+  assert.equal(freshness(T0 + TTL - 1, T0), 'fresh');
+  assert.equal(freshness(T0 + TTL, T0), 'stale');
+  assert.equal(freshness(T0 + MAX_STALE - 1, T0), 'stale');
+  assert.equal(freshness(T0 + MAX_STALE, T0), 'block', 'too old to serve: wait for the scan');
+});
+
+test('with no merge yet, or after an invalidation, callers wait for the scan', () => {
+  assert.equal(freshness(T0, 0), 'block');
+  assert.equal(freshness(1_000, 0), 'block', 'never mistaken for a fresh merge from a small clock');
 });
