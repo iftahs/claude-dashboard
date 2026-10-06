@@ -46,7 +46,7 @@ export function GallerySidebar({
         ))}
       </nav>
       <div className="flex flex-col gap-0.5">
-        <NavItem href="/live" label="Back to the app" icon="arrowUpRight" collapsed={collapsed} />
+        <NavItem href="/live" label="Back to the app" icon="chevronLeft" collapsed={collapsed} />
         {collapsed ? null : (
           <div className="mt-2 flex flex-col gap-0.5 border-t border-line px-2 pt-3">
             <span className="truncate font-mono text-mono text-fg-subtle">src/components/design-system</span>

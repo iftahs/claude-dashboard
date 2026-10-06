@@ -53,7 +53,7 @@ Row actions behind an icon button (the trigger is composed by the organism):
   align="end"
   trigger={moreButton}
   items={[
-    { key: 'open', label: 'Open transcript', icon: 'externalLink', onSelect: onOpen },
+    { key: 'open', label: 'Open transcript', icon: 'file', onSelect: onOpen },
     { key: 'copy', label: 'Copy session id', icon: 'copy', onSelect: onCopy },
     { key: 'forget', label: 'Forget session', icon: 'trash', tone: 'danger', onSelect: onForget },
   ]}

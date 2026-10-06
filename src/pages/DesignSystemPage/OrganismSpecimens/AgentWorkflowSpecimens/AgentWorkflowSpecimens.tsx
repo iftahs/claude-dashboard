@@ -73,7 +73,7 @@ export function AgentWorkflowSpecimens() {
       </Specimen>
       <Specimen name="WorkflowStatsGrid" note="The nine totals, their skeleton tiles and the failed state" layout="stack">
         {STATS_VIEWS.map((view, index) => (
-          <StatGridLayout key={index} columns={5}>
+          <StatGridLayout key={index} columns={3}>
             <WorkflowStatsGrid view={view} />
           </StatGridLayout>
         ))}

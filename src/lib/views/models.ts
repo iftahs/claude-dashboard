@@ -1,5 +1,5 @@
 import { compact, effortLabel, shortModel, usd } from '@/lib/format';
-import { modelColor } from '@/lib/palette';
+import { effortColor, modelColor } from '@/lib/palette';
 import { titleScope } from '@/lib/platform';
 import type { Platform } from '@/lib/platform';
 import type { SectionAi, SectionState } from '@/lib/section';
@@ -163,25 +163,6 @@ export interface EffortBreakdownView {
 interface EffortBreakdownInput {
   poll: ModelsPoll<EffortData>;
   platform: Platform;
-}
-
-// Effort is ordinal: one hue, stepped from info toward the card (low) and toward the text colour (high); the faintest step keeps 3:1 on the card in both themes.
-const INFO = 'rgb(var(--info))';
-const towardCard = (percent: number) => `color-mix(in srgb, ${INFO} ${percent}%, rgb(var(--surface)))`;
-const towardText = (percent: number) => `color-mix(in srgb, ${INFO} ${percent}%, rgb(var(--fg)))`;
-const EFFORT_COLOR: Record<string, string> = {
-  none: towardCard(75),
-  minimal: towardCard(75),
-  low: towardCard(88),
-  medium: INFO,
-  high: towardText(78),
-  xhigh: towardText(56),
-  max: towardText(34),
-};
-const EFFORT_FALLBACK_COLOR = 'rgb(var(--fg-subtle))';
-
-function effortColor(effort: string): string {
-  return EFFORT_COLOR[effort] ?? EFFORT_FALLBACK_COLOR;
 }
 
 function reasoningLabel(reasoning: ReasoningShare): string {

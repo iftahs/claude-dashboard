@@ -59,7 +59,7 @@ One card beside the limit hits:
 
 - The card is a region named by its title. The period picker is a group named "Period" whose buttons carry `aria-pressed`.
 - Every share is a `role="progressbar"` named by its row, with the percentage as text.
-- The behaviours are a list; the leading icon is decorative.
+- The behaviours are a list; the leading dot is a neutral bullet, hidden from screen readers.
 
 ## Private parts
 

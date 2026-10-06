@@ -199,6 +199,7 @@ const SUBAGENT_TYPE_LABELS: Record<string, string> = {
   thread_spawn: 'Spawned agent',
   'workflow-subagent': 'Workflow agent',
   'general-purpose': 'General purpose',
+  unknown: 'Unknown',
 };
 
 function scopeSuffix(platform: AgentPlatform, scope: Platform): string {

@@ -57,7 +57,8 @@ import { EffortBreakdown } from '@/components/design-system/organisms/EffortBrea
 
 ## Notes
 
-- Effort is ordinal, so the levels are steps of one hue: the info colour mixed toward the card for the lowest efforts and toward the text colour for the highest. Every step keeps at least 3:1 against the card in both themes. "Not logged" is neutral.
+- Effort is ordinal, so the levels are steps of one blue ramp, tokens `effort-1` (none) to `effort-7` (max), handed out by `effortColor()` in `@/lib/palette`. The ramp runs by lightness and the lowest level sits nearest the card in each theme: palest on white, dimmest on dark. The legend, the all-models bar, every model's bar and the tooltip take the same token for a level.
+- Every step from minimal up keeps at least 3:1 against the card and the tooltip surface in both themes; `effort-1` (none) sits at 2.2:1 so the steps above it can stay further apart. "Not logged" and any level the ramp does not know take the neutral `effort-unknown`.
 - A partial reasoning figure says what it covers ("41% of 62%") instead of standing in for the whole.
 - The model rows keep the bar on its own line, so the card works down to about 300px without scrolling; a long model name truncates with its full id in `title`.
 - It has no AI affordance.

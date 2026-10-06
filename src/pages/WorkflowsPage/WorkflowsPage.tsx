@@ -32,7 +32,7 @@ export function WorkflowsPage() {
       {note ? <Callout tone="neutral">{note}</Callout> : null}
 
       {stats.status === 'hidden' ? null : (
-        <StatGridLayout columns={5}>
+        <StatGridLayout columns={3}>
           <WorkflowStatsGrid view={stats} />
         </StatGridLayout>
       )}

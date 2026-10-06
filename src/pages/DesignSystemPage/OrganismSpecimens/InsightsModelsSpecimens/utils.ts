@@ -472,6 +472,7 @@ const EFFORT: EffortData = {
   rangeFrom: NOW - 7 * DAY,
   rangeTo: NOW,
   efforts: slices([
+    ['none', 2_000_000, 0],
     ['minimal', 4_000_000, 12],
     ['low', 9_000_000, 41],
     ['medium', 14_000_000, 96],
@@ -503,7 +504,16 @@ const EFFORT: EffortData = {
         ['unknown', 3_000_000, 27],
       ]),
     },
-    { model: GUARDIAN, effectiveTokens: 4_000_000, cost: 0, reasoning: reasoning(null, 0), efforts: slices([['minimal', 4_000_000, 0]]) },
+    {
+      model: GUARDIAN,
+      effectiveTokens: 6_000_000,
+      cost: 0,
+      reasoning: reasoning(null, 0),
+      efforts: slices([
+        ['none', 2_000_000, 0],
+        ['minimal', 4_000_000, 0],
+      ]),
+    },
   ],
   reasoning: reasoning(0.46, 0.9),
 };

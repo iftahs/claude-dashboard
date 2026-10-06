@@ -242,7 +242,7 @@ export const MARKDOWN_SAMPLE = [
 ].join('\n');
 
 export const MENU_ACTIONS: readonly MenuActionSample[] = [
-  { key: 'open', label: 'Open transcript', icon: 'externalLink' },
+  { key: 'open', label: 'Open transcript', icon: 'file' },
   { key: 'copy', label: 'Copy session ID', icon: 'copy' },
   { key: 'export', label: 'Export as CSV', icon: 'download' },
   { key: 'tag', label: 'Add a tag', icon: 'tag', disabled: true },

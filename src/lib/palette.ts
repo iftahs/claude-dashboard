@@ -45,6 +45,15 @@ export function modelColor(model: string): string {
   return UNKNOWN_COLORS[hashIndex(model, UNKNOWN_COLORS.length)];
 }
 
+// Lowest first, one ramp step each (mirrors EFFORT_ORDER in server/aggregate.ts).
+const EFFORT_LEVELS = ['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'];
+const EFFORT_UNKNOWN_COLOR = token('effort-unknown');
+
+export function effortColor(effort: string): string {
+  const step = EFFORT_LEVELS.indexOf(effort) + 1;
+  return step > 0 ? token(`effort-${step}`) : EFFORT_UNKNOWN_COLOR;
+}
+
 // Tags have their own cycle so a tag and a model never share a colour by construction.
 const TAG_COLORS = [1, 2, 3, 4, 5, 6, 7].map((n) => token(`tag-${n}`));
 const tagAssigned = new Map<string, string>();

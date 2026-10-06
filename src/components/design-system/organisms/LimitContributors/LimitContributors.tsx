@@ -1,6 +1,6 @@
 import { memo } from 'react';
-import { Icon } from '@/components/design-system/atoms/Icon/Icon';
 import { SegmentedControl } from '@/components/design-system/atoms/SegmentedControl/SegmentedControl';
+import { StatusDot } from '@/components/design-system/atoms/StatusDot/StatusDot';
 import { Section } from '@/components/design-system/organisms/Section/Section';
 import { CONTRIB_RANGE_OPTIONS } from '@/lib/views/live';
 import { LimitContributorsBreakdown } from './LimitContributorsBreakdown/LimitContributorsBreakdown';
@@ -33,7 +33,7 @@ export const LimitContributors = memo(function LimitContributors({ view, onRange
           <ul className="flex flex-col gap-3">
             {behaviors.map((behavior) => (
               <li key={behavior.key} className="flex gap-2">
-                <Icon name="arrowUpRight" size={14} className="mt-0.5 flex-none text-accent-fg" />
+                <StatusDot tone="neutral" className="mt-1.5" />
                 <div className="flex min-w-0 flex-col gap-0.5">
                   <p className="text-body font-medium text-fg">{behavior.headline}</p>
                   <p className="text-small text-fg-muted">{behavior.body}</p>

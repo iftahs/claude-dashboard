@@ -25,7 +25,7 @@ export const RunningNow = memo(function RunningNow({ view, href, onNavigate, cla
           className="inline-flex flex-none items-center gap-1 whitespace-nowrap rounded-tag text-small font-medium text-accent-fg hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
         >
           Open agents
-          <Icon name="arrowUpRight" size={14} />
+          <Icon name="chevronRight" size={14} />
         </a>
       </div>
 

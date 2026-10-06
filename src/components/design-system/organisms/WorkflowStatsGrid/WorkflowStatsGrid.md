@@ -43,7 +43,7 @@ import { WorkflowStatsGrid } from '@/components/design-system/organisms/Workflow
 On the Workflows page:
 
 ```tsx
-<StatGridLayout columns={5}>
+<StatGridLayout columns={3}>
   <WorkflowStatsGrid view={stats} />
 </StatGridLayout>
 ```
@@ -52,7 +52,7 @@ Leaving the grid out when there is nothing to show:
 
 ```tsx
 {stats.status === 'hidden' ? null : (
-  <StatGridLayout columns={5}>
+  <StatGridLayout columns={3}>
     <WorkflowStatsGrid view={stats} />
   </StatGridLayout>
 )}
@@ -67,6 +67,6 @@ Leaving the grid out when there is nothing to show:
 ## Notes
 
 - It returns a fragment: the tiles become direct cells of the surrounding grid. An organism cannot import a template, so the page supplies the `StatGridLayout`.
-- With five columns the nine tiles fill two rows from `lg`, three rows from `md` and five rows below.
+- With three columns the nine tiles fill three full rows from `md` (768px) and five rows below it. Five columns would leave a gap in the second row.
 - "Est. cost" is a blended estimate and says so in its context line and its help.
 - Presentational: no hooks, no fetching.

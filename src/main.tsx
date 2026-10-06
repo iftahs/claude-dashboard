@@ -12,6 +12,8 @@ import { LiveDataProvider } from './hooks/useLiveData';
 import { AiInsightProvider } from './hooks/useAiInsightContext';
 import { PageActionsProvider } from './hooks/usePageActions';
 import { ThemeProvider } from './hooks/useTheme';
+import { AppErrorFallback } from './components/common/ErrorBoundary/AppErrorFallback';
+import { ErrorBoundary } from './components/common/ErrorBoundary/ErrorBoundary';
 import { NotificationHost } from './components/common/NotificationHost/NotificationHost';
 import '@fontsource-variable/inter';
 import '@fontsource-variable/jetbrains-mono';
@@ -22,25 +24,27 @@ initAnalytics();
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <PostHogProvider client={posthog}>
-      <ThemeProvider>
-        <BrowserRouter>
-          <NotificationProvider>
-            <SourceProvider>
-              <ConfigModeProvider>
-                <LiveDataProvider>
-                  <AiInsightProvider>
-                    <PageActionsProvider>
-                      <App />
-                      <NotificationHost />
-                    </PageActionsProvider>
-                  </AiInsightProvider>
-                </LiveDataProvider>
-              </ConfigModeProvider>
-            </SourceProvider>
-          </NotificationProvider>
-        </BrowserRouter>
-      </ThemeProvider>
-    </PostHogProvider>
+    <ErrorBoundary fallback={AppErrorFallback}>
+      <PostHogProvider client={posthog}>
+        <ThemeProvider>
+          <BrowserRouter>
+            <NotificationProvider>
+              <SourceProvider>
+                <ConfigModeProvider>
+                  <LiveDataProvider>
+                    <AiInsightProvider>
+                      <PageActionsProvider>
+                        <App />
+                        <NotificationHost />
+                      </PageActionsProvider>
+                    </AiInsightProvider>
+                  </LiveDataProvider>
+                </ConfigModeProvider>
+              </SourceProvider>
+            </NotificationProvider>
+          </BrowserRouter>
+        </ThemeProvider>
+      </PostHogProvider>
+    </ErrorBoundary>
   </StrictMode>
 );

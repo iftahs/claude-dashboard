@@ -34,10 +34,11 @@ This template does not spread native attributes - it only accepts the slot and p
 |---|---|---|---|
 | `2` | 2 | 2 | 2 |
 | `3` | 2 | 3 | 3 |
-| `4` | 2 | 3 | 4 |
+| `4` | 2 | 2 | 4 |
 | `5` | 2 | 3 | 5 |
 | `6` | 2 | 3 | 6 |
 
+- Four columns skip the three-column step, so four tiles sit 2 by 2 below `lg` and never 3 and 1.
 - The gap is 16px (`gap-4`) across and down at every width.
 - Tiles that do not fill the last row keep their column width and leave the rest of the row empty.
 
