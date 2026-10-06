@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useConfigMode } from './useConfigMode';
 import { useCostMetrics } from './useCostMetrics';
 import { hasCaps, useLimits, usePlatformLimits } from './useLimits';
@@ -55,7 +55,6 @@ export interface LivePageView {
 }
 
 const TICK_MS = 1000;
-const TICKS_PER_MINUTE = 60;
 const ACCOUNTS_POLL_MS = 15_000;
 const CODEX_BLOCK_POLL_MS = 5000;
 const SLOW_POLL_MS = 60_000;
@@ -67,6 +66,13 @@ const HOUR_OPTIONS: readonly LiveHourOption[] = RECENT_HOUR_OPTIONS.map((hours) 
 
 function contributorsUrl(source: LivePlatform): string {
   return `/api/usage/contributors?source=${source}`;
+}
+
+// Countdown views are rebuilt every second; the previous object is kept while the text is unchanged so memoised cards skip the render.
+function useStableView<T>(view: T): T {
+  const kept = useRef(view);
+  if (kept.current !== view && JSON.stringify(kept.current) !== JSON.stringify(view)) kept.current = view;
+  return kept.current;
 }
 
 function alertPermission(alertsOn: boolean): AlertPermission | null {
@@ -106,7 +112,6 @@ export function useLivePage(): LivePageView {
     const id = setInterval(() => setTick((count) => count + 1), TICK_MS);
     return () => clearInterval(id);
   }, []);
-  const minute = Math.floor(tick / TICKS_PER_MINUTE);
 
   const alertsOn = resolveLimitAlerts((settings as { limitAlerts?: unknown }).limitAlerts).mode !== 'off';
   const permission = alertPermission(alertsOn);
@@ -120,7 +125,7 @@ export function useLivePage(): LivePageView {
   const block = recent.data?.activeBlock ?? null;
   const recentFailed = !recent.data && !!recent.error;
 
-  const claudeGauge = useMemo(
+  const freshClaudeGauge = useMemo(
     () =>
       showClaude
         ? buildClaudeGauge({
@@ -142,11 +147,12 @@ export function useLivePage(): LivePageView {
       todayActual, permission, tick,
     ],
   );
+  const claudeGauge = useStableView(freshClaudeGauge);
 
   const codexBlockData = codexBlock.data;
   const codexBlockLoading = !codexBlockData && codexBlock.loading;
   const codexBlockFailed = !codexBlockData && !!codexBlock.error;
-  const codexGauge = useMemo(
+  const freshCodexGauge = useMemo(
     () =>
       showCodex
         ? buildCodexGauge({
@@ -169,6 +175,7 @@ export function useLivePage(): LivePageView {
       codexCostPerDay, codexDailyCap, permission, tick,
     ],
   );
+  const codexGauge = useStableView(freshCodexGauge);
 
   const gauges = useMemo(
     () => [claudeGauge, codexGauge].filter((gauge): gauge is LimitGaugeView => gauge !== null),
@@ -176,7 +183,7 @@ export function useLivePage(): LivePageView {
   );
 
   const coworkOnly = effectiveSource === 'cowork';
-  const hourly = useMemo(
+  const freshHourly = useMemo(
     () =>
       buildHourly({
         recent: recent.data,
@@ -188,6 +195,7 @@ export function useLivePage(): LivePageView {
       }),
     [recent.data, recent.loading, recent.error, recentHours, platform, coworkOnly],
   );
+  const hourly = useStableView(freshHourly);
 
   const accounts = accountsLive.data?.accounts ?? NO_ACCOUNTS;
   const bySource = liveWeekly.data?.bySource;
@@ -198,7 +206,7 @@ export function useLivePage(): LivePageView {
       : liveWeekly.data.totals.effectiveTokens;
   const plan = configData?.subscriptionType ?? configData?.rateLimitTier ?? null;
 
-  const claudePlans = useMemo(
+  const freshClaudePlans = useMemo(
     () =>
       claudePlanMode
         ? buildClaudePlans({
@@ -212,13 +220,15 @@ export function useLivePage(): LivePageView {
             now: Date.now(),
           })
         : NO_PLANS,
-    [claudePlanMode, accounts, liveUsage.data, liveUsage.loading, block, claudeWeeklyEffective, plan, weekStart, minute],
+    [claudePlanMode, accounts, liveUsage.data, liveUsage.loading, block, claudeWeeklyEffective, plan, weekStart, tick],
   );
+  const claudePlans = useStableView(freshClaudePlans);
 
-  const codexPlan = useMemo(
+  const freshCodexPlan = useMemo(
     () => (codexPlanMode ? buildCodexPlan({ live: codexLive.data, failed: codexLive.error, weekStart, now: Date.now() }) : null),
-    [codexPlanMode, codexLive.data, codexLive.error, weekStart, minute],
+    [codexPlanMode, codexLive.data, codexLive.error, weekStart, tick],
   );
+  const codexPlan = useStableView(freshCodexPlan);
 
   const plans = useMemo(() => (codexPlan ? [...claudePlans, codexPlan] : claudePlans), [claudePlans, codexPlan]);
 
@@ -283,10 +293,11 @@ export function useLivePage(): LivePageView {
     codexContrib.data, codexContrib.error, scopeContrib.data, scopeContrib.error,
   ]);
 
-  const limitHits = useMemo(
+  const freshLimitHits = useMemo(
     () => buildLimitHits({ data: hits.data, failed: !!hits.error, platform, now: Date.now() }),
-    [hits.data, hits.error, platform, minute],
+    [hits.data, hits.error, platform, tick],
   );
+  const limitHits = useStableView(freshLimitHits);
 
   const gatewayBill = platform === 'claude' && litellmActual !== null;
   const billToday = litellmActual?.today ?? 0;
@@ -304,15 +315,16 @@ export function useLivePage(): LivePageView {
       actual: gatewayBill ? { today: billToday, week: billWeek, month: billMonth } : null,
       now: Date.now(),
     });
-  }, [weeklyBuckets, gatewayBill, billToday, billWeek, billMonth, limits, costPerDay, weekStart, minute]);
+  }, [weeklyBuckets, gatewayBill, billToday, billWeek, billMonth, limits, costPerDay, weekStart, tick]);
 
   const apiMode = (showClaude && isApi) || (showCodex && codexApiKey);
   const capped = hasCaps(limits);
   const budgetFailed = !liveWeekly.data && !!liveWeekly.error;
-  const spendCaps = useMemo(
+  const freshSpendCaps = useMemo(
     () => buildSpendCaps({ platform, budget, failed: budgetFailed, apiMode, hasCaps: capped, actualNote, now: Date.now() }),
     [platform, budget, budgetFailed, apiMode, capped, actualNote],
   );
+  const spendCaps = useStableView(freshSpendCaps);
 
   const onHoursChange = useCallback((value: string) => setRecentHours(Number(value)), [setRecentHours]);
 

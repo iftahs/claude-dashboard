@@ -38,7 +38,7 @@
 - `loading` - meter skeletons under the real header.
 - `error` - the request failed and there is nothing earlier to show.
 - `empty` - nothing stands out in either period.
-- Ready - the behaviours, or one line saying nothing is over 10% in this period, then the breakdown groups in two columns.
+- Ready - the behaviours, or one line saying nothing is over 10% in this period, then the breakdown groups under one line that says what the shares are. The groups sit in two columns where the card is wide enough (640px to 1023px, and from 1536px) and in one column otherwise.
 
 ## Usage
 

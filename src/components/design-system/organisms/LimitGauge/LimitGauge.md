@@ -19,6 +19,7 @@
 | Prop | Type | Default | Description |
 |---|---|---|---|
 | `view` | `LimitGaugeView` | required | The card's view model, built by `buildClaudeGauge()` or `buildCodexGauge()` in `@/lib/views/live`. |
+| `wideBelowXl` | `boolean` | `false` | Set it when the card sits in a `SplitLayout` with `collapseBelow="xl"`: from 768px to 1279px the card is full width, so the facts move into a second column beside the headline. |
 | `className` | `string` | - | Extra classes merged onto the card. |
 
 `LimitGaugeView` fields:

@@ -59,5 +59,5 @@ Beside a gauge:
 ## Notes
 
 - Memoised on `view`: build the view with `useMemo` in the page hook so the chart is not redrawn on every tick.
-- The card grows to its row's height and keeps the chart at the bottom, so it lines up with a taller neighbour.
+- The card grows to its row's height and the plot fills it (never under 260px), so it lines up with a taller neighbour without a gap.
 - The range picker lives in the page header, not in this card.

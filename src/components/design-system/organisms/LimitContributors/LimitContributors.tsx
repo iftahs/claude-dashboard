@@ -5,7 +5,7 @@ import { Section } from '@/components/design-system/organisms/Section/Section';
 import { CONTRIB_RANGE_OPTIONS } from '@/lib/views/live';
 import { LimitContributorsBreakdown } from './LimitContributorsBreakdown/LimitContributorsBreakdown';
 import type { LimitContributorsProps } from './types';
-import { NOTHING_NOTABLE, RANGE_LABEL } from './utils';
+import { NOTHING_NOTABLE, RANGE_LABEL, SHARE_NOTE } from './utils';
 
 export const LimitContributors = memo(function LimitContributors({ view, onRangeChange, className }: LimitContributorsProps) {
   const { behaviors, breakdowns } = view;
@@ -46,10 +46,13 @@ export const LimitContributors = memo(function LimitContributors({ view, onRange
         )}
 
         {breakdowns.length > 0 ? (
-          <div className="grid grid-cols-1 gap-5 border-t border-line pt-5 sm:grid-cols-2">
-            {breakdowns.map((breakdown) => (
-              <LimitContributorsBreakdown key={breakdown.key} breakdown={breakdown} />
-            ))}
+          <div className="flex flex-col gap-4 border-t border-line pt-4">
+            <p className="text-caption text-fg-subtle">{SHARE_NOTE}</p>
+            <div className="grid grid-cols-1 gap-5 sm:max-lg:grid-cols-2 2xl:grid-cols-2">
+              {breakdowns.map((breakdown) => (
+                <LimitContributorsBreakdown key={breakdown.key} breakdown={breakdown} />
+              ))}
+            </div>
           </div>
         ) : null}
       </div>

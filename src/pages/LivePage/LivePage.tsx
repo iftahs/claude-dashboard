@@ -20,7 +20,9 @@ export function LivePage() {
   const view = useLivePage();
   const { both, plans, extras, spendCaps } = view;
 
-  const gauges = view.gauges.map((gauge) => <LimitGauge key={gauge.platform} view={gauge} />);
+  const gauges = view.gauges.map((gauge) => (
+    <LimitGauge key={gauge.platform} view={gauge} wideBelowXl={view.gauges.length === 1} />
+  ));
   const chart = <HourlyUsageChart view={view.hourly} />;
   const contributors = view.contributors.map((card) => (
     <LimitContributors key={card.key} view={card} onRangeChange={view.onContribRange} />
@@ -47,7 +49,7 @@ export function LivePage() {
       <SectionStackLayout title={<GroupLabel>Current window</GroupLabel>}>
         {gauges.length > 1 ? <SplitLayout>{gauges}</SplitLayout> : null}
         {gauges.length === 1 ? (
-          <SplitLayout ratio="1:2">
+          <SplitLayout ratio="1:2" collapseBelow="xl">
             {gauges}
             {chart}
           </SplitLayout>
@@ -66,7 +68,7 @@ export function LivePage() {
             </SplitLayout>
           ) : null}
           {plans.length === 1 && extras.length === 1 ? (
-            <SplitLayout ratio="2:1">
+            <SplitLayout ratio="2:1" collapseBelow="xl">
               <PlanLimitsCard view={plans[0]} columns={2} />
               <ExtraUsageCard view={extras[0]} />
             </SplitLayout>

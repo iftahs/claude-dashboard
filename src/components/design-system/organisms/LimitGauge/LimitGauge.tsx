@@ -6,9 +6,10 @@ import { StatusDot } from '@/components/design-system/atoms/StatusDot/StatusDot'
 import { Callout } from '@/components/design-system/molecules/Callout/Callout';
 import { KeyValueRow } from '@/components/design-system/molecules/KeyValueRow/KeyValueRow';
 import { Section } from '@/components/design-system/organisms/Section/Section';
+import { cn } from '@/lib/cn';
 import type { LimitGaugeProps } from './types';
 
-export const LimitGauge = memo(function LimitGauge({ view, className }: LimitGaugeProps) {
+export const LimitGauge = memo(function LimitGauge({ view, wideBelowXl = false, className }: LimitGaugeProps) {
   const { badge, meter, notice } = view;
 
   return (
@@ -28,8 +29,8 @@ export const LimitGauge = memo(function LimitGauge({ view, className }: LimitGau
         ) : undefined
       }
     >
-      <div className="flex flex-col gap-5">
-        <div className="flex flex-col gap-3">
+      <div className={cn('grid grid-cols-1 gap-5', wideBelowXl && 'md:max-xl:grid-cols-2 md:max-xl:gap-x-8')}>
+        <div className="flex min-w-0 flex-col gap-3">
           <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
             <span className="whitespace-nowrap text-metric-lg text-fg">{view.value}</span>
             <span className="text-small text-fg-muted">{view.caption}</span>
@@ -38,22 +39,25 @@ export const LimitGauge = memo(function LimitGauge({ view, className }: LimitGau
           {meter?.caption ? <span className="text-caption text-fg-subtle">{meter.caption}</span> : null}
         </div>
 
-        <div className="flex flex-col gap-2">
-          <GroupLabel as="span">{view.rowsLabel}</GroupLabel>
-          {view.rows.map((row) => (
-            <KeyValueRow key={row.key} label={row.label} value={row.value} tone={row.tone} help={row.help ?? undefined} />
-          ))}
-        </div>
-
-        {notice ? (
-          <Callout tone="warning" title={notice.title}>
-            {notice.description}
-          </Callout>
+        {view.rows.length > 0 ? (
+          <div className={cn('flex min-w-0 flex-col gap-2', wideBelowXl && 'md:max-xl:row-span-2')}>
+            <GroupLabel as="span">{view.rowsLabel}</GroupLabel>
+            {view.rows.map((row) => (
+              <KeyValueRow key={row.key} label={row.label} value={row.value} tone={row.tone} help={row.help ?? undefined} />
+            ))}
+          </div>
         ) : null}
 
-        <div className="flex flex-col gap-1 text-caption text-fg-subtle">
-          <p>{view.source}</p>
-          {view.hint ? <p>{view.hint}</p> : null}
+        <div className="flex min-w-0 flex-col gap-5">
+          {notice ? (
+            <Callout tone="warning" title={notice.title}>
+              {notice.description}
+            </Callout>
+          ) : null}
+          <div className="flex flex-col gap-1 text-caption text-fg-subtle">
+            <p>{view.source}</p>
+            {view.hint ? <p>{view.hint}</p> : null}
+          </div>
         </div>
       </div>
     </Section>

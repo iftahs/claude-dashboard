@@ -11,6 +11,7 @@ export const HourlyUsageChart = memo(function HourlyUsageChart({ view, className
         buckets={view.buckets}
         labelFor={hourLabel}
         titleFor={dateTimeLabel}
+        fill
         ariaLabel={`${view.title}. ${view.description}.`}
       />
     </Section>

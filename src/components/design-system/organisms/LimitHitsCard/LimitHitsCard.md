@@ -56,7 +56,7 @@ import { LimitHitsCard } from '@/components/design-system/organisms/LimitHitsCar
 ## Private parts
 
 - `LimitHitsFigure` - one figure: its label, its value and a note.
-- `LimitHitsRow` - one episode on two lines: what was hit, with the model and platform, over when it started; the outcome on the right.
+- `LimitHitsRow` - one episode on two lines: what was hit with the outcome on the right, over when it started with the model and the platform.
 
 ## Notes
 
