@@ -102,11 +102,3 @@ export function sumCostThisWeek(
 ): number {
   return sumCostSince(buckets, startOfWeek(now, ws));
 }
-
-/** Sum daily-bucket cost for buckets whose start falls in the current month. */
-export function sumCostThisMonth(
-  buckets: { start: number; cost: number }[] | undefined,
-  now: number,
-): number {
-  return sumCostSince(buckets, startOfMonth(now));
-}

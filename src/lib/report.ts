@@ -3,7 +3,7 @@ import { localYmd } from './week';
 import { shortModel } from './format';
 import { coverageDays } from './coverage';
 
-/** Shape ExportButton consumes: a flat CSV table, a structured JSON doc, a slug. */
+/** Shape `useExport` consumes: a flat CSV table, a structured JSON doc, a slug. */
 export interface SpendReport {
   csv: Record<string, unknown>[];
   json: unknown;

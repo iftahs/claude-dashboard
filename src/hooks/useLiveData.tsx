@@ -31,7 +31,7 @@ interface LiveDataCtx {
   setRecentHours: (h: number) => void;
   weekDays: number;
   setWeekDays: (d: number) => void;
-  // Cross-tab polls (feed multiple tabs and/or the header/sidebar).
+  // Cross-page polls (feed multiple pages and/or the topbar/sidebar).
   recent: PollState<RecentData>;
   weekly: PollState<WeeklyData>;
   /** Always the last 7 days at the fast rate — Live, budget rows, alerts. */
@@ -53,7 +53,7 @@ interface LiveDataCtx {
 const LiveDataContext = createContext<LiveDataCtx | null>(null);
 
 /**
- * The polls that more than one tab (or the header/sidebar) depend on, plus the
+ * The polls that more than one page (or the topbar/sidebar) depend on, plus the
  * window state shared between Live and Trends. Source-aware polls run through
  * `withSrc`; the LiteLLM poll is gated on gateway detection so Code-only /
  * direct-Anthropic users poll nothing; the Codex polls are gated the same way on

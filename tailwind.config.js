@@ -8,24 +8,6 @@ export default {
   theme: {
     extend: {
       colors: {
-        // Legacy palette, used only by src/components/legacy until the rebuild lands.
-        ink: {
-          900: '#0a0a0d',
-          800: '#1c1c24',
-          700: '#282832',
-          600: '#353541',
-          500: '#45454f',
-        },
-        zinc: {
-          400: '#c0c0c8',
-          500: '#9a9aa3',
-          600: '#7c7c86',
-        },
-        clay: {
-          400: '#e8a87c',
-          500: '#d97757',
-          600: '#c2410c',
-        },
         canvas: token('bg'),
         surface: {
           DEFAULT: token('surface'),

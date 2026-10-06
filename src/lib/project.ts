@@ -2,7 +2,7 @@ import type { ProjectStat, SessionMeta, UsageSource } from '@/types';
 
 /**
  * Project display names derived from filesystem paths. Shared by the Sessions
- * table and the Codex tab so both surfaces label a thread's working directory
+ * table and the Codex views so both surfaces label a thread's working directory
  * the same way. Only the last path segment ever reaches the screen — never the
  * full path.
  */

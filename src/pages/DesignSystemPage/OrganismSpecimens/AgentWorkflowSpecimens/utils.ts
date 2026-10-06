@@ -58,7 +58,7 @@ const LIVE_AGENTS: LiveAgentsData = {
       key: 'done-explore',
       parentKey: 'main-delegating',
       name: 'Explore',
-      description: 'Find every importer of the legacy organisms and list them',
+      description: 'Find every importer of the old organisms and list them',
       model: 'claude-haiku-5',
       completedAt: NOW - 90_000,
       background: false,
@@ -80,7 +80,7 @@ const LIVE_AGENTS: LiveAgentsData = {
   mainAgents: [
     {
       key: 'main-delegating',
-      title: 'Rebuild the agents page on the new design system and keep every legacy behaviour',
+      title: 'Rebuild the agents page on the new design system and keep every existing behaviour',
       project: PROJECT,
       gitBranch: 'redesign/v2',
       model: 'claude-opus-5-5',

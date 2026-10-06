@@ -18,7 +18,6 @@ export interface PlatformLimits {
 export const LIMIT_WARN_PCT = 70;
 export const LIMIT_DANGER_PCT = 90;
 
-/** Named like the SidebarBadge tones, so the badge can use it as-is. */
 export type LimitTone = 'success' | 'warning' | 'danger';
 
 export function limitTone(pct: number): LimitTone {

@@ -1,7 +1,7 @@
 import { lazy } from 'react';
 import type { ReactNode } from 'react';
 import { matchPath } from 'react-router-dom';
-import type { IconName } from '@/components/design-system/atoms/Icon/types';
+import type { IconName } from '@/lib/icons';
 import type { Platform } from '@/lib/platform';
 
 export type RouteId =

@@ -179,7 +179,5 @@ rather than writing raw markup.
 - Business logic lives in hooks. Design-system components hold UI-only state (open/closed, hover,
   copied) and never poll, fetch, read storage, track analytics or route.
 - Theming goes through tokens: no raw hex, no `dark:` variants, no arbitrary `text-[Npx]` sizes,
-  and none of the legacy `ink-*` / `clay-*` / `zinc-*` palette classes.
+  and none of the old `ink-*` / `clay-*` / `zinc-*` palette classes.
 - Pages and connected components are not listed here - they are not reusable parts.
-- `src/components/legacy/` is the old UI, exempt from every rule and removed once the rebuild
-  lands. Do not import it from the design system.

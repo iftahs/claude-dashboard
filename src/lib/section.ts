@@ -1,8 +1,8 @@
 import type { ReactNode } from 'react';
-import type { RouteIcon } from '@/routes';
+import type { IconName } from '@/lib/icons';
 import type { AiBackend } from '@/types';
 
-export type SectionIcon = RouteIcon;
+export type SectionIcon = IconName;
 
 export type SectionSkeleton = 'text' | 'stat' | 'chart' | 'bars' | 'table' | 'gauge';
 

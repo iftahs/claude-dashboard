@@ -29,7 +29,7 @@ export function useDashboardNotifications(activeTab: string) {
   useLimitAlerts();
 
   // Soft (non-blocking) budget alerts (LiteLLM-inspired) — fire app-wide, not
-  // just on the Live tab, the first time spend crosses a cap threshold. Each platform is checked against its own caps.
+  // just on the Live page, the first time spend crosses a cap threshold. Each platform is checked against its own caps.
   useBudgetAlerts(settings.budgetAlert);
 
   // ── Product analytics (anonymous, path-free events only — see lib/analytics) ──

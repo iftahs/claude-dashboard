@@ -46,7 +46,7 @@ function read(key: string): string | null {
   }
 }
 
-// One store for every hook instance, so a cap saved in Settings reaches the Live tab and alerts without a reload.
+// One store for every hook instance, so a cap saved in Settings reaches the Live page and alerts without a reload.
 let current: PlatformLimits | null = null;
 const listeners = new Set<() => void>();
 

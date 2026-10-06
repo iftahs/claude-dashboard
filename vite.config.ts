@@ -24,14 +24,24 @@ export default defineConfig({
   build: {
     rollupOptions: {
       output: {
-        // Split the heavy third-party libs out of the entry chunk. recharts is only
-        // needed once a chart-bearing tab mounts, and posthog only for analytics —
-        // neither should block first paint. The tabs themselves are code-split via
-        // React.lazy in App.tsx, which Vite turns into per-tab chunks automatically.
+        // Split the third-party libs out of the entry chunk; pages are code-split by React.lazy in src/routes.tsx.
+        // A listed package takes its dependencies with it unless they are listed too: clsx sits in `ui` because
+        // recharts also depends on it and would otherwise pull the chart library into the first load.
         manualChunks: {
+          react: ['react', 'react/jsx-runtime', 'react-dom', 'react-router-dom'],
+          ui: [
+            '@radix-ui/react-dialog',
+            '@radix-ui/react-dropdown-menu',
+            '@radix-ui/react-popover',
+            '@radix-ui/react-select',
+            '@radix-ui/react-tooltip',
+            'cmdk',
+            'clsx',
+            'class-variance-authority',
+            'tailwind-merge',
+          ],
           recharts: ['recharts'],
           posthog: ['posthog-js', '@posthog/react'],
-          react: ['react', 'react-dom', 'react-router-dom'],
         },
       },
     },

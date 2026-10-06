@@ -17,8 +17,8 @@ const USAGE = 'Usage: node scripts/check-design-system.mjs [--all] [--root <proj
 const SRC_DIR = 'src';
 const COMPONENTS_DIR = 'src/components';
 const COMMON_DIR = 'src/components/common';
-const LEGACY_DIR = 'src/components/legacy';
 const PAGES_DIR = 'src/pages';
+const ROUTES_FILE = 'src/routes.tsx';
 const HOOKS_DIR = 'src/hooks';
 const LIB_DIR = 'src/lib';
 const SKIPPED_DIR_NAMES = new Set(['node_modules', 'dist', '.claude']);
@@ -51,10 +51,8 @@ const LOGIC_BANS = [
   { name: 'setInterval', pattern: /\bsetInterval\b/g, allowedComponent: 'ElapsedTime' },
 ];
 
-// Widen `scope` to `scopeAll` (the --all flag) in the final cleanup phase.
 const STYLE_BANS = {
-  scope: [`${DESIGN_SYSTEM_DIR}/`, `${COMMON_DIR}/`, `${PAGES_DIR}/`],
-  scopeAll: [`${SRC_DIR}/`],
+  scope: [`${SRC_DIR}/`],
   extensions: SOURCE_EXTENSIONS,
   rules: [
     {
@@ -90,13 +88,13 @@ const RULE_ORDER = [
   'Design-system boundary',
   'Foreign utils.ts',
   'Unresolved imports',
+  'Hooks and lib imports',
   'Folder contract',
   'Barrel files',
   'Logic in the design system',
   'Style bans',
   'Index freshness',
 ];
-const WARNING_ORDER = ['Hooks and lib importing components (allowed while migrating)'];
 
 const REGEX_PRECEDERS = new Set('(,=:[!&|?{};+-*%~^'.split(''));
 const REGEX_KEYWORDS = new Set(['return', 'typeof', 'case', 'in', 'of', 'delete', 'void', 'throw', 'new', 'else', 'do']);
@@ -135,7 +133,7 @@ function walk(root, rel, out) {
   for (const entry of listDir(path.join(root, rel))) {
     const childRel = `${rel}/${entry.name}`;
     if (entry.isDirectory()) {
-      if (SKIPPED_DIR_NAMES.has(entry.name) || childRel === LEGACY_DIR) continue;
+      if (SKIPPED_DIR_NAMES.has(entry.name)) continue;
       walk(root, childRel, out);
     } else if (entry.isFile()) {
       out.push(childRel);
@@ -301,7 +299,6 @@ function classify(rel) {
     };
   }
   if (within(rel, COMMON_DIR)) return { zone: 'common' };
-  if (within(rel, LEGACY_DIR)) return { zone: 'legacy' };
   if (within(rel, COMPONENTS_DIR)) return { zone: 'components' };
   if (within(rel, PAGES_DIR)) return { zone: 'pages' };
   if (within(rel, HOOKS_DIR)) return { zone: 'hooks' };
@@ -310,12 +307,11 @@ function classify(rel) {
 }
 
 function isComponentZone(zone) {
-  return zone === 'ds' || zone === 'common' || zone === 'legacy' || zone === 'components';
+  return zone === 'ds' || zone === 'common' || zone === 'components';
 }
 
 function createReport() {
   const violations = [];
-  const warnings = [];
   const seen = new Set();
   const push = (list) => (rule, file, line, message, details = []) => {
     const key = JSON.stringify([rule, file, line, message]);
@@ -323,7 +319,7 @@ function createReport() {
     seen.add(key);
     list.push({ rule, file, line, message, details });
   };
-  return { violations, warnings, violation: push(violations), warning: push(warnings) };
+  return { violations, violation: push(violations) };
 }
 
 function checkDesignSystemImport(report, importer, importerInfo, line, target) {
@@ -341,8 +337,8 @@ function checkDesignSystemImport(report, importer, importerInfo, line, target) {
     }
     return;
   }
-  if (info.zone === 'pages' || info.zone === 'common' || info.zone === 'legacy' || info.zone === 'components') {
-    report.violation('Design-system boundary', importer, line, `imports ${target.rel} - the design system never imports pages, connected or legacy components`);
+  if (info.zone === 'pages' || info.zone === 'common' || info.zone === 'components') {
+    report.violation('Design-system boundary', importer, line, `imports ${target.rel} - the design system never imports pages or connected components`);
     return;
   }
   if (info.zone === 'hooks') {
@@ -371,12 +367,7 @@ function checkImports(root, files, report) {
       const resolved = resolveSpecifier(root, importer, specifier);
       const fromHookOrLib = importerInfo.zone === 'hooks' || importerInfo.zone === 'lib';
       if (resolved.kind === 'unresolved') {
-        // Hooks and lib are mid-migration: a broken import there is tsc's to report, not a tier violation.
-        if (!fromHookOrLib) {
-          report.violation('Unresolved imports', importer, line, `"${specifier}" does not resolve to a file (check the path and its letter case)`);
-        } else if (within(resolved.rel, COMPONENTS_DIR)) {
-          report.warning(WARNING_ORDER[0], importer, line, `imports ${resolved.rel} (does not resolve)`);
-        }
+        report.violation('Unresolved imports', importer, line, `"${specifier}" does not resolve to a file (check the path and its letter case)`);
         continue;
       }
       if (resolved.kind === 'package') {
@@ -387,8 +378,10 @@ function checkImports(root, files, report) {
       }
       const target = { rel: resolved.rel, info: classify(resolved.rel) };
       if (fromHookOrLib) {
-        if (isComponentZone(target.info.zone)) {
-          report.warning(WARNING_ORDER[0], importer, line, `imports ${target.rel}`);
+        if (isComponentZone(target.info.zone) || target.info.zone === 'pages') {
+          report.violation('Hooks and lib imports', importer, line, `imports ${target.rel} - hooks and lib import no components or pages`);
+        } else if (importerInfo.zone === 'lib' && target.rel === ROUTES_FILE) {
+          report.violation('Hooks and lib imports', importer, line, `imports ${target.rel} - lib does not depend on the routes`);
         }
         continue;
       }
@@ -559,8 +552,8 @@ function checkLogicBans(root, files, report) {
   }
 }
 
-function checkStyleBans(root, files, report, all) {
-  const scope = all ? STYLE_BANS.scopeAll : STYLE_BANS.scope;
+function checkStyleBans(root, files, report) {
+  const { scope } = STYLE_BANS;
   for (const rel of files) {
     if (!STYLE_BANS.extensions.some((ext) => rel.endsWith(ext))) continue;
     if (!scope.some((prefix) => rel.startsWith(prefix))) continue;
@@ -603,12 +596,13 @@ function printGroups(log, order, items) {
 async function main() {
   let cli;
   try {
+    // --all is accepted and ignored: the style bans cover all of src/ by default.
     cli = parseCli(process.argv.slice(2), ['all']);
   } catch (err) {
     console.error(`${err.message}\n${USAGE}`);
     process.exit(1);
   }
-  const { root, flags } = cli;
+  const { root } = cli;
   if (listDir(path.join(root, SRC_DIR)).length === 0) {
     console.error(`no ${SRC_DIR}/ folder under ${root}`);
     process.exit(1);
@@ -620,20 +614,17 @@ async function main() {
   const counts = checkFolderContract(root, report);
   checkBarrels(files, report);
   checkLogicBans(root, files, report);
-  checkStyleBans(root, files, report, flags.has('all'));
+  checkStyleBans(root, files, report);
   await checkIndexFreshness(root, report);
 
-  printGroups(console.warn, WARNING_ORDER, report.warnings);
   const failedRules = printGroups(console.error, RULE_ORDER, report.violations);
-  const warningText = `${report.warnings.length} warning(s)`;
   if (report.violations.length > 0) {
-    console.error(`design system check failed: ${report.violations.length} violation(s) in ${failedRules} rule(s), ${warningText}`);
+    console.error(`design system check failed: ${report.violations.length} violation(s) in ${failedRules} rule(s)`);
     process.exit(1);
   }
   const total = TIERS.reduce((sum, tier) => sum + counts[tier.dir], 0);
   const perTier = TIERS.map((tier) => `${counts[tier.dir]} ${tier.dir}`).join(', ');
-  const styleScope = flags.has('all') ? ', style bans on all of src/' : '';
-  console.log(`design system OK: ${total} components (${perTier}), ${files.length} files scanned, ${warningText}${styleScope}`);
+  console.log(`design system OK: ${total} components (${perTier}), ${files.length} files scanned, style bans on all of src/`);
 }
 
 main().catch((err) => {

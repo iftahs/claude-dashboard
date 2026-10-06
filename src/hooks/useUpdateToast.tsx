@@ -51,9 +51,8 @@ function ChangelogLink({ url }: { url?: string }) {
 }
 
 /**
- * Drives the "update available" toast (replaces the old inline UpdateBanner).
- * Keeps the dev-only self-update progress state and the per-version dismissal
- * that the banner used to own. Docker users get manual instructions instead of
+ * Drives the "update available" toast. Keeps the dev-only self-update progress
+ * state and the per-version dismissal. Docker users get manual instructions instead of
  * an action button (they can't git-pull from inside the container).
  */
 export function useUpdateToast(data: VersionInfo | null | undefined) {

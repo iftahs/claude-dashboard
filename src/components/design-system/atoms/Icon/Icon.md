@@ -10,7 +10,7 @@
 
 ## When NOT to use
 
-- A glyph that is not in the name list - add it to `ICONS` in `utils.ts` and to `IconName` in `types.ts` first.
+- A glyph that is not in the name list - add it to `ICONS` in `utils.ts` and to `IconName` in `src/lib/icons.ts` first.
 - Conveying meaning on its own - pair it with a word, or put it in an `IconButton` that carries the label.
 
 ## Props

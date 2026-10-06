@@ -85,14 +85,6 @@ export function timeAgoOrDate(ms: number): string {
   return dateTimeLabel(ms);
 }
 
-export function untilLabel(ms: number): string {
-  const s = Math.max(0, Math.round((ms - Date.now()) / 1000));
-  const h = Math.floor(s / 3600);
-  const m = Math.floor((s % 3600) / 60);
-  if (h > 0) return `${h}h ${m}m`;
-  return `${m}m`;
-}
-
 export function untilFull(ms: number): string {
   const s = Math.max(0, Math.round((ms - Date.now()) / 1000));
   const d = Math.floor(s / 86400);

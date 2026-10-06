@@ -21,7 +21,7 @@ function formatEta(ms: number): string {
  * Project where weekly usage lands by the reset if the current burn rate holds.
  * A naive linear extrapolation: usage so far ÷ fraction-of-window-elapsed. Returns
  * null when it's too early to say (the window just started) or the inputs are
- * degenerate. This is the cross-window analog to BlockGauge's single-block ETA.
+ * degenerate. This is the cross-window analog to the limit gauge's single-block ETA.
  */
 export function buildWeeklyForecast(input: {
   /** Current weekly utilization, 0–100. */

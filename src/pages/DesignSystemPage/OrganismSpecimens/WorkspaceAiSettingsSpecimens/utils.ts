@@ -166,7 +166,7 @@ const TASKS_DATA: WorkspaceTasksData = {
       id: `task-${index}`,
       subject:
         index === 0
-          ? 'Rebuild the Workspace page on the new design system and keep every legacy control, including the long ones that must truncate'
+          ? 'Rebuild the Workspace page on the new design system and keep every existing control, including the long ones that must truncate'
           : `Task ${index + 1} of the rebuild`,
       status: ['completed', 'in_progress', 'pending'][index % 3],
       blocked: index === 4,
