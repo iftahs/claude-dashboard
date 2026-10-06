@@ -709,7 +709,8 @@ app.get('/api/insights/branches', async (req, res) => {
   }
 });
 
-app.get('/api/insights/mcp', async (req, res) => {
+// Last path segment must not be `mcp` or `sse`: some host network filters (antivirus web shields) corrupt responses on those MCP-transport-shaped URLs.
+app.get('/api/insights/mcp-servers', async (req, res) => {
   try {
     const days = clampDays(req.query.days);
     const { insights, computedAt } = await getInsights();

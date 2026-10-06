@@ -134,7 +134,7 @@ export function useInsightsPage(): InsightsPageView {
   const insightRejections = usePolling<InsightsRejections>(onReliability ? q('/api/insights/rejections') : '', POLL);
   const insightRetries = usePolling<InsightsRetries>(onReliability ? q('/api/insights/retries') : '', POLL);
   const tools = usePolling<ToolsData>(onTools ? q('/api/insights/tools') : '', POLL);
-  const insightMcp = usePolling<InsightsMcp>(onTools ? q('/api/insights/mcp') : '', POLL);
+  const insightMcp = usePolling<InsightsMcp>(onTools ? q('/api/insights/mcp-servers') : '', POLL);
   const insightCommands = usePolling<CommandUsageData>(onTools ? q('/api/insights/commands') : '', POLL);
   const insightSubagents = usePolling<SubagentStats>(onTools ? q('/api/insights/subagents') : '', POLL);
   const insightLanguages = usePolling<InsightsLanguages[]>(onCode ? q('/api/insights/languages') : '', POLL);
