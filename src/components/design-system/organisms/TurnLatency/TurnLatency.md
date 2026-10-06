@@ -34,7 +34,7 @@
 ## States
 
 - `loading` - a chart skeleton. `error` - the request failed with nothing earlier to show. `empty` - no turn finished in the window.
-- One platform - the four facts beside the histogram from 1024px, stacked below that.
+- One platform - the four facts beside the histogram from 1280px, stacked below that so the eight duration labels keep their room.
 - Both - a table with a row per platform, then the stacked histogram with its legend.
 
 ## Usage

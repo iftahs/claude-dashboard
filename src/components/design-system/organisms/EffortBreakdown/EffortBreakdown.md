@@ -26,12 +26,12 @@
 | `state` | `SectionState \| null` | Loading, error or empty; null when there is usage to show. |
 | `reasoning` | `string` | Reasoning share of output over all models: "41%", "41% of 62%" when only part of the output reports it, or "n/a". |
 | `slices` | `{ key, label, color, percent, detail }[]` | The all-models mix, one slice per effort level. `detail` is tokens, share and estimated cost. |
-| `models` | `{ key, model, summary, cost, reasoning, slices }[]` | One row per model. |
+| `models` | `{ key, model, label, color, summary, cost, reasoning, slices }[]` | One row per model: its name with its fixed colour, estimated cost, reasoning share and effort mix. |
 
 ## States
 
 - `loading` - meter skeletons. `error` - the request failed with nothing earlier to show. `empty` - no usage in the window.
-- Ready - the all-models bar and legend, then the per-model table.
+- Ready - the all-models bar and legend, then one row per model under a hairline: the model, its estimated cost and reasoning share on one line and its effort bar on the next.
 
 ## Usage
 
@@ -46,6 +46,7 @@ import { EffortBreakdown } from '@/components/design-system/organisms/EffortBrea
 ## a11y
 
 - The card is a region named by its title. Every stacked bar is a `role="img"` whose name lists each level's share in words.
+- The models are a named list. Column labels sit above it for sighted readers, and each row repeats them for screen readers ("Est. cost", "Reasoning").
 - A model's bar is focusable and opens a tooltip with every level's tokens, share and estimated cost, on hover and on keyboard focus.
 - The legend names every effort level beside its swatch, so the shade never identifies a level alone.
 
@@ -56,8 +57,8 @@ import { EffortBreakdown } from '@/components/design-system/organisms/EffortBrea
 
 ## Notes
 
-- Effort is ordinal, so the levels are steps of one hue (the info colour), faintest for the lowest effort and solid for the highest. "Not logged" is neutral.
+- Effort is ordinal, so the levels are steps of one hue: the info colour mixed toward the card for the lowest efforts and toward the text colour for the highest. Every step keeps at least 3:1 against the card in both themes. "Not logged" is neutral.
 - A partial reasoning figure says what it covers ("41% of 62%") instead of standing in for the whole.
-- The table sits in a bordered well and scrolls inside it when the card is narrow.
+- The model rows keep the bar on its own line, so the card works down to about 300px without scrolling; a long model name truncates with its full id in `title`.
 - It has no AI affordance.
 - Memoised, because the Models page re-renders with every shared poll.

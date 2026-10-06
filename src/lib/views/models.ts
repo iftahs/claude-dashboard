@@ -24,6 +24,10 @@ export interface ModelsPoll<T> {
 }
 
 const SERVER_DOWN = 'The dashboard server did not answer. It keeps retrying.';
+
+function estCost(amount: number): string {
+  return amount === 0 ? '~$0' : `~${usd(amount)}`;
+}
 const SYNTHETIC_MODEL = '<synthetic>';
 const WINDOW = 'last 7 days';
 
@@ -120,7 +124,7 @@ export function buildModelBreakdown({ poll, platform, ai }: ModelBreakdownInput)
       title: entry.model,
       color: modelColor(entry.model),
       percent: (entry.costPer1M / maxCost) * 100,
-      value: `~${usd(entry.costPer1M)} / 1M`,
+      value: `${estCost(entry.costPer1M)} / 1M`,
     })),
   };
 }
@@ -136,6 +140,8 @@ export interface EffortSliceView {
 export interface EffortModelRowView {
   key: string;
   model: string;
+  label: string;
+  color: string;
   summary: string;
   cost: string;
   reasoning: string;
@@ -157,21 +163,23 @@ interface EffortBreakdownInput {
   platform: Platform;
 }
 
-// Effort is ordinal, so one hue in monotone steps of the info token, never categorical hues.
-const EFFORT_ALPHA: Record<string, number> = {
-  none: 0.3,
-  minimal: 0.3,
-  low: 0.44,
-  medium: 0.58,
-  high: 0.72,
-  xhigh: 0.86,
-  max: 1,
+// Effort is ordinal: one hue, stepped from info toward the card (low) and toward the text colour (high); the faintest step keeps 3:1 on the card in both themes.
+const INFO = 'rgb(var(--info))';
+const towardCard = (percent: number) => `color-mix(in srgb, ${INFO} ${percent}%, rgb(var(--surface)))`;
+const towardText = (percent: number) => `color-mix(in srgb, ${INFO} ${percent}%, rgb(var(--fg)))`;
+const EFFORT_COLOR: Record<string, string> = {
+  none: towardCard(75),
+  minimal: towardCard(75),
+  low: towardCard(88),
+  medium: INFO,
+  high: towardText(78),
+  xhigh: towardText(56),
+  max: towardText(34),
 };
 const EFFORT_FALLBACK_COLOR = 'rgb(var(--fg-subtle))';
 
 function effortColor(effort: string): string {
-  const alpha = EFFORT_ALPHA[effort];
-  return alpha === undefined ? EFFORT_FALLBACK_COLOR : `rgb(var(--info) / ${alpha})`;
+  return EFFORT_COLOR[effort] ?? EFFORT_FALLBACK_COLOR;
 }
 
 function reasoningLabel(reasoning: ReasoningShare): string {
@@ -189,7 +197,7 @@ function effortSlices(slices: EffortSlice[]): EffortSliceView[] {
       label: effortLabel(slice.effort),
       color: effortColor(slice.effort),
       percent,
-      detail: `${compact(slice.effectiveTokens)} · ${percent.toFixed(0)}%${slice.cost > 0 ? ` · ~${usd(slice.cost)}` : ''}`,
+      detail: `${compact(slice.effectiveTokens)} · ${percent.toFixed(0)}%${slice.cost > 0 ? ` · ${estCost(slice.cost)}` : ''}`,
     };
   });
 }
@@ -225,8 +233,10 @@ export function buildEffortBreakdown({ poll, platform }: EffortBreakdownInput): 
     models: data.models.map((model) => ({
       key: model.model,
       model: model.model,
+      label: shortModel(model.model),
+      color: modelColor(model.model),
       summary: `${shortModel(model.model)} · ${compact(model.effectiveTokens)} effective`,
-      cost: model.cost > 0 ? `~${usd(model.cost)}` : '—',
+      cost: model.cost > 0 ? estCost(model.cost) : '—',
       reasoning: reasoningLabel(model.reasoning),
       slices: effortSlices(model.efforts),
     })),
@@ -408,7 +418,7 @@ export interface PriceRowView {
 
 export interface PriceGroupView {
   key: PricePlatform;
-  label: string | null;
+  label: string;
   caption: string;
   rows: PriceRowView[];
   toggleLabel: string | null;
@@ -468,6 +478,7 @@ const FIELD_ORDER: readonly TokenField[] = ['input', 'output', 'cacheWrite', 'ca
 function rate(model: ModelPrice, field: TokenField): string {
   if (field === 'cacheWrite' && model.platform === 'openai' && model.cacheWrite === 0) return '—';
   const v = model[field];
+  if (v === 0) return '$0';
   const cents = v * 100;
   return `$${Math.abs(cents - Math.round(cents)) < 1e-9 ? v.toFixed(2) : String(+v.toFixed(4))}`;
 }
@@ -486,7 +497,6 @@ function priceRow(model: ModelPrice, selected: ModelPrice): PriceRowView {
 }
 
 export function buildCostCalculation({ platform, groups, selected, expanded, inputs }: CostCalculationInput): CostCalculationView {
-  const labelled = groups.length > 1;
   const counts: TokenCounts = {
     input: tokenCount(inputs.input),
     output: tokenCount(inputs.output),
@@ -494,8 +504,7 @@ export function buildCostCalculation({ platform, groups, selected, expanded, inp
     cacheRead: tokenCount(inputs.cacheRead),
   };
   const noCacheWrite = selected.platform === 'openai' && selected.cacheWrite === 0;
-  const amount = calcCost(selected, counts);
-  const cost = amount > 0 ? `~${usd(amount)}` : '~$0.00';
+  const cost = estCost(calcCost(selected, counts));
   return {
     title: 'Cost calculation explained',
     description: billingBlurb(platform),
@@ -504,7 +513,7 @@ export function buildCostCalculation({ platform, groups, selected, expanded, inp
       const open = Boolean(expanded[group.platform]);
       return {
         key: group.platform,
-        label: labelled ? group.label : null,
+        label: group.label,
         caption: `${group.label} list prices per 1M tokens`,
         rows: [...group.current, ...(open ? group.legacy : [])].map((model) => priceRow(model, selected)),
         toggleLabel: group.legacy.length > 0 ? (open ? 'Hide other models' : `Show other models (${group.legacy.length})`) : null,

@@ -30,7 +30,14 @@ export const InsightKpis = memo(function InsightKpis({ view }: InsightKpisProps)
   return (
     <>
       {view.tiles.map((tile) => (
-        <StatTile key={tile.key} label={tile.label} value={tile.value} sub={tile.sub} tone={tile.tone} help={tile.help} />
+        <StatTile
+          key={tile.key}
+          label={tile.label}
+          value={tile.value}
+          sub={<span className="whitespace-normal">{tile.sub}</span>}
+          tone={tile.tone}
+          help={tile.help}
+        />
       ))}
     </>
   );

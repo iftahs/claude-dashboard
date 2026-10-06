@@ -53,4 +53,5 @@ import { InsightKpis } from '@/components/design-system/organisms/InsightKpis/In
 ## Notes
 
 - It renders the tiles as siblings with no wrapper, so the parent grid lays them out.
+- A tile's context line wraps instead of truncating, and labels are kept to about fourteen characters, so nothing is cut at 1024px beside the sidebar.
 - Failures never include rejections: a declined or denied call never ran.

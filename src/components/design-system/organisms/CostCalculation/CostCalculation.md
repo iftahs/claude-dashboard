@@ -28,7 +28,7 @@
 | Field | Type | Description |
 |---|---|---|
 | `title`, `description`, `help` | `string` | The card header. The description says how the vendor on screen bills. |
-| `groups` | `{ key, label, caption, rows, toggleLabel, expanded }[]` | One rate card per vendor in scope. `label` is set only when two vendors are shown. Each row is a model with its four rates and a `selected` flag. |
+| `groups` | `{ key, label, caption, rows, toggleLabel, expanded }[]` | One rate card per vendor in scope, each under its vendor label with the unit beside it. Each row is a model with its four rates and a `selected` flag. |
 | `cachingTitle`, `cachingNote` | `string` | The prompt-caching note under the tables. |
 | `modelOptions` | `{ value, label }[]` | Every model in scope, for the model select. |
 | `selected` | `string` | The selected model's name. |
@@ -76,4 +76,4 @@ import { CostCalculation } from '@/components/design-system/organisms/CostCalcul
 - Memoised, because the Models page re-renders with every shared poll; pass stable handlers.
 - These are pay-as-you-go API list prices. A subscription has no per-token bill, so every figure here is an estimated equivalent cost.
 - A model with no published cache-write rate shows a dash, and its cache write field says it is not charged.
-- The tables sit in bordered wells and scroll inside them when the card is narrow.
+- The tables sit in bordered wells and scroll inside them when the card is narrow. The calculator sits beside the tables from 1280px and under them below that.

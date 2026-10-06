@@ -19,7 +19,7 @@ export function ModelsPage() {
   return (
     <PageLayout header={<PageHeader description={page.description} />}>
       <SectionStackLayout title={<GroupLabel note={MIX_NOTE}>{MIX_LABEL}</GroupLabel>}>
-        <SplitLayout>
+        <SplitLayout collapseBelow="xl">
           <ModelBreakdown view={page.breakdown} />
           <EffortBreakdown view={page.effort} />
         </SplitLayout>

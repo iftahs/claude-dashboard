@@ -4,7 +4,11 @@ import type { EffortLegendItem } from './types';
 export const ALL_MODELS_LABEL = 'All models';
 export const REASONING_LABEL = 'Reasoning share of output';
 export const LEGEND_LABEL = 'Effort levels';
-export const TABLE_CAPTION = 'Effort mix, estimated cost and reasoning share by model';
+export const MODEL_LIST_LABEL = 'Effort mix by model';
+export const MODEL_LABEL = 'Model';
+export const COST_LABEL = 'Est. cost';
+export const MODEL_REASONING_LABEL = 'Reasoning';
+export const ROW_GRID = 'grid grid-cols-[minmax(0,1fr)_5rem_6rem] gap-x-3';
 
 export function legendItems(slices: readonly EffortSliceView[]): EffortLegendItem[] {
   return slices.map((slice) => ({ key: slice.key, label: slice.label, color: slice.color, value: slice.detail }));

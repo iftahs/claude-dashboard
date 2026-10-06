@@ -32,33 +32,40 @@ export const INLINE_STATUS = 'inline-flex items-center gap-1.5 whitespace-nowrap
 
 export const PAGE_LOADED_AT = Date.now();
 
+// One doc per component folder, so the counts follow the design system instead of going stale.
+const COMPONENT_DOCS = Object.keys(import.meta.glob('/src/components/design-system/*/*/*.md', { query: '?raw', import: 'default' }));
+
+function componentCount(tier: GallerySectionId): number {
+  return COMPONENT_DOCS.filter((path) => path.includes(`/design-system/${tier}/`)).length;
+}
+
 export const GALLERY_SECTIONS: readonly GallerySection[] = [
   {
     id: 'atoms',
     label: 'Atoms',
     icon: 'layers',
-    count: 27,
+    count: componentCount('atoms'),
     description: 'The smallest parts. An atom imports no other design-system component.',
   },
   {
     id: 'molecules',
     label: 'Molecules',
     icon: 'layout',
-    count: 20,
+    count: componentCount('molecules'),
     description: 'Atoms wired into one focused job.',
   },
   {
     id: 'organisms',
     label: 'Organisms',
     icon: 'workflow',
-    count: 3,
-    description: 'The shared building blocks of every page. Page-specific organisms are shown on their pages.',
+    count: componentCount('organisms'),
+    description: 'The cards, charts, tables and forms that pages are assembled from.',
   },
   {
     id: 'templates',
     label: 'Templates',
     icon: 'panel',
-    count: 5,
+    count: componentCount('templates'),
     description: 'Layout only. This page is arranged with all five.',
   },
 ];

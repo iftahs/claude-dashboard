@@ -12,6 +12,8 @@ import {
   DONUT_STROKE,
   EFFICIENCY_LABEL,
   LEGEND_LABEL,
+  TOOLTIP_ESCAPE,
+  TOOLTIP_WRAPPER,
   chartLabel,
   sliceRows,
 } from './utils';
@@ -34,8 +36,8 @@ export const ModelBreakdown = memo(function ModelBreakdown({ view, className }: 
       className={className}
     >
       <div className="flex flex-col gap-5">
-        <div className="flex flex-col items-center gap-5 sm:flex-row">
-          <div role="img" aria-label={chartLabel(view)} className="size-[200px] flex-none">
+        <div className="flex flex-wrap items-center justify-center gap-5">
+          <div role="img" aria-label={chartLabel(view)} className="size-[180px] flex-none">
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
                 <Pie
@@ -52,15 +54,17 @@ export const ModelBreakdown = memo(function ModelBreakdown({ view, className }: 
                     <Cell key={slice.id} fill={slice.color} />
                   ))}
                 </Pie>
-                <Tooltip content={sliceTooltip} />
+                <Tooltip content={sliceTooltip} allowEscapeViewBox={TOOLTIP_ESCAPE} wrapperStyle={TOOLTIP_WRAPPER} />
               </PieChart>
             </ResponsiveContainer>
           </div>
-          <ul aria-label={LEGEND_LABEL} className="flex w-full min-w-0 flex-1 flex-col gap-2">
+          <ul aria-label={LEGEND_LABEL} className="flex min-w-48 flex-1 flex-col gap-2">
             {view.slices.map((slice) => (
               <li key={slice.id} className="flex min-w-0 items-center justify-between gap-3">
                 <LegendDot color={slice.color} className="min-w-0 text-small text-fg">
-                  <span className="min-w-0 truncate">{slice.label}</span>
+                  <span title={slice.label} className="min-w-0 truncate">
+                    {slice.label}
+                  </span>
                 </LegendDot>
                 <span className="flex-none whitespace-nowrap font-mono text-mono tabular-nums text-fg-muted">
                   {slice.tokens} · {slice.share}

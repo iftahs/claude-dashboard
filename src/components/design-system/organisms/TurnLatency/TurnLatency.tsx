@@ -35,8 +35,8 @@ export const TurnLatency = memo(function TurnLatency({ view, className }: TurnLa
 
   return (
     <Section title={view.title} description={view.description} help={view.help} state={view.state} ai={view.ai} className={className}>
-      <div className={cn('grid grid-cols-1 gap-6', !split && 'lg:grid-cols-5')}>
-        <div className={cn('flex min-w-0 flex-col gap-3', !split && 'lg:col-span-2')}>
+      <div className={cn('grid grid-cols-1 gap-6', !split && 'xl:grid-cols-5')}>
+        <div className={cn('flex min-w-0 flex-col gap-3', !split && 'xl:col-span-2')}>
           {split ? (
             <div className="overflow-x-auto rounded-control border border-line">
               <Table caption={TABLE_CAPTION}>
@@ -84,7 +84,7 @@ export const TurnLatency = memo(function TurnLatency({ view, className }: TurnLa
           <p className="text-caption text-fg-subtle">{view.totals}</p>
         </div>
 
-        <div className={cn('flex min-w-0 flex-col gap-3', !split && 'lg:col-span-3')}>
+        <div className={cn('flex min-w-0 flex-col gap-3', !split && 'xl:col-span-3')}>
           <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
             <GroupLabel as="span">{HISTOGRAM_LABEL}</GroupLabel>
             {view.series.length > 1 ? <Legend ariaLabel={LEGEND_LABEL} items={view.series} /> : null}

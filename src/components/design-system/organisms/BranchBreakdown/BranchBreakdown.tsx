@@ -9,7 +9,7 @@ export function BranchBreakdown({ view, className }: BranchBreakdownProps) {
       <ul aria-label={LIST_LABEL} className="flex flex-col gap-3">
         {view.rows.map((row) => (
           <li key={row.key}>
-            <MeterRow size="sm" tone="neutral" label={row.label} value={row.value} percent={row.percent} />
+            <MeterRow size="sm" tone="neutral" label={row.label} value={row.value} percent={row.percent} note={row.note} />
           </li>
         ))}
       </ul>

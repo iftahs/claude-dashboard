@@ -22,8 +22,8 @@ export const CostCalculation = memo(function CostCalculation({
 
   return (
     <Section title={view.title} description={view.description} help={view.help} as="h3" className={className}>
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
-        <div className="flex min-w-0 flex-col gap-5 lg:col-span-7">
+      <div className="grid grid-cols-1 gap-6 xl:grid-cols-12">
+        <div className="flex min-w-0 flex-col gap-5 xl:col-span-7">
           {view.groups.map((group) => (
             <PriceTable key={group.key} group={group} onSelectModel={onSelectModel} onToggleGroup={onToggleGroup} />
           ))}
@@ -32,7 +32,7 @@ export const CostCalculation = memo(function CostCalculation({
           </Callout>
         </div>
 
-        <div className="flex min-w-0 flex-col gap-4 self-start rounded-control bg-surface-sunken p-4 lg:col-span-5">
+        <div className="flex min-w-0 flex-col gap-4 rounded-control bg-surface-sunken p-4 xl:col-span-5 xl:self-start">
           <div className="flex items-center justify-between gap-3">
             <GroupLabel as="span">{CALCULATOR_LABEL}</GroupLabel>
             <Button size="sm" onClick={onReset}>

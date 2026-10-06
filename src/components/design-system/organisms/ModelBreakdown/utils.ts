@@ -1,10 +1,12 @@
 import type { ModelBreakdownView, ModelSliceView } from '@/lib/views/models';
 import type { ModelSliceTooltipRow } from './types';
 
-export const DONUT_INNER_RADIUS = 58;
-export const DONUT_OUTER_RADIUS = 88;
+export const DONUT_INNER_RADIUS = 52;
+export const DONUT_OUTER_RADIUS = 80;
 export const DONUT_STROKE = 'rgb(var(--surface))';
 export const LEGEND_LABEL = 'Effective tokens by model';
+export const TOOLTIP_ESCAPE = { x: true, y: true } as const;
+export const TOOLTIP_WRAPPER = { zIndex: 10 } as const;
 export const EFFICIENCY_LABEL = 'Est. cost per 1M effective tokens';
 
 export function sliceRows(slice: ModelSliceView): ModelSliceTooltipRow[] {

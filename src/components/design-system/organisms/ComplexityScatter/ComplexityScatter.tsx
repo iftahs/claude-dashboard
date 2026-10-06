@@ -36,7 +36,15 @@ export const ComplexityScatter = memo(function ComplexityScatter({ view, classNa
           <ResponsiveContainer width="100%" height="100%">
             <ScatterChart margin={CHART_MARGIN}>
               <CartesianGrid {...CHART_GRID} />
-              <XAxis dataKey="toolCalls" name={X_NAME} type="number" allowDecimals={false} label={X_LABEL} {...CHART_AXIS} />
+              <XAxis
+                dataKey="toolCalls"
+                name={X_NAME}
+                type="number"
+                allowDecimals={false}
+                tickFormatter={compact}
+                label={X_LABEL}
+                {...CHART_AXIS}
+              />
               <YAxis dataKey="effectiveTokens" name={Y_NAME} type="number" width={Y_WIDTH} tickFormatter={compact} {...CHART_AXIS} />
               <ZAxis dataKey="subagents" name={view.sizeLabel} domain={[0, view.maxSize]} range={dotRange(view.maxSize)} />
               <Tooltip cursor={CURSOR} content={pointTooltip} />

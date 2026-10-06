@@ -32,7 +32,7 @@
 ## States
 
 - `loading` - meter skeletons. `error` - the request failed with nothing earlier to show. `empty` - no model used tokens in the window.
-- Ready - the donut beside its list from 640px, stacked below that; then the cost list under a hairline when any model is priced.
+- Ready - the donut beside its list while the card leaves the list 192px, with the list wrapping under the donut in a narrower card; then the cost list under a hairline when any model is priced.
 
 ## Usage
 

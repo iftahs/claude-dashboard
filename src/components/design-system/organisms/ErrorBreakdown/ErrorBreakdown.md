@@ -37,7 +37,7 @@
 - `loading` - meter skeletons under the real header.
 - `error` - the request failed and there is nothing earlier to show.
 - `empty` - no call failed in the window.
-- Ready - the two lists side by side from 1024px, the trend line under a hairline, then the footnote. The trend is left out when it has no points.
+- Ready - the two lists side by side from 1280px and stacked below that, the trend line under a hairline, then the footnote. The trend is left out when it has no points.
 
 ## Usage
 

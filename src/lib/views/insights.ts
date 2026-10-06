@@ -124,13 +124,20 @@ function plural(count: number, one: string, many: string): string {
   return count === 1 ? one : many;
 }
 
+function estCost(amount: number): string {
+  return amount === 0 ? '~$0' : `~${usd(amount)}`;
+}
+
+// A count and its unit stay on one line when a tile's context line wraps.
+const NBSP = '\u00A0';
+
 function pct(rate: number | null | undefined, digits = 1): string {
   return rate === null || rate === undefined ? 'n/a' : `${(rate * 100).toFixed(digits)}%`;
 }
 
 function splitLine(summary: InsightsSummary, pick: (kpis: InsightKpis) => number | null, digits = 1): string {
   const one = (kpis: InsightKpis | null) => (kpis ? pct(pick(kpis), digits) : '—');
-  return `Claude ${one(summary.byPlatform.claude)} · Codex ${one(summary.byPlatform.codex)}`;
+  return `Claude${NBSP}${one(summary.byPlatform.claude)} · Codex${NBSP}${one(summary.byPlatform.codex)}`;
 }
 
 export type InsightKpiTone = 'default' | 'success' | 'warning' | 'danger';
@@ -163,8 +170,8 @@ function kpiTiles(summary: InsightsSummary, platform: Platform): InsightKpiTileV
     value: pct(summary.failureRate),
     sub: both
       ? splitLine(summary, (kpis) => kpis.failureRate)
-      : `${compact(summary.failures)} failed / ${compact(summary.totalCalls)} calls`,
-    tone: 'danger',
+      : `${compact(summary.failures)}${NBSP}failed / ${compact(summary.totalCalls)}${NBSP}calls`,
+    tone: summary.failureRate === null ? 'default' : 'danger',
     help: 'Share of tool calls that ran and came back with an error. Rejections — calls declined before they ran — are not failures; they have their own rate. Lower is better.',
   };
 
@@ -174,8 +181,8 @@ function kpiTiles(summary: InsightsSummary, platform: Platform): InsightKpiTileV
     value: pct(summary.rejectionRate),
     sub: both
       ? splitLine(summary, (kpis) => kpis.rejectionRate)
-      : `${compact(summary.rejections)} ${platform === 'codex' ? 'stopped' : 'declined'} / ${compact(summary.totalCalls)} calls`,
-    tone: 'warning',
+      : `${compact(summary.rejections)}${NBSP}${platform === 'codex' ? 'stopped' : 'declined'} / ${compact(summary.totalCalls)}${NBSP}calls`,
+    tone: summary.rejectionRate === null ? 'default' : 'warning',
     help:
       platform === 'codex'
         ? 'Share of Codex actions that never ran: denied by the guardian auto-reviewer, or declined by you when Codex asked.'
@@ -189,7 +196,7 @@ function kpiTiles(summary: InsightsSummary, platform: Platform): InsightKpiTileV
     label: 'Commit rate',
     value: pct(summary.commitRate, 0),
     sub: both ? splitLine(summary, (kpis) => kpis.commitRate, 0) : 'of sessions in a git repo',
-    tone: 'success',
+    tone: summary.commitRate === null ? 'default' : 'success',
     help: 'Share of sessions in a git repo that ran a successful git commit — a proxy for work that landed. Sessions outside any repo (a chat in a scratch folder) could never commit and are left out.',
   };
 
@@ -197,7 +204,7 @@ function kpiTiles(summary: InsightsSummary, platform: Platform): InsightKpiTileV
     platform === 'codex'
       ? {
           key: 'delegation',
-          label: 'Auto-review rate',
+          label: 'Auto-review',
           value: pct(summary.autoReviewRate, 0),
           sub: 'of threads got a guardian review',
           tone: 'default',
@@ -206,15 +213,15 @@ function kpiTiles(summary: InsightsSummary, platform: Platform): InsightKpiTileV
       : both
         ? {
             key: 'delegation',
-            label: 'Delegation · Auto-review',
+            label: 'Agents',
             value: `${pct(summary.byPlatform.claude?.delegationRate ?? null, 0)} · ${pct(summary.byPlatform.codex?.autoReviewRate ?? null, 0)}`,
-            sub: 'Claude subagents · Codex guardian',
+            sub: `Claude${NBSP}delegation · Codex${NBSP}auto-review`,
             tone: 'default',
             help: 'Left: share of Claude sessions that handed work to a subagent (Task/Agent tool). Right: share of Codex threads the guardian auto-reviewer checked. A guardian review is a safety check on an action, not delegated work, so the two are never blended.',
           }
         : {
             key: 'delegation',
-            label: 'Delegation rate',
+            label: 'Delegation',
             value: pct(summary.delegationRate, 0),
             sub: 'of sessions used a subagent',
             tone: 'default',
@@ -577,7 +584,7 @@ export function buildRetries({ poll, platform, days, ai }: SectionInput<Insights
     { key: 'tokens', label: 'Wasted tokens', value: compact(data.wastedTokens), tone: 'default', help: null },
   ];
   if (data.wastedCost > 0) {
-    facts.push({ key: 'cost', label: 'Est. wasted cost', value: `~${usd(data.wastedCost)}`, tone: 'warning', help: null });
+    facts.push({ key: 'cost', label: 'Est. wasted cost', value: estCost(data.wastedCost), tone: 'warning', help: null });
   }
   return {
     ...view,
@@ -631,6 +638,7 @@ export interface BranchRowView {
   key: string;
   label: string;
   value: string;
+  note: string;
   percent: number;
 }
 
@@ -671,7 +679,8 @@ export function buildBranches({ poll, platform, days, ai }: SectionInput<Insight
     rows: data.map((branch) => ({
       key: `${branch.repo} ${branch.branch}`,
       label: `${branch.repo} / ${branch.branch}`,
-      value: `${compact(branch.effectiveTokens)} tok · ~${usd(branch.cost)} · ${branch.sessions} ${plural(branch.sessions, 'session', 'sessions')}`,
+      value: `${compact(branch.effectiveTokens)} tok`,
+      note: `Est. cost ${estCost(branch.cost)} · ${branch.sessions} ${plural(branch.sessions, 'session', 'sessions')}`,
       percent: share(branch.effectiveTokens, max),
     })),
   };

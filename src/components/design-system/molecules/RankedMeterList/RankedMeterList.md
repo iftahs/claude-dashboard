@@ -23,7 +23,7 @@
 | `rows` | `readonly RankedMeterRow[]` | required | The rows, already sorted and clipped. Renders nothing when empty. |
 | `ariaLabel` | `string` | required | Accessible name of the list: "Calls by tool". |
 | `tone` | `'accent' \| 'warning' \| 'danger' \| 'success' \| 'neutral' \| 'codex'` | `'neutral'` | Bar colour of every row that does not set its own. |
-| `labelWidth` | `'sm' \| 'md' \| 'lg'` | `'md'` | Cap of the name column: 96px, 144px or 208px. The column is as wide as its longest name, up to the cap. |
+| `labelWidth` | `'sm' \| 'md' \| 'lg' \| 'xl'` | `'md'` | Cap of the name column: 96px, 144px, 208px or 288px, and never more than 40%, 45%, 55% or 62% of the list. The column is as wide as its longest name, up to the cap. Use `xl` for long identifiers with one value column. |
 | `mono` | `boolean` | `false` | Names in monospace, for commands, tools and other identifiers. |
 | `className` | `string` | - | Extra classes merged onto the list. |
 

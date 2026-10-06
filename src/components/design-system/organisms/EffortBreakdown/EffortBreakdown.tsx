@@ -1,16 +1,24 @@
 import { memo } from 'react';
 import { GroupLabel } from '@/components/design-system/atoms/GroupLabel/GroupLabel';
-import { Table } from '@/components/design-system/atoms/Table/Table';
-import { TableCell } from '@/components/design-system/atoms/TableCell/TableCell';
-import { TableRow } from '@/components/design-system/atoms/TableRow/TableRow';
+import { LegendDot } from '@/components/design-system/atoms/LegendDot/LegendDot';
 import { Tooltip } from '@/components/design-system/atoms/Tooltip/Tooltip';
 import { Legend } from '@/components/design-system/molecules/Legend/Legend';
-import { ModelChip } from '@/components/design-system/molecules/ModelChip/ModelChip';
 import { Section } from '@/components/design-system/organisms/Section/Section';
+import { cn } from '@/lib/cn';
 import { EffortBar } from './EffortBar/EffortBar';
 import { EffortSliceList } from './EffortSliceList/EffortSliceList';
 import type { EffortBreakdownProps } from './types';
-import { ALL_MODELS_LABEL, LEGEND_LABEL, REASONING_LABEL, TABLE_CAPTION, legendItems } from './utils';
+import {
+  ALL_MODELS_LABEL,
+  COST_LABEL,
+  LEGEND_LABEL,
+  MODEL_LABEL,
+  MODEL_LIST_LABEL,
+  MODEL_REASONING_LABEL,
+  REASONING_LABEL,
+  ROW_GRID,
+  legendItems,
+} from './utils';
 
 export const EffortBreakdown = memo(function EffortBreakdown({ view, className }: EffortBreakdownProps) {
   return (
@@ -27,39 +35,34 @@ export const EffortBreakdown = memo(function EffortBreakdown({ view, className }
           <Legend ariaLabel={LEGEND_LABEL} items={legendItems(view.slices)} />
         </div>
 
-        <div className="overflow-x-auto rounded-control border border-line">
-          <Table caption={TABLE_CAPTION}>
-            <thead>
-              <TableRow>
-                <TableCell header>Model</TableCell>
-                <TableCell header className="w-2/5 min-w-32">
-                  Effort mix
-                </TableCell>
-                <TableCell header numeric>
-                  Est. cost
-                </TableCell>
-                <TableCell header numeric>
-                  Reasoning
-                </TableCell>
-              </TableRow>
-            </thead>
-            <tbody>
-              {view.models.map((model) => (
-                <TableRow key={model.key}>
-                  <TableCell>
-                    <ModelChip model={model.model} />
-                  </TableCell>
-                  <TableCell>
-                    <Tooltip content={<EffortSliceList title={model.summary} slices={model.slices} />}>
-                      <EffortBar slices={model.slices} name={model.summary} tabIndex={0} />
-                    </Tooltip>
-                  </TableCell>
-                  <TableCell numeric>{model.cost}</TableCell>
-                  <TableCell numeric>{model.reasoning}</TableCell>
-                </TableRow>
-              ))}
-            </tbody>
-          </Table>
+        <div className="flex flex-col gap-3 border-t border-line pt-4">
+          <div aria-hidden="true" className={cn(ROW_GRID, 'text-label uppercase text-fg-subtle')}>
+            <span>{MODEL_LABEL}</span>
+            <span className="text-right">{COST_LABEL}</span>
+            <span className="text-right">{MODEL_REASONING_LABEL}</span>
+          </div>
+          <ul aria-label={MODEL_LIST_LABEL} className="flex flex-col gap-3">
+            {view.models.map((model) => (
+              <li key={model.key} className={cn(ROW_GRID, 'items-center gap-y-1.5')}>
+                <LegendDot color={model.color} shape="round" className="min-w-0 text-small text-fg">
+                  <span title={model.model} className="min-w-0 truncate">
+                    {model.label}
+                  </span>
+                </LegendDot>
+                <span className="whitespace-nowrap text-right font-mono text-mono tabular-nums text-fg-muted">
+                  <span className="sr-only">{COST_LABEL} </span>
+                  {model.cost}
+                </span>
+                <span className="whitespace-nowrap text-right font-mono text-mono tabular-nums text-fg-muted">
+                  <span className="sr-only">{MODEL_REASONING_LABEL} </span>
+                  {model.reasoning}
+                </span>
+                <Tooltip content={<EffortSliceList title={model.summary} slices={model.slices} />}>
+                  <EffortBar slices={model.slices} name={model.summary} tabIndex={0} className="col-span-full" />
+                </Tooltip>
+              </li>
+            ))}
+          </ul>
         </div>
       </div>
     </Section>

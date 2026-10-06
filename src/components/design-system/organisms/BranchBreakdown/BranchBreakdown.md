@@ -26,7 +26,7 @@
 | `title`, `description`, `help` | `string` | The card header. |
 | `state` | `SectionState \| null` | Loading, error or empty; null when there are branches to show. |
 | `ai` | `SectionAi \| null` | The AI explanation affordance. |
-| `rows` | `{ key, label, value, percent }[]` | One row per branch: "repo / branch", then tokens, estimated cost and sessions; the bar is the share of the busiest branch. |
+| `rows` | `{ key, label, value, note, percent }[]` | One row per branch: "repo / branch" with its effective tokens, a bar that is the share of the busiest branch, and a note with the estimated cost and the session count. |
 
 ## States
 

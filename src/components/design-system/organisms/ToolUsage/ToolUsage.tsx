@@ -6,7 +6,7 @@ import { LIST_LABEL } from './utils';
 export function ToolUsage({ view, className }: ToolUsageProps) {
   return (
     <Section title={view.title} description={view.description} help={view.help} state={view.state} ai={view.ai} className={className}>
-      <RankedMeterList ariaLabel={LIST_LABEL} rows={view.rows} mono labelWidth="lg" />
+      <RankedMeterList ariaLabel={LIST_LABEL} rows={view.rows} mono labelWidth="xl" />
     </Section>
   );
 }

@@ -166,15 +166,12 @@ export function useInsightsPage(): InsightsPageView {
 
   const onViewChange = useCallback(
     (next: InsightView) => {
-      setParams(
-        (current) => {
-          const updated = new URLSearchParams(current);
-          if (next === DEFAULT_INSIGHT_VIEW) updated.delete(INSIGHT_VIEW_PARAM);
-          else updated.set(INSIGHT_VIEW_PARAM, next);
-          return updated;
-        },
-        { replace: true },
-      );
+      setParams((current) => {
+        const updated = new URLSearchParams(current);
+        if (next === DEFAULT_INSIGHT_VIEW) updated.delete(INSIGHT_VIEW_PARAM);
+        else updated.set(INSIGHT_VIEW_PARAM, next);
+        return updated;
+      });
     },
     [setParams],
   );

@@ -30,7 +30,7 @@ export const ErrorBreakdown = memo(function ErrorBreakdown({ view, className }: 
   return (
     <Section title={view.title} description={view.description} help={view.help} state={view.state} ai={view.ai} className={className}>
       <div className="flex flex-col gap-5">
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+        <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
           <div className="flex min-w-0 flex-col gap-3">
             <GroupLabel as="span">By category</GroupLabel>
             <RankedMeterList ariaLabel={CATEGORY_LIST_LABEL} rows={view.categories} />

@@ -2,7 +2,7 @@ import type { ProgressBarTone } from '@/components/design-system/atoms/ProgressB
 
 export type RankedMeterValueTone = 'default' | 'muted' | 'subtle' | 'success' | 'warning' | 'danger';
 
-export type RankedMeterLabelWidth = 'sm' | 'md' | 'lg';
+export type RankedMeterLabelWidth = 'sm' | 'md' | 'lg' | 'xl';
 
 export interface RankedMeterRow {
   key?: string;
