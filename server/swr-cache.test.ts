@@ -162,3 +162,22 @@ test('past the stale bound a failed rebuild rejects rather than serving older da
   await h.land(2, 'v3');
   assert.equal(await q, 'v3');
 });
+
+test('with the stale bound at the TTL nothing stale is served: callers past it share one rebuild', async () => {
+  let t = 0;
+  const builds: ((v: string) => void)[] = [];
+  const get = swrCache<string>({ ttlMs: TTL, maxStaleMs: TTL, build: () => new Promise<string>((r) => builds.push(r)), now: () => t });
+  const first = get();
+  builds[0]('v1');
+  assert.equal(await first, 'v1');
+
+  t += TTL - 1;
+  assert.equal(await get(), 'v1');
+  t += 1;
+  const a = get();
+  const b = get();
+  assert.equal(await isPending(a), true);
+  assert.equal(builds.length, 2);
+  builds[1]('v2');
+  assert.deepEqual(await Promise.all([a, b]), ['v2', 'v2']);
+});

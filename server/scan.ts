@@ -194,10 +194,20 @@ export async function readCredentials(): Promise<any> {
   if (fileOauth?.accessToken) return fileCredentials;
   if (cachedOauth?.accessToken) return cachedCredentials;
 
-  if (platform() !== 'darwin') return fileCredentials;
+  // No token anywhere (mid re-login): keep whichever source still has the block, for its plan fields.
+  const tokenless = !fileOauth && cachedOauth ? cachedCredentials : fileCredentials;
+  if (platform() !== 'darwin') return tokenless;
 
   const keychainCredentials = await readKeychainCredentials();
-  return keychainCredentials?.claudeAiOauth ? keychainCredentials : fileCredentials;
+  return keychainCredentials?.claudeAiOauth ? keychainCredentials : tokenless;
+}
+
+/** Subscription when the Claude.ai block names a plan or holds any token: Claude Code blanks `accessToken` for minutes during a re-login. */
+export function authModeOf(oauth: unknown): 'api' | 'subscription' {
+  if (!oauth || typeof oauth !== 'object') return 'api';
+  const o = oauth as Record<string, unknown>;
+  const has = (v: unknown) => typeof v === 'string' && v.trim() !== '';
+  return has(o.accessToken) || has(o.subscriptionType) || has(o.refreshToken) ? 'subscription' : 'api';
 }
 
 /**
@@ -360,11 +370,12 @@ export function oauthHeaders(accessToken: string): Record<string, string> {
 async function oauthGet(url: string, accessToken: string): Promise<Response> {
   const headers = oauthHeaders(accessToken);
   const backoffs = [250, 750]; // ms → 3 attempts total
-  let res = await fetch(url, { headers });
+  const get = () => fetch(url, { headers, signal: AbortSignal.timeout(15_000) });
+  let res = await get();
   for (const wait of backoffs) {
     if (res.status < 500) return res;
     await new Promise((r) => setTimeout(r, wait));
-    res = await fetch(url, { headers });
+    res = await get();
   }
   return res;
 }

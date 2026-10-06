@@ -3,10 +3,10 @@ import { join } from 'node:path';
 import { exec } from 'node:child_process';
 import { promisify } from 'node:util';
 import express from 'express';
-import { getEvents, eventsFingerprint } from './cache.ts';
+import { getEvents } from './cache.ts';
 import { buildRecent, buildWeekly, buildModels, buildActivity, buildHourlyHeatmap, buildProjectStats, buildUsageSummary, buildEffort, filterSource, statsCacheApplies, type SourceFilter, type UsageSummaryData } from './aggregate.ts';
-import { claudeDir, readConfig, readCredentials, readStatsSummary, readSessionMetas, fetchLiveUsage, fetchLiveProfile, fetchLiveUsageFor, fetchLiveProfileFor, readAccountCredentials, expiredTokenMessage, detectLitellm, fetchLiteLlmSpend, MAX_WINDOW_DAYS } from './scan.ts';
-import { getInsights, insightsFingerprint } from './insights-scan.ts';
+import { authModeOf, claudeDir, readConfig, readCredentials, readStatsSummary, readSessionMetas, fetchLiveUsage, fetchLiveProfile, fetchLiveUsageFor, fetchLiveProfileFor, readAccountCredentials, expiredTokenMessage, detectLitellm, fetchLiteLlmSpend, MAX_WINDOW_DAYS } from './scan.ts';
+import { getInsights } from './insights-scan.ts';
 import { archiveSummary, forgetArchivedHistory, hash53, primeData } from './data.ts';
 import { memoBuilder } from './builder-cache.ts';
 import {
@@ -37,6 +37,7 @@ import { routeDatasets } from './ai-router.ts';
 import { aiSource } from './ai-datasets.ts';
 import { getVersionInfo, isDocker } from './version.ts';
 import { allowedHosts, checkRequest, publicSettings } from './http-guard.ts';
+import { serveBuiltUi } from './static-assets.ts';
 
 const execAsync = promisify(exec);
 
@@ -168,9 +169,7 @@ app.get('/api/config', async (_req, res) => {
     // `claudeAiOauth` (used for live usage/profile); API / pay-as-you-go users
     // have no such block, so the subscription/plan framing doesn't apply.
     // File-based so it works identically in dev and Docker.
-    const authMode: 'api' | 'subscription' = credentials?.claudeAiOauth?.accessToken
-      ? 'subscription'
-      : 'api';
+    const authMode = authModeOf(credentials?.claudeAiOauth);
 
     // Start from the local credentials file, then override with the live profile
     // from Anthropic — `.credentials.json` keeps a stale `subscriptionType` after
@@ -218,11 +217,11 @@ app.get('/api/stats/summary', async (_req, res) => {
 // joined with token stats from the main event scan (sessions.ts); the legacy
 // usage-data sidecar only adds languages and keeps sessions whose transcripts are gone listed.
 async function sessionRowsFor(source: SourceFilter) {
-  const [{ events }, { insights }, sidecar, codexTitles] = await Promise.all([
+  const [{ events, token: dataToken }, { insights }, sidecar, codexTitles] = await Promise.all([
     getEvents(), getInsights(), readSessionMetas(), readCodexTitles(),
   ]);
   // Sidecars and titles are small and rarely change; the events fingerprint carries the rest.
-  const token = hash53(`${eventsFingerprint()}|${JSON.stringify(sidecar)}|${[...codexTitles].join('\0')}`);
+  const token = hash53(`${dataToken}|${JSON.stringify(sidecar)}|${[...codexTitles].join('\0')}`);
   const rows = memoBuilder('sessions', [source], token, () =>
     buildSessionRows(events, insights, sidecar, source, codexTitles),
   );
@@ -450,9 +449,9 @@ app.get('/api/codex/block', async (_req, res) => {
 app.get('/api/insights/limits', async (req, res) => {
   try {
     const days = intParam(req.query.days, 30, 1, MAX_WINDOW_DAYS);
-    const { insights, computedAt } = await getInsights();
+    const { insights, computedAt, token } = await getInsights();
     const source = parseSource(req.query.source);
-    const data = memoBuilder('limits', [days, source], insightsFingerprint(), () =>
+    const data = memoBuilder('limits', [days, source], token, () =>
       buildLimitHits(scopeInsights(insights, source).limitHits, computedAt, days),
     );
     res.json(wrap(data, computedAt));
@@ -478,9 +477,9 @@ app.get('/api/usage/litellm', async (req, res) => {
 app.get('/api/usage/recent', async (req, res) => {
   try {
     const hours = intParam(req.query.hours, 12, 1, 72);
-    const { events, computedAt } = await getEvents();
+    const { events, computedAt, token } = await getEvents();
     const source = parseSource(req.query.source);
-    const data = memoBuilder('recent', [hours, source], eventsFingerprint(), () =>
+    const data = memoBuilder('recent', [hours, source], token, () =>
       buildRecent(filterSource(events, source), computedAt, hours),
     );
     res.json(wrap(data, computedAt));
@@ -492,9 +491,9 @@ app.get('/api/usage/recent', async (req, res) => {
 app.get('/api/usage/weekly', async (req, res) => {
   try {
     const days = intParam(req.query.days, 7, 7, MAX_WINDOW_DAYS);
-    const { events, computedAt } = await getEvents();
+    const { events, computedAt, token } = await getEvents();
     const source = parseSource(req.query.source);
-    const data = memoBuilder('weekly', [days, source], eventsFingerprint(), () =>
+    const data = memoBuilder('weekly', [days, source], token, () =>
       buildWeekly(filterSource(events, source), computedAt, days),
     );
     res.json(wrap(data, computedAt));
@@ -506,9 +505,9 @@ app.get('/api/usage/weekly', async (req, res) => {
 app.get('/api/usage/models', async (req, res) => {
   try {
     const days = intParam(req.query.days, 7, 1, 31);
-    const { events, computedAt } = await getEvents();
+    const { events, computedAt, token } = await getEvents();
     const source = parseSource(req.query.source);
-    const data = memoBuilder('models', [days, source], eventsFingerprint(), () =>
+    const data = memoBuilder('models', [days, source], token, () =>
       buildModels(filterSource(events, source), computedAt, days),
     );
     res.json(wrap(data, computedAt));
@@ -520,9 +519,9 @@ app.get('/api/usage/models', async (req, res) => {
 // Lifetime activity summary for Trends' "Activity summary" row, over EVERY event (no window); the unscoped (Both) request also carries the Claude/Codex split.
 app.get('/api/usage/summary', async (req, res) => {
   try {
-    const { events, computedAt } = await getEvents();
+    const { events, computedAt, token } = await getEvents();
     const source = parseSource(req.query.source);
-    const data = memoBuilder('summary', [source], eventsFingerprint(), (): UsageSummaryData => {
+    const data = memoBuilder('summary', [source], token, (): UsageSummaryData => {
       const scoped = filterSource(events, source);
       const summary: UsageSummaryData = buildUsageSummary(scoped, computedAt);
       if (source === 'all') {
@@ -543,9 +542,9 @@ app.get('/api/usage/summary', async (req, res) => {
 app.get('/api/usage/effort', async (req, res) => {
   try {
     const days = intParam(req.query.days, 7, 1, MAX_WINDOW_DAYS);
-    const { events, computedAt } = await getEvents();
+    const { events, computedAt, token } = await getEvents();
     const source = parseSource(req.query.source);
-    const data = memoBuilder('effort', [days, source], eventsFingerprint(), () =>
+    const data = memoBuilder('effort', [days, source], token, () =>
       buildEffort(filterSource(events, source), computedAt, days),
     );
     res.json(wrap(data, computedAt));
@@ -559,9 +558,9 @@ app.get('/api/usage/effort', async (req, res) => {
 // (session duration + subagent type). Both windows are returned in one payload.
 app.get('/api/usage/contributors', async (req, res) => {
   try {
-    const { events, computedAt } = await getEvents();
+    const { events, computedAt, token } = await getEvents();
     const source = parseSource(req.query.source);
-    const data = memoBuilder('contributors', [source], eventsFingerprint(), () =>
+    const data = memoBuilder('contributors', [source], token, () =>
       buildContributors(filterSource(events, source), computedAt),
     );
     res.json(wrap(data, computedAt));
@@ -575,12 +574,12 @@ app.get('/api/activity', async (req, res) => {
   try {
     const days = intParam(req.query.days, 126, 7, MAX_WINDOW_DAYS);
     const utc = req.query.utc === '1' || req.query.utc === 'true';
-    const { events, computedAt } = await getEvents();
+    const { events, computedAt, token } = await getEvents();
     const source = parseSource(req.query.source);
     const stats = !utc && statsCacheApplies(source) ? await readStatsSummary() : undefined;
     // stats-cache is only a fallback for days with no live data and is itself
     // stale, so keying on the events fingerprint is sufficient.
-    const data = memoBuilder('activity', [days, source, utc ? 'utc' : 'local'], eventsFingerprint(), () =>
+    const data = memoBuilder('activity', [days, source, utc ? 'utc' : 'local'], token, () =>
       buildActivity(filterSource(events, source), computedAt, days, stats, { utc }),
     );
     res.json(wrap(data, computedAt));
@@ -592,9 +591,9 @@ app.get('/api/activity', async (req, res) => {
 app.get('/api/heatmap', async (req, res) => {
   try {
     const days = intParam(req.query.days, 90, 7, 365);
-    const { events, computedAt } = await getEvents();
+    const { events, computedAt, token } = await getEvents();
     const source = parseSource(req.query.source);
-    const data = memoBuilder('heatmap', [days, source], eventsFingerprint(), () =>
+    const data = memoBuilder('heatmap', [days, source], token, () =>
       buildHourlyHeatmap(filterSource(events, source), computedAt, days),
     );
     res.json(wrap(data, computedAt));
@@ -606,13 +605,13 @@ app.get('/api/heatmap', async (req, res) => {
 app.get('/api/projects', async (req, res) => {
   try {
     const days = intParam(req.query.days, 30, 7, 365);
-    const [{ events, computedAt }, { insights }, sidecar] = await Promise.all([
+    const [{ events, computedAt, token }, { insights }, sidecar] = await Promise.all([
       getEvents(), getInsights(), readSessionMetas(),
     ]);
     // buildProjectStats already drops cowork; the source filter keeps behavior
     // consistent when the UI explicitly scopes to one surface.
     const source = parseSource(req.query.source);
-    const data = memoBuilder('projects', [days, source], eventsFingerprint(), () => {
+    const data = memoBuilder('projects', [days, source], token, () => {
       const stats = buildProjectStats(filterSource(events, source), computedAt, days);
       // Tags stored before project paths came from the transcript cwd are keyed by the old folder-decoded path; the UI moves them over using this list.
       const legacy = legacyProjectPaths(insights, sidecar);
@@ -641,9 +640,9 @@ function clampDays(raw: unknown, def = 7): number {
 app.get('/api/insights/errors', async (req, res) => {
   try {
     const days = clampDays(req.query.days);
-    const { insights, computedAt } = await getInsights();
+    const { insights, computedAt, token } = await getInsights();
     const source = parseSource(req.query.source);
-    const data = memoBuilder('errors', [days, source], insightsFingerprint(), () =>
+    const data = memoBuilder('errors', [days, source], token, () =>
       buildErrors(scopeInsights(insights, source), days, computedAt),
     );
     res.json(wrap(data, computedAt));
@@ -656,9 +655,9 @@ app.get('/api/insights/errors', async (req, res) => {
 app.get('/api/insights/tools', async (req, res) => {
   try {
     const days = clampDays(req.query.days);
-    const { insights, computedAt } = await getInsights();
+    const { insights, computedAt, token } = await getInsights();
     const source = parseSource(req.query.source);
-    const data = memoBuilder('tools', [days, source], insightsFingerprint(), () =>
+    const data = memoBuilder('tools', [days, source], token, () =>
       buildToolUsage(scopeInsights(insights, source), days, computedAt),
     );
     res.json(wrap(data, computedAt));
@@ -670,9 +669,9 @@ app.get('/api/insights/tools', async (req, res) => {
 app.get('/api/insights/retries', async (req, res) => {
   try {
     const days = clampDays(req.query.days);
-    const { insights, computedAt } = await getInsights();
+    const { insights, computedAt, token } = await getInsights();
     const source = parseSource(req.query.source);
-    const data = memoBuilder('retries', [days, source], insightsFingerprint(), () =>
+    const data = memoBuilder('retries', [days, source], token, () =>
       buildRetries(scopeInsights(insights, source), days, computedAt),
     );
     res.json(wrap(data, computedAt));
@@ -684,9 +683,9 @@ app.get('/api/insights/retries', async (req, res) => {
 app.get('/api/insights/languages', async (req, res) => {
   try {
     const days = clampDays(req.query.days);
-    const { insights, computedAt } = await getInsights();
+    const { insights, computedAt, token } = await getInsights();
     const source = parseSource(req.query.source);
-    const data = memoBuilder('languages', [days, source], insightsFingerprint(), () =>
+    const data = memoBuilder('languages', [days, source], token, () =>
       buildLanguages(scopeInsights(insights, source), days, computedAt),
     );
     res.json(wrap(data, computedAt));
@@ -698,9 +697,9 @@ app.get('/api/insights/languages', async (req, res) => {
 app.get('/api/insights/branches', async (req, res) => {
   try {
     const days = clampDays(req.query.days);
-    const { insights, computedAt } = await getInsights();
+    const { insights, computedAt, token } = await getInsights();
     const source = parseSource(req.query.source);
-    const data = memoBuilder('branches', [days, source], insightsFingerprint(), () =>
+    const data = memoBuilder('branches', [days, source], token, () =>
       buildBranches(scopeInsights(insights, source), days, computedAt),
     );
     res.json(wrap(data, computedAt));
@@ -713,9 +712,9 @@ app.get('/api/insights/branches', async (req, res) => {
 app.get('/api/insights/mcp-servers', async (req, res) => {
   try {
     const days = clampDays(req.query.days);
-    const { insights, computedAt } = await getInsights();
+    const { insights, computedAt, token } = await getInsights();
     const source = parseSource(req.query.source);
-    const data = memoBuilder('mcp', [days, source], insightsFingerprint(), () =>
+    const data = memoBuilder('mcp', [days, source], token, () =>
       buildMcp(scopeInsights(insights, source), days, computedAt),
     );
     res.json(wrap(data, computedAt));
@@ -727,9 +726,9 @@ app.get('/api/insights/mcp-servers', async (req, res) => {
 app.get('/api/insights/complexity', async (req, res) => {
   try {
     const days = clampDays(req.query.days);
-    const { insights, computedAt } = await getInsights();
+    const { insights, computedAt, token } = await getInsights();
     const source = parseSource(req.query.source);
-    const data = memoBuilder('complexity', [days, source], insightsFingerprint(), () =>
+    const data = memoBuilder('complexity', [days, source], token, () =>
       buildComplexity(scopeInsights(insights, source), days, computedAt),
     );
     res.json(wrap(data, computedAt));
@@ -741,9 +740,9 @@ app.get('/api/insights/complexity', async (req, res) => {
 app.get('/api/insights/yield', async (req, res) => {
   try {
     const days = clampDays(req.query.days);
-    const { insights, computedAt } = await getInsights();
+    const { insights, computedAt, token } = await getInsights();
     const source = parseSource(req.query.source);
-    const data = memoBuilder('yield', [days, source], insightsFingerprint(), () =>
+    const data = memoBuilder('yield', [days, source], token, () =>
       buildYield(scopeInsights(insights, source), days, computedAt),
     );
     res.json(wrap(data, computedAt));
@@ -755,9 +754,9 @@ app.get('/api/insights/yield', async (req, res) => {
 app.get('/api/insights/rejections', async (req, res) => {
   try {
     const days = clampDays(req.query.days);
-    const { insights, computedAt } = await getInsights();
+    const { insights, computedAt, token } = await getInsights();
     const source = parseSource(req.query.source);
-    const data = memoBuilder('rejections', [days, source], insightsFingerprint(), () =>
+    const data = memoBuilder('rejections', [days, source], token, () =>
       buildRejections(scopeInsights(insights, source), days, computedAt),
     );
     res.json(wrap(data, computedAt));
@@ -769,9 +768,9 @@ app.get('/api/insights/rejections', async (req, res) => {
 app.get('/api/insights/subagents', async (req, res) => {
   try {
     const days = clampDays(req.query.days);
-    const { insights, computedAt } = await getInsights();
+    const { insights, computedAt, token } = await getInsights();
     const source = parseSource(req.query.source);
-    const data = memoBuilder('subagents', [days, source], insightsFingerprint(), () =>
+    const data = memoBuilder('subagents', [days, source], token, () =>
       buildSubagentStats(scopeInsights(insights, source), days, computedAt),
     );
     res.json(wrap(data, computedAt));
@@ -784,9 +783,9 @@ app.get('/api/insights/subagents', async (req, res) => {
 app.get('/api/insights/churn', async (req, res) => {
   try {
     const days = clampDays(req.query.days);
-    const { insights, computedAt } = await getInsights();
+    const { insights, computedAt, token } = await getInsights();
     const source = parseSource(req.query.source);
-    const data = memoBuilder('churn', [days, source], insightsFingerprint(), () =>
+    const data = memoBuilder('churn', [days, source], token, () =>
       buildFileChurn(scopeInsights(insights, source), days, computedAt, 25, knownProjectRoots(insights)),
     );
     res.json(wrap(data, computedAt));
@@ -799,9 +798,9 @@ app.get('/api/insights/churn', async (req, res) => {
 app.get('/api/insights/turns', async (req, res) => {
   try {
     const days = clampDays(req.query.days);
-    const { insights, computedAt } = await getInsights();
+    const { insights, computedAt, token } = await getInsights();
     const source = parseSource(req.query.source);
-    const data = memoBuilder('turns', [days, source], insightsFingerprint(), () =>
+    const data = memoBuilder('turns', [days, source], token, () =>
       buildTurnLatency(scopeInsights(insights, source), days, computedAt),
     );
     res.json(wrap(data, computedAt));
@@ -814,9 +813,9 @@ app.get('/api/insights/turns', async (req, res) => {
 app.get('/api/insights/summary', async (req, res) => {
   try {
     const days = clampDays(req.query.days);
-    const { insights, computedAt } = await getInsights();
+    const { insights, computedAt, token } = await getInsights();
     const source = parseSource(req.query.source);
-    const data = memoBuilder('insight-summary', [days, source], insightsFingerprint(), () =>
+    const data = memoBuilder('insight-summary', [days, source], token, () =>
       buildInsightsSummary(scopeInsights(insights, source), days, computedAt),
     );
     res.json(wrap(data, computedAt));
@@ -1182,13 +1181,12 @@ app.get('/api/search', async (req, res) => {
 // Serve the built frontend when present (production / Docker). In dev the Vite
 // server handles the UI and proxies /api here, so dist usually won't exist.
 const distDir = join(process.cwd(), 'dist');
-if (existsSync(distDir)) {
-  app.use(express.static(distDir));
-  // SPA fallback: any non-/api route returns index.html.
-  app.get(/^(?!\/api).*/, (_req, res) => {
-    res.sendFile(join(distDir, 'index.html'));
-  });
-}
+if (existsSync(distDir)) serveBuiltUi(app, distDir);
+
+// Logged, not fatal: one stray rejection in a background task must not take the dashboard down (a thrown exception still does).
+process.on('unhandledRejection', (reason) => {
+  console.error('[server] unhandled rejection:', reason);
+});
 
 app.listen(PORT, BIND_HOST, () => {
   console.log(`[server] listening on ${BIND_HOST}:${PORT} (claudeDir=${claudeDir()})`);

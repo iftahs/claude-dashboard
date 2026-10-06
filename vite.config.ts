@@ -1,6 +1,8 @@
 import { fileURLToPath, URL } from 'node:url';
-import { readFileSync } from 'node:fs';
-import { defineConfig } from 'vite';
+import { readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { join, resolve } from 'node:path';
+import { brotliCompressSync, constants as zlib, gzipSync } from 'node:zlib';
+import { defineConfig, type Plugin } from 'vite';
 import react from '@vitejs/plugin-react';
 
 const SERVER_PORT = process.env.SERVER_PORT ?? '8787';
@@ -11,8 +13,44 @@ const { version } = JSON.parse(
   readFileSync(fileURLToPath(new URL('./package.json', import.meta.url)), 'utf8'),
 ) as { version: string };
 
+// Writes .br / .gz next to the text assets so server/static-assets.ts can serve them with a Content-Length: the server never compresses per request.
+function precompressAssets(): Plugin {
+  let assetsDir = '';
+  return {
+    name: 'precompress-assets',
+    apply: 'build',
+    configResolved(config) {
+      assetsDir = resolve(config.root, config.build.outDir, config.build.assetsDir);
+    },
+    closeBundle() {
+      let names: string[] = [];
+      try {
+        names = readdirSync(assetsDir, { recursive: true }) as string[];
+      } catch {
+        return;
+      }
+      for (const name of names) {
+        if (!/\.(js|css|svg|html|json)$/.test(name)) continue;
+        const file = join(assetsDir, name);
+        const raw = readFileSync(file);
+        if (raw.length < 1024) continue;
+        const br = brotliCompressSync(raw, {
+          params: {
+            [zlib.BROTLI_PARAM_QUALITY]: zlib.BROTLI_MAX_QUALITY,
+            [zlib.BROTLI_PARAM_MODE]: zlib.BROTLI_MODE_TEXT,
+            [zlib.BROTLI_PARAM_SIZE_HINT]: raw.length,
+          },
+        });
+        const gz = gzipSync(raw, { level: 9 });
+        if (br.length < raw.length) writeFileSync(`${file}.br`, br);
+        if (gz.length < raw.length) writeFileSync(`${file}.gz`, gz);
+      }
+    },
+  };
+}
+
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), precompressAssets()],
   define: {
     __APP_VERSION__: JSON.stringify(version),
   },

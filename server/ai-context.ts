@@ -157,15 +157,13 @@ export async function buildAiPayload(
 
 async function assemble(scope: AiScope, ids: DatasetId[], redact: boolean): Promise<AiPayload> {
   const { source, days } = scope;
-  const [{ events, computedAt }, { insights }] = await Promise.all([getEvents(), getInsights()]);
+  const [{ events, computedAt, token: fp }, { insights, token: ifp }] = await Promise.all([getEvents(), getInsights()]);
 
   // ONE window, ONE surface, driving every overview builder. The old context mixed
   // a 7-day account total with 30-day project costs and labelled both "7 days",
   // which is what made the model report a phantom inconsistency.
   const scoped = filterSource(events, source);
   const si = scopeInsights(insights, source);
-  const fp = eventsFingerprint();
-  const ifp = insightsFingerprint();
 
   const weekly = memoBuilder('weekly', [days, source], fp, () => buildWeekly(scoped, computedAt, days));
   const models = memoBuilder('models', [days, source], fp, () => buildModels(scoped, computedAt, days));

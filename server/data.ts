@@ -450,12 +450,13 @@ async function ensureFresh(): Promise<void> {
   if (state === 'block') await inflight;
 }
 
-export async function getEvents(): Promise<{ events: UsageEvent[]; computedAt: number }> {
+// `token` is dataFingerprint() read with the snapshot: memoise under it, not under module state read after a later await.
+export async function getEvents(): Promise<{ events: UsageEvent[]; computedAt: number; token: number }> {
   await ensureFresh();
-  return { events, computedAt };
+  return { events, computedAt, token: dataFingerprint() };
 }
 
-export async function getInsights(): Promise<{ insights: InsightsData; computedAt: number }> {
+export async function getInsights(): Promise<{ insights: InsightsData; computedAt: number; token: number }> {
   await ensureFresh();
   return {
     insights: insights ?? {
@@ -464,6 +465,7 @@ export async function getInsights(): Promise<{ insights: InsightsData; computedA
       limitHits: [], rateLimitSnaps: [], lineChanges: [], prLinks: [], turns: [],
     },
     computedAt,
+    token: dataFingerprint(),
   };
 }
 
@@ -517,6 +519,8 @@ export async function forgetArchivedHistory(): Promise<boolean> {
   archive.clear();
   archiveMerge = null;
   archiveGen++;
+  // A scan that began during the delete may already hold the old archive, and its computedAt would undo the invalidation.
+  while (inflight) await inflight;
   invalidateData();
   return true;
 }
