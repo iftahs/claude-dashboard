@@ -32,7 +32,7 @@
 | `status` | `'loading' \| 'error' \| 'archived' \| 'empty' \| 'ready'` | Which state to draw. |
 | `message` | `string` | The sentence of the error, archived and empty states. |
 | `truncated` | `string \| null` | The note shown above a long transcript whose middle was omitted by the server. |
-| `turns` | `TranscriptTurnView[]` | `key`, `user`, `role`, `time`, `model`, `text`, `showText`, `tools` (`key`, `label`, `brief`, `title`). |
+| `turns` | `TranscriptTurnView[]` | `key`, `user`, `role`, `time`, `model`, `text` (trimmed), `empty`, `tools` (`key`, `label`, `brief`, `title`). |
 
 ## States
 
@@ -55,7 +55,7 @@ import { TranscriptPane } from '@/components/design-system/organisms/TranscriptP
 ## a11y
 
 - The turns are an `<ol>` named "Transcript", one `<li>` per message, in the order they were written.
-- The speaker is written in words ("You", "Agent"); the bot icon is decorative.
+- The speaker is written in words ("You", "Agent"); the user and bot icons are decorative.
 - Message text is `dir="auto"`, so a right-to-left prompt reads correctly; the row itself stays left-to-right.
 - A tool line keeps its full name and brief in `title`, for when the brief is truncated.
 
@@ -63,6 +63,7 @@ import { TranscriptPane } from '@/components/design-system/organisms/TranscriptP
 
 - Presentational: it fetches nothing. The page hook asks for the transcript when the pane is opened and passes the state in.
 - A message bubble is at most 85% of the pane wide and 288px tall, and scrolls inside itself beyond that. A tool-only turn shows no bubble.
+- A step with neither text nor a tool call (a thinking-only reply, or a prompt that only carried tool results) keeps its header line and reads "No text" there instead of drawing an empty bubble.
 - Tool calls sit in a `surface-sunken` well in `text-code`, one line per call: the tool label, then its brief in `fg-muted`.
 - Memoised, with memoised turns: the session facts around it refresh every poll, the transcript does not.
 

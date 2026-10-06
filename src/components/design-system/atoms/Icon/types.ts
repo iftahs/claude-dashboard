@@ -42,7 +42,8 @@ export type IconName =
   | 'trash'
   | 'menu'
   | 'eye'
-  | 'command';
+  | 'command'
+  | 'user';
 
 export type IconSize = 12 | 14 | 16 | 20;
 

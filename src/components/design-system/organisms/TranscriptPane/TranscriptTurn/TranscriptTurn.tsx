@@ -9,13 +9,14 @@ export const TranscriptTurn = memo(function TranscriptTurn({ turn }: TranscriptT
   return (
     <li dir="ltr" className="flex min-w-0 flex-col items-start gap-1.5">
       <div className="flex min-w-0 max-w-full items-center gap-2">
-        {turn.user ? null : <Icon name="bot" size={14} className="flex-none text-fg-subtle" />}
+        <Icon name={turn.user ? 'user' : 'bot'} size={14} className="flex-none text-fg-subtle" />
         <span className="flex-none text-label uppercase text-fg-subtle">{turn.role}</span>
         {turn.time ? <span className="flex-none whitespace-nowrap font-mono text-mono tabular-nums text-fg-subtle">{turn.time}</span> : null}
         {turn.model ? <ModelChip model={turn.model} /> : null}
+        {turn.empty ? <span className="min-w-0 truncate text-caption text-fg-subtle">{EMPTY_TEXT}</span> : null}
       </div>
 
-      {turn.showText ? (
+      {turn.text ? (
         <p
           dir="auto"
           className={cn(
@@ -23,7 +24,7 @@ export const TranscriptTurn = memo(function TranscriptTurn({ turn }: TranscriptT
             turn.user ? 'bg-surface-hover' : 'border border-line',
           )}
         >
-          {turn.text || <span className="text-fg-subtle">{EMPTY_TEXT}</span>}
+          {turn.text}
         </p>
       ) : null}
 

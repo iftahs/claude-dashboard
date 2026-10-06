@@ -18,7 +18,7 @@ export const SessionTable = memo(function SessionTable({ view, onOpen, onPageCha
           icon="search"
           title={view.noMatches.title}
           description={view.noMatches.description}
-          className="border-t border-line px-4 py-6"
+          className="border-t border-line px-4 py-8"
         />
       ) : (
         <div className="min-w-0 overflow-x-auto">
@@ -45,24 +45,26 @@ export const SessionTable = memo(function SessionTable({ view, onOpen, onPageCha
         </div>
       )}
 
-      <div className="flex min-w-0 flex-wrap items-center justify-between gap-x-4 gap-y-2 border-t border-line px-4 py-3">
-        <p role="status" className="min-w-0 text-caption text-fg-muted">
-          {view.range}
-        </p>
-        {view.pageCount > 1 ? (
-          <nav aria-label={PAGER_LABEL} className="flex flex-none items-center gap-2">
-            <Button size="sm" disabled={view.page <= 1} onClick={() => onPageChange(view.page - 1)}>
-              <Icon name="chevronLeft" />
-              {PREVIOUS_LABEL}
-            </Button>
-            <span className="whitespace-nowrap px-1 font-mono text-mono tabular-nums text-fg-muted">{view.pageLabel}</span>
-            <Button size="sm" disabled={view.page >= view.pageCount} onClick={() => onPageChange(view.page + 1)}>
-              {NEXT_LABEL}
-              <Icon name="chevronRight" />
-            </Button>
-          </nav>
-        ) : null}
-      </div>
+      {view.noMatches ? null : (
+        <div className="flex min-w-0 flex-wrap items-center justify-between gap-x-4 gap-y-2 border-t border-line px-4 py-3">
+          <p role="status" className="min-w-0 text-caption text-fg-muted">
+            {view.range}
+          </p>
+          {view.pageCount > 1 ? (
+            <nav aria-label={PAGER_LABEL} className="flex flex-none items-center gap-2">
+              <Button size="sm" disabled={view.page <= 1} onClick={() => onPageChange(view.page - 1)}>
+                <Icon name="chevronLeft" />
+                {PREVIOUS_LABEL}
+              </Button>
+              <span className="whitespace-nowrap px-1 font-mono text-mono tabular-nums text-fg-muted">{view.pageLabel}</span>
+              <Button size="sm" disabled={view.page >= view.pageCount} onClick={() => onPageChange(view.page + 1)}>
+                {NEXT_LABEL}
+                <Icon name="chevronRight" />
+              </Button>
+            </nav>
+          ) : null}
+        </div>
+      )}
     </Section>
   );
 });

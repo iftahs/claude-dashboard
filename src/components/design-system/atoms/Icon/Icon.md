@@ -25,7 +25,7 @@ Names: `layout`, `activity`, `bot`, `workflow`, `trending`, `layers`, `bars`, `l
 `sliders`, `settings`, `search`, `sun`, `moon`, `panel`, `chevronRight`, `chevronDown`, `chevronUp`,
 `chevronLeft`, `check`, `x`, `clock`, `download`, `alert`, `info`, `arrowUpRight`, `refresh`, `inbox`, `copy`,
 `externalLink`, `filter`, `calendar`, `tag`, `gitBranch`, `terminal`, `file`, `help`, `plus`, `minus`, `trash`,
-`menu`, `eye`, `command`.
+`menu`, `eye`, `command`, `user`.
 
 ## Usage
 

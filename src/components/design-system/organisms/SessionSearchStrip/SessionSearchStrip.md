@@ -54,7 +54,7 @@ import { SessionSearchStrip } from '@/components/design-system/organisms/Session
 - The root is a `role="search"` landmark; the field is named by `view.label`.
 - The summary is a `role="status"`, so the number of matches is announced when it arrives; the error is a `role="alert"`.
 - Each hit is a native `<button>` with the 2px focus ring drawn inside the card.
-- The clear button is named "Clear search".
+- The clear button is named "Clear search" and returns focus to the field.
 
 ## Notes
 

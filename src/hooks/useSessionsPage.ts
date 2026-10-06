@@ -12,7 +12,6 @@ import type { ExportFormat } from '@/lib/export';
 import { buildProjectStats } from '@/lib/project';
 import {
   SESSIONS_EXPORT_FILENAME,
-  SESSIONS_TABS,
   SESSIONS_VIEW_PARAM,
   buildProjectBreakdown,
   buildSessionDetail,
@@ -29,6 +28,7 @@ import {
   sessionExportRows,
   sessionNoun,
   sessionsDescription,
+  sessionsTabs,
   tagMovesFrom,
   type ProjectBreakdownView,
   type ProjectSort,
@@ -110,15 +110,12 @@ export function useSessionsPage(): SessionsPageView {
 
   const onViewChange = useCallback(
     (next: SessionsView) => {
-      setParams(
-        (prev) => {
-          const updated = new URLSearchParams(prev);
-          if (next === 'sessions') updated.delete(SESSIONS_VIEW_PARAM);
-          else updated.set(SESSIONS_VIEW_PARAM, next);
-          return updated;
-        },
-        { replace: true },
-      );
+      setParams((prev) => {
+        const updated = new URLSearchParams(prev);
+        if (next === 'sessions') updated.delete(SESSIONS_VIEW_PARAM);
+        else updated.set(SESSIONS_VIEW_PARAM, next);
+        return updated;
+      });
     },
     [setParams],
   );
@@ -237,7 +234,7 @@ export function useSessionsPage(): SessionsPageView {
 
   return {
     view,
-    tabs: hasProjects ? SESSIONS_TABS : null,
+    tabs: hasProjects ? sessionsTabs(noun) : null,
     description: sessionsDescription(noun),
     onViewChange,
     exportDisabled: !canExport,

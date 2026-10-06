@@ -37,7 +37,7 @@ export const SessionStatsGrid = memo(function SessionStatsGrid({ view }: Session
           help={tile.help}
           sub={
             <>
-              <span dir="auto" title={tile.sub} className="block truncate">
+              <span dir="auto" title={tile.sub} className="block truncate text-left">
                 {tile.sub}
               </span>
               {tile.split ? (

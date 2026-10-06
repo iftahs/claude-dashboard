@@ -19,7 +19,7 @@ export function SessionDetailBody({ view, transcript, onToggleTranscript, onRetr
         </p>
       ) : null}
 
-      <div className="grid min-w-0 gap-5 md:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
+      <div className="grid min-w-0 gap-5 md:grid-cols-2">
         <div className="flex min-w-0 flex-col gap-4">
           <div className="flex min-w-0 flex-col gap-2">
             <GroupLabel as="h3">{view.summaryLabel}</GroupLabel>

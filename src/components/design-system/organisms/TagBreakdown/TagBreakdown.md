@@ -31,7 +31,7 @@
 
 ## States
 
-- `loading` - the header and a chart skeleton.
+- `loading` - the header and meter-row skeletons, the shape of the list.
 - `error` - the header and what failed.
 - `empty` - the header and a sentence saying where to add a tag.
 - Ready - the donut when at least one tag has a cost, and the list in every case.

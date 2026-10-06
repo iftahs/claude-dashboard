@@ -40,7 +40,7 @@
 - `loading` - the header and a table skeleton.
 - `error` - the header and what failed.
 - `empty` - the header and what makes a session appear.
-- No matches - an `EmptyState` with the search icon in place of the table.
+- No matches - an `EmptyState` with the search icon in place of the table and its footer.
 - Ready - the table and its footer.
 
 ## Usage

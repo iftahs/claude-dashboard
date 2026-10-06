@@ -1,4 +1,4 @@
-import { memo } from 'react';
+import { memo, useRef } from 'react';
 import { Badge } from '@/components/design-system/atoms/Badge/Badge';
 import { Card } from '@/components/design-system/atoms/Card/Card';
 import { Icon } from '@/components/design-system/atoms/Icon/Icon';
@@ -11,6 +11,12 @@ import type { SessionSearchStripProps } from './types';
 import { CLEAR_LABEL, HIT_CLASS, RESULTS_LABEL, SKELETON_ROWS } from './utils';
 
 export const SessionSearchStrip = memo(function SessionSearchStrip({ view, onQueryChange, onOpen, className }: SessionSearchStripProps) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const clear = () => {
+    onQueryChange('');
+    inputRef.current?.focus();
+  };
+
   return (
     <div role="search" className={cn('flex min-w-0 flex-col gap-3', className)}>
       <div className="relative min-w-0">
@@ -18,6 +24,7 @@ export const SessionSearchStrip = memo(function SessionSearchStrip({ view, onQue
           <Icon name="search" />
         </span>
         <Input
+          ref={inputRef}
           type="text"
           inputMode="search"
           autoComplete="off"
@@ -30,7 +37,7 @@ export const SessionSearchStrip = memo(function SessionSearchStrip({ view, onQue
         />
         {view.query ? (
           <span className="absolute inset-y-0 right-0.5 flex items-center">
-            <IconButton label={CLEAR_LABEL} size="sm" onClick={() => onQueryChange('')}>
+            <IconButton label={CLEAR_LABEL} size="sm" onClick={clear}>
               <Icon name="x" />
             </IconButton>
           </span>

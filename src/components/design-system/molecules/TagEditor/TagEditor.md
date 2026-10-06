@@ -53,7 +53,8 @@ One project's tags, stored by the page hook:
 
 - The row is a `role="group"` named by `label`.
 - A tag's name is a button named "Rename tag <name>"; its remove button is named "Remove tag <name>". The dot is decorative, so a tag is never identified by colour alone.
-- Enter or leaving the field commits; Escape cancels. An empty name changes nothing.
+- Enter or leaving the field commits; Escape cancels. An empty name changes nothing. After Enter, Escape or a removal, focus moves to the add button, so the keyboard keeps its place in the row.
+- The rename field opens with the current name selected, so typing replaces it.
 - The suggestions are a pointer shortcut and are not in the tab order: tabbing out of the field commits what was typed, which is the keyboard path to the same result.
 
 ## Notes
@@ -62,3 +63,4 @@ One project's tags, stored by the page hook:
 - A rename replaces the tag in this list only. Renaming it to a tag the item already has merges the two once the owner de-duplicates.
 - The row is at least 28px tall, so opening the field does not move what is under it.
 - The dot colour comes from `tagColor()` in `@/lib/palette`, the same colour the tag has in `TagBreakdown`.
+- The field's Enter and Escape are cancelled as key events before focus moves to the add button. Without that, the same Enter press would reach the newly focused button and open the field again.

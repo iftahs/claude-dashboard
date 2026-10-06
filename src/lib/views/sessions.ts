@@ -24,10 +24,16 @@ export interface SessionsTabItem {
 }
 
 export const SESSIONS_VIEW_PARAM = 'view';
-export const SESSIONS_TABS: readonly SessionsTabItem[] = [
-  { value: 'sessions', label: 'Sessions' },
-  { value: 'projects', label: 'Projects and tags' },
-];
+const SESSIONS_TABS: Record<SessionNoun, readonly SessionsTabItem[]> = {
+  sessions: [
+    { value: 'sessions', label: 'Sessions' },
+    { value: 'projects', label: 'Projects and tags' },
+  ],
+  threads: [
+    { value: 'sessions', label: 'Threads' },
+    { value: 'projects', label: 'Projects and tags' },
+  ],
+};
 export const SESSIONS_PER_PAGE = 20;
 export const SESSIONS_EXPORT_FILENAME = 'sessions';
 export const SEARCH_MIN_CHARS = 3;
@@ -174,7 +180,7 @@ export interface TranscriptTurnView {
   time: string;
   model: string | null;
   text: string;
-  showText: boolean;
+  empty: boolean;
   tools: TranscriptToolView[];
 }
 
@@ -259,6 +265,10 @@ export interface TagBreakdownView {
 
 export function sessionNoun(platform: Platform): SessionNoun {
   return platform === 'codex' ? 'threads' : 'sessions';
+}
+
+export function sessionsTabs(noun: SessionNoun): readonly SessionsTabItem[] {
+  return SESSIONS_TABS[noun];
 }
 
 export function sessionsDescription(noun: SessionNoun): string {
@@ -509,7 +519,7 @@ export function buildSessionSearch({ query, results, loading, error, noun, showB
   };
   if (query.length < SEARCH_MIN_CHARS) return { ...base, status: 'idle', summary: '' };
   if (loading) return { ...base, status: 'loading', summary: 'Searching transcripts' };
-  if (error) return { ...base, status: 'error', summary: `Could not search transcripts. ${SERVER_DOWN}` };
+  if (error) return { ...base, status: 'error', summary: 'Could not search transcripts. The dashboard server did not answer.' };
   if (!results || results.length === 0) return { ...base, status: 'empty', summary: `No transcript matches for “${query}”` };
 
   const count = results.length;
@@ -597,14 +607,16 @@ export function buildSessionDetail(s: SessionMeta | null, noun: SessionNoun, hid
 function transcriptTurn(turn: SessionTranscriptTurn, index: number): TranscriptTurnView {
   const user = turn.role === 'user';
   const tools = user ? [] : turn.tools ?? [];
+  const text = (turn.text ?? '').trim();
   return {
     key: String(index),
     user,
     role: user ? 'You' : 'Agent',
     time: Number.isFinite(turn.ts) && turn.ts > 0 ? TURN_TIME_FORMAT.format(new Date(turn.ts)) : '',
     model: !user && turn.model ? turn.model : null,
-    text: turn.text ?? '',
-    showText: Boolean(turn.text) || !turn.tools?.length,
+    text,
+    // A step with neither text nor a tool call: a thinking-only reply, or a prompt that only carried tool results.
+    empty: !text && tools.length === 0,
     tools: tools.map((tool, toolIndex) => ({
       key: `${index}:${toolIndex}`,
       label: toolLabel(tool.name),
@@ -661,6 +673,13 @@ export function projectsHelp(platform: Platform): string {
   return `${base} Cowork sessions run in a sandbox with no host project, so they are excluded.`;
 }
 
+const PROJECT_SORT_NOUN: Record<ProjectSort, string> = {
+  cost: 'est. cost',
+  time: 'active time',
+  tokens: 'effective tokens',
+  files: 'files changed',
+};
+
 const PROJECT_METRIC: Record<ProjectSort, (p: LocalProjectStat) => number> = {
   cost: (p) => p.cost,
   time: (p) => p.activeMs,
@@ -697,10 +716,10 @@ export interface ProjectViewsInput {
   tags: TagMap;
 }
 
-function listState(input: ProjectViewsInput, skeleton: 'bars' | 'chart', errorTitle: string): SectionState | null {
+function listState(input: ProjectViewsInput, rows: number, errorTitle: string): SectionState | null {
   if (input.stats && !input.pending) return null;
   if (!input.stats && input.error) return { kind: 'error', title: errorTitle, description: SERVER_DOWN };
-  return { kind: 'loading', skeleton, rows: skeleton === 'bars' ? 6 : undefined };
+  return { kind: 'loading', skeleton: 'bars', rows };
 }
 
 export function buildProjectBreakdown(input: ProjectViewsInput, sort: ProjectSort): ProjectBreakdownView {
@@ -711,14 +730,14 @@ export function buildProjectBreakdown(input: ProjectViewsInput, sort: ProjectSor
   const top = sorted.reduce((max, p) => Math.max(max, metric(p)), 0);
   const max = sort === 'cost' ? Math.max(top, 0.0001) : top || 1;
 
-  let state = listState(input, 'bars', 'Could not load projects');
+  let state = listState(input, 6, 'Could not load projects');
   if (!state && sorted.length === 0) {
     state = { kind: 'empty', icon: 'folder', title: 'No project activity recorded yet', description: `Projects appear after the first ${singularNoun(sessionNoun(platform))} in a working directory.` };
   }
 
   return {
     title: 'Projects',
-    description: `Est. cost, active time, tokens and files per project${sinceText ? ` since ${sinceText}` : ''}`,
+    description: `Ranked by ${PROJECT_SORT_NOUN[sort]}${sinceText ? `, since ${sinceText}` : ''}`,
     help: projectsHelp(platform),
     state,
     sort,
@@ -779,9 +798,11 @@ export function buildTagBreakdown(input: ProjectViewsInput): TagBreakdownView {
     color: group.tag === UNTAGGED ? UNTAGGED_COLOR : tagColor(group.tag),
   });
 
-  let state = listState(input, 'chart', 'Could not load spend by tag');
+  let state = listState(input, 3, 'Could not load spend by tag');
   if (!state && allTags(tags).length === 0) {
     state = { kind: 'empty', icon: 'tag', title: 'No tags yet', description: 'Add a tag to any project in the Projects card to group its cost here.' };
+  } else if (!state && groups.length === 0) {
+    state = { kind: 'empty', icon: 'tag', title: 'Nothing to group yet', description: 'Tagged projects show their cost here once they have activity.' };
   }
 
   return {

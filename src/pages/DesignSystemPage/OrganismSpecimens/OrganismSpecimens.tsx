@@ -23,6 +23,7 @@ import type { AskState } from '../types';
 import { AI_ANSWER_DELAY_MS, AI_ERROR_SAMPLE, AI_INSIGHT_SAMPLE, GALLERY_EXPORT, METERS, ROW, SESSIONS, WINDOW_FACTS } from '../utils';
 import { AgentWorkflowSpecimens } from './AgentWorkflowSpecimens/AgentWorkflowSpecimens';
 import { LiveSpecimens } from './LiveSpecimens/LiveSpecimens';
+import { SessionsSpecimens } from './SessionsSpecimens/SessionsSpecimens';
 import { WorkspaceAiSettingsSpecimens } from './WorkspaceAiSettingsSpecimens/WorkspaceAiSettingsSpecimens';
 
 export function OrganismSpecimens() {
@@ -212,6 +213,7 @@ export function OrganismSpecimens() {
       <LiveSpecimens />
       <AgentWorkflowSpecimens />
       <WorkspaceAiSettingsSpecimens />
+      <SessionsSpecimens />
       <CommandPalette
         open={palette.open}
         onOpenChange={palette.setOpen}

@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { KeyboardEvent } from 'react';
 import { Button } from '@/components/design-system/atoms/Button/Button';
 import { Icon } from '@/components/design-system/atoms/Icon/Icon';
@@ -12,6 +12,14 @@ export function TagEditor({ value, onChange, label, suggestions = [], addLabel =
   const [mode, setMode] = useState<TagEditorMode>(IDLE);
   const [draft, setDraft] = useState('');
   const skipCommit = useRef(false);
+  const refocus = useRef(false);
+  const addRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    if (mode.kind !== 'idle' || !refocus.current) return;
+    refocus.current = false;
+    addRef.current?.focus();
+  }, [mode]);
 
   const open = (next: TagEditorMode, text: string) => {
     skipCommit.current = false;
@@ -28,18 +36,21 @@ export function TagEditor({ value, onChange, label, suggestions = [], addLabel =
     if (next) onChange(next);
     close();
   };
+  const remove = (tag: string) => {
+    onChange(value.filter((item) => item !== tag));
+    addRef.current?.focus();
+  };
   const pick = (tag: string) => {
     skipCommit.current = true;
     onChange([...value, tag]);
     close();
   };
   const onKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
-    if (event.key === 'Enter') {
-      event.currentTarget.blur();
-    } else if (event.key === 'Escape') {
-      skipCommit.current = true;
-      event.currentTarget.blur();
-    }
+    if (event.key !== 'Enter' && event.key !== 'Escape') return;
+    event.preventDefault();
+    if (event.key === 'Escape') skipCommit.current = true;
+    refocus.current = true;
+    event.currentTarget.blur();
   };
 
   const field = (name: string) => (
@@ -51,6 +62,7 @@ export function TagEditor({ value, onChange, label, suggestions = [], addLabel =
       maxLength={TAG_MAX_LENGTH}
       value={draft}
       onChange={(event) => setDraft(event.target.value)}
+      onFocus={(event) => event.currentTarget.select()}
       onKeyDown={onKeyDown}
       onBlur={commit}
       className="w-28 font-mono"
@@ -82,7 +94,7 @@ export function TagEditor({ value, onChange, label, suggestions = [], addLabel =
             <button
               type="button"
               aria-label={`Remove tag ${tag}`}
-              onClick={() => onChange(value.filter((item) => item !== tag))}
+              onClick={() => remove(tag)}
               className={cn('flex h-full flex-none items-center rounded-r-control pl-0.5 pr-1.5 text-fg-subtle hover:text-fg', FOCUS_RING_INSET)}
             >
               <Icon name="x" size={12} />
@@ -94,7 +106,7 @@ export function TagEditor({ value, onChange, label, suggestions = [], addLabel =
       {mode.kind === 'add' ? (
         field('New tag')
       ) : (
-        <Button variant="ghost" size="sm" onClick={() => open(ADDING, '')} className="px-1.5 text-caption">
+        <Button ref={addRef} variant="ghost" size="sm" onClick={() => open(ADDING, '')} className="px-1.5 text-caption">
           <Icon name="plus" size={12} />
           {addLabel}
         </Button>

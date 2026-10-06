@@ -41,6 +41,7 @@ import {
   Trash,
   TrendingUp,
   TriangleAlert,
+  User,
   Workflow,
   X,
   type LucideIcon,
@@ -92,4 +93,5 @@ export const ICONS: Record<IconName, LucideIcon> = {
   menu: Menu,
   eye: Eye,
   command: Command,
+  user: User,
 };
