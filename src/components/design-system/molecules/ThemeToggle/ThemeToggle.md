@@ -48,3 +48,8 @@ In the topbar, wired to the theme hook by the connected component:
 ## Notes
 
 - It holds no state and reads no storage: the theme and its persistence live in a hook.
+
+## Motion
+
+- The icon of the new theme scales in (160ms) when the theme switches.
+- Under `prefers-reduced-motion` the global rule makes this instant.

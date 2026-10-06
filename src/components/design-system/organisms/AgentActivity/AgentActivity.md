@@ -44,10 +44,14 @@ A main session shows one of five states, always as a dot and a word:
 | `state` | Dot | Badge |
 |---|---|---|
 | `waiting` | danger | "Waiting on you", with a danger border on the row |
-| `delegating` | success, pulsing | "Delegating" |
-| `running` | success, pulsing | "Running" |
+| `delegating` | success, pulsing | "Delegating", led by `ActivityBars`, with a `SweepBar` along the row's bottom edge |
+| `running` | success, pulsing | "Running", led by `ActivityBars`, with a `SweepBar` along the row's bottom edge |
 | `yourTurn` | info | "Your turn" - soft, never an alert |
 | `idle` | neutral | "Not active", with the title in the muted colour |
+
+Only `running` and `delegating` move. A waiting, your-turn or idle session is still.
+
+A running subagent shows the same cues: a pulsing success dot, `ActivityBars` beside the word "running" and a `SweepBar` along the bottom edge of its card. A subagent that waits on you drops all three and takes the danger border and a "Waiting on you" badge. A subagent that just finished gets a check that scales in once.
 
 ## Usage
 
@@ -74,7 +78,8 @@ Both platforms, stacked:
 ## a11y
 
 - The card is a `<section>` labelled by its title; main sessions, running subagents and finished subagents are lists.
-- A state is never colour alone: every main session carries a badge with the state in words, a running subagent reads "running" beside its clock, and a finished one carries a check icon and a "Done" badge.
+- A state is never colour or motion alone: every main session carries a badge with the state in words, a running subagent reads "running" beside its clock, and a finished one carries a check icon and a "Done" badge.
+- Each `SweepBar` is an indeterminate `role="progressbar"` named "Running"; `ActivityBars` is decorative.
 - The clocks are plain ticking text, not live regions; each carries a `title` that says what it measures.
 - The help buttons beside the waiting and your-turn counts are `InfoTip`s named after the count.
 
@@ -91,7 +96,12 @@ Both platforms, stacked:
 ## Notes
 
 - Rows are `surface-sunken` wells, not cards, because they sit inside the section card.
-- Entering and leaving rows fade and shift over 150ms through `framer-motion`; a row whose tokens or activity just rose is tinted `accent-soft` for under a second (150ms in, 500ms out). The tint is a separate layer that fades its opacity, so the row's own colours never animate and a theme switch stays instant. Both are switched off under `prefers-reduced-motion`.
+- A row enters with a fade and an 8px rise over 220ms and leaves with a 140ms fade, through `framer-motion`; the rows around it slide to their new place. Rows already there when the card loads do not animate; rows that replace the empty state do.
+- Every group keeps its list mounted and hides itself while it holds no row (`:has()`), so the first row of a group animates in and the last one animates out like any other.
+- A row whose tokens or activity just rose is tinted `accent-soft` for under a second (150ms in, 500ms out). The tint is a separate layer that fades its opacity, so the row's own colours never animate and a theme switch stays instant.
+- The sweep is absolutely positioned inside the row's bottom padding, so a row keeps its size when an agent starts, waits or stops.
+- Under `prefers-reduced-motion` rows appear and leave at once, the tint and the check animation are off, the dot stops pinging, `ActivityBars` freezes and the sweep becomes a still, faint line. The words and badges stay.
 - Titles, projects and descriptions truncate with their full text in `title`; badges, chips, token counts and clocks never wrap.
 - A main session's clock is the time since its last activity ("active 12s ago"); a running subagent's clock is its running time.
-- Presentational: `useCountUp` and `useFlashOnIncrease` are its only hooks. No fetching, no routing.
+- Presentational: `useCountUp` and `useFlashOnIncrease` are its only app hooks. No fetching, no routing.
+- `framer-motion` is used here and nowhere else in the design system.

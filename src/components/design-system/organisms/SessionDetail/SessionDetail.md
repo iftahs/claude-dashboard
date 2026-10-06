@@ -79,3 +79,9 @@ import { SessionDetail } from '@/components/design-system/organisms/SessionDetai
 ## Private parts
 
 - `SessionDetailBody` - the dialog's content: the first prompt, the facts, the pull requests, the tool counts and the transcript section.
+
+## Motion
+
+- Opens and closes with the `Dialog` animation, and keeps showing the session it was closed on until the close animation has ended.
+- The transcript fades in (180ms) when it is expanded.
+- Under `prefers-reduced-motion` the global rule makes this instant.

@@ -19,7 +19,7 @@ export function Select({ value, onValueChange, options, ariaLabel, placeholder, 
         <SelectPrimitive.Content
           position="popper"
           sideOffset={4}
-          className="z-50 max-h-[var(--radix-select-content-available-height)] min-w-[var(--radix-select-trigger-width)] overflow-hidden rounded-control border border-line bg-surface-raised text-body tabular-nums text-fg shadow-pop"
+          className="z-50 max-h-[var(--radix-select-content-available-height)] min-w-[var(--radix-select-trigger-width)] origin-[var(--radix-select-content-transform-origin)] overflow-hidden rounded-control border border-line bg-surface-raised text-body tabular-nums text-fg shadow-pop data-[state=closed]:animate-scale-out data-[state=open]:animate-scale-in"
         >
           <SelectPrimitive.Viewport className="p-1">
             {options.map((option) => (

@@ -1,4 +1,4 @@
-import { memo, useId } from 'react';
+import { memo, useId, useRef } from 'react';
 import { Badge } from '@/components/design-system/atoms/Badge/Badge';
 import { Card } from '@/components/design-system/atoms/Card/Card';
 import { Markdown } from '@/components/design-system/atoms/Markdown/Markdown';
@@ -15,9 +15,19 @@ export const LimitGlance = memo(function LimitGlance({ view, href, onNavigate, c
   const titleId = useId();
   const { status, windows, caps, message, note } = view;
   const ready = status === 'ready';
+  const sawLoading = useRef(false);
+  if (status === 'loading') sawLoading.current = true;
+  const arrive = sawLoading.current && 'animate-fade-in';
 
   return (
-    <Card aria-labelledby={titleId} className={cn('relative flex flex-col gap-4', href && 'hover:border-line-strong', className)}>
+    <Card
+      aria-labelledby={titleId}
+      className={cn(
+        'relative flex flex-col gap-4',
+        href && 'transition-colors duration-fast ease-standard hover:border-line-strong',
+        className,
+      )}
+    >
       <div className="flex items-center justify-between gap-3">
         <h3 id={titleId} className="flex min-w-0 items-center gap-2 text-heading text-fg">
           <span aria-hidden="true" className={cn('size-2 flex-none rounded-[2px]', SWATCH_CLASS[view.platform])} />
@@ -48,7 +58,7 @@ export const LimitGlance = memo(function LimitGlance({ view, href, onNavigate, c
       ) : null}
 
       {ready && windows.length > 0 ? (
-        <div className="flex flex-col gap-5">
+        <div className={cn('flex flex-col gap-5', arrive)}>
           {windows.map((row) => (
             <LimitGlanceWindow key={row.key} row={row} />
           ))}
@@ -56,7 +66,7 @@ export const LimitGlance = memo(function LimitGlance({ view, href, onNavigate, c
       ) : null}
 
       {ready && caps.length > 0 ? (
-        <div className="flex flex-col gap-4">
+        <div className={cn('flex flex-col gap-4', arrive)}>
           {caps.map((row) => (
             <LimitGlanceCap key={row.key} row={row} />
           ))}

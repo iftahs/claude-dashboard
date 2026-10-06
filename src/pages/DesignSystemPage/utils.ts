@@ -1,6 +1,7 @@
 import type { IconName } from '@/components/design-system/atoms/Icon/types';
 import type { SegmentedControlOption } from '@/components/design-system/atoms/SegmentedControl/types';
 import type { SelectOption } from '@/components/design-system/atoms/Select/types';
+import type { SweepBarTone } from '@/components/design-system/atoms/SweepBar/types';
 import type { TabItem } from '@/components/design-system/atoms/Tabs/types';
 import type { ChartTooltipRow } from '@/components/design-system/molecules/ChartTooltip/types';
 import type { LegendItem } from '@/components/design-system/molecules/Legend/types';
@@ -31,6 +32,10 @@ export const ROW = 'flex flex-wrap items-center gap-3';
 export const INLINE_STATUS = 'inline-flex items-center gap-1.5 whitespace-nowrap text-small text-fg-muted';
 
 export const PAGE_LOADED_AT = Date.now();
+
+export const SWEEP_TONES: readonly SweepBarTone[] = ['accent', 'success', 'info', 'neutral'];
+
+export const SUNKEN_WELL = 'relative rounded-control border border-line bg-surface-sunken px-3 py-2.5';
 
 // One doc per component folder, so the counts follow the design system instead of going stale.
 const COMPONENT_DOCS = Object.keys(import.meta.glob('/src/components/design-system/*/*/*.md', { query: '?raw', import: 'default' }));

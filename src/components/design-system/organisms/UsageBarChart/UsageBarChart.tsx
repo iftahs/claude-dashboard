@@ -1,13 +1,15 @@
-import { memo, useMemo } from 'react';
+import { memo, useMemo, useState } from 'react';
 import { Bar, BarChart, CartesianGrid, Rectangle, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { Legend } from '@/components/design-system/molecules/Legend/Legend';
 import {
   CHART_AXIS,
   CHART_BAR_RADIUS,
   CHART_CURSOR,
+  CHART_ENTRANCE,
   CHART_GRID,
   CHART_TODAY_LABEL,
   CHART_TODAY_LINE,
+  chartMotionAllowed,
 } from '@/lib/chart-theme';
 import { cn } from '@/lib/cn';
 import { UsageBarChartTooltip } from './UsageBarChartTooltip/UsageBarChartTooltip';
@@ -53,7 +55,8 @@ export const UsageBarChart = memo(function UsageBarChart({
       }),
     [buckets, labelFor, titleFor, metric, projectionCostPerDay, projectionTokensPerDay, now],
   );
-  const animate = model.rows.length <= ANIMATION_MAX_ROWS;
+  const [played, setPlayed] = useState(false);
+  const animate = !played && model.rows.length <= ANIMATION_MAX_ROWS && chartMotionAllowed();
 
   return (
     <div className={cn('flex w-full min-w-0 flex-col gap-3', fill && 'min-h-0 flex-1', className)}>
@@ -81,6 +84,8 @@ export const UsageBarChart = memo(function UsageBarChart({
                   stackId={STACK_ID}
                   fill={series.color}
                   isAnimationActive={animate}
+                  onAnimationEnd={() => setPlayed(true)}
+                  {...CHART_ENTRANCE}
                   shape={(shape: unknown) => {
                     const rect = shape as UsageBarShapeProps;
                     return <Rectangle {...rect} radius={topSeries(rect.payload, model.series) === series.key ? CHART_BAR_RADIUS : 0} />;

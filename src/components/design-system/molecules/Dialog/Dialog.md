@@ -73,4 +73,10 @@ A form:
 - Controlled only: the consumer owns `open` and renders the element that opens it.
 - Renders in a portal at `z-50`; popovers, selects and menus opened from inside it stack above it. The portal is outside the app shell, so the panel sets its own `text-body`, `fg` and tabular numerals.
 - Centred with auto margins, not a transform, so the panel sits on whole pixels and its text stays sharp.
-- It does not animate.
+
+## Motion
+
+- The scrim fades and the panel scales from 97% on open (160ms) and back on close (120ms), through Radix `data-state`. Radix keeps the dialog mounted until the close animation has ended.
+- Keep rendering the content while `open` turns `false`, or the panel empties as it leaves.
+- Focus moves in on open without waiting for the animation.
+- Under `prefers-reduced-motion` the global rule makes this instant.

@@ -64,3 +64,8 @@ A compact list of shares:
 
 - Fills the width of its container; the label takes the free width and the value keeps its own.
 - The row has no outer margin: space rows 16px apart with the parent's gap.
+
+## Motion
+
+- The bar grows from zero on mount and glides to a new value; see `ProgressBar`.
+- Under `prefers-reduced-motion` the global rule makes this instant.

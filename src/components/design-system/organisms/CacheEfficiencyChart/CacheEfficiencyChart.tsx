@@ -1,15 +1,17 @@
-import { memo } from 'react';
+import { memo, useState } from 'react';
 import { CartesianGrid, Line, LineChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { Legend } from '@/components/design-system/molecules/Legend/Legend';
 import { Section } from '@/components/design-system/organisms/Section/Section';
 import {
   CHART_ACTIVE_DOT_STROKE,
   CHART_AXIS,
+  CHART_ENTRANCE,
   CHART_GRID,
   CHART_LINE_CURSOR,
   CHART_LINE_WIDTH,
   CHART_REFERENCE_LABEL,
   CHART_REFERENCE_LINE,
+  chartMotionAllowed,
 } from '@/lib/chart-theme';
 import { CacheEfficiencyTooltip } from './CacheEfficiencyTooltip/CacheEfficiencyTooltip';
 import type { CacheEfficiencyChartProps } from './types';
@@ -29,7 +31,8 @@ import {
 } from './utils';
 
 export const CacheEfficiencyChart = memo(function CacheEfficiencyChart({ view, className }: CacheEfficiencyChartProps) {
-  const animate = view.rows.length <= ANIMATION_MAX_ROWS;
+  const [played, setPlayed] = useState(false);
+  const animate = !played && view.rows.length <= ANIMATION_MAX_ROWS && chartMotionAllowed();
   const first = view.series[0];
 
   return (
@@ -79,6 +82,8 @@ export const CacheEfficiencyChart = memo(function CacheEfficiencyChart({ view, c
                     connectNulls={false}
                     activeDot={{ r: ACTIVE_DOT_RADIUS, fill: entry.color, stroke: CHART_ACTIVE_DOT_STROKE, strokeWidth: CHART_LINE_WIDTH }}
                     isAnimationActive={animate}
+                    onAnimationEnd={() => setPlayed(true)}
+                    {...CHART_ENTRANCE}
                   />
                 ))}
               </LineChart>

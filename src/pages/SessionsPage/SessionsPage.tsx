@@ -11,6 +11,7 @@ import { PageLayout } from '@/components/design-system/templates/PageLayout/Page
 import { SplitLayout } from '@/components/design-system/templates/SplitLayout/SplitLayout';
 import { StatGridLayout } from '@/components/design-system/templates/StatGridLayout/StatGridLayout';
 import { useSessionsPage } from '@/hooks/useSessionsPage';
+import { cn } from '@/lib/cn';
 
 const TABS_ID = 'sessions';
 const TABS_LABEL = 'Sessions views';
@@ -35,7 +36,12 @@ export function SessionsPage() {
         <SessionStatsGrid view={page.stats} />
       </StatGridLayout>
 
-      <div {...panel} className="flex min-w-0 flex-col gap-6">
+      <div
+        key={page.view}
+        {...panel}
+        className={cn('flex min-w-0 flex-col gap-6', page.viewFade.className)}
+        onAnimationEnd={page.viewFade.onAnimationEnd}
+      >
         {page.view === 'projects' ? (
           <SplitLayout ratio="2:1">
             <ProjectBreakdown view={page.projects} onSortChange={page.onProjectSortChange} onTagsChange={page.onProjectTagsChange} />

@@ -12,3 +12,8 @@ export interface TabsProps<T extends string = string> {
   id?: string;
   className?: string;
 }
+
+export interface TabMarker {
+  left: number;
+  width: number;
+}

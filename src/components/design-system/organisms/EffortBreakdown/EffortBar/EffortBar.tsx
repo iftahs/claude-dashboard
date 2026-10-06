@@ -21,7 +21,11 @@ export const EffortBar = forwardRef<HTMLDivElement, EffortBarProps>(function Eff
     >
       {slices.map((slice) =>
         slice.percent > 0 ? (
-          <div key={slice.key} className="h-full" style={{ width: `${slice.percent}%`, backgroundColor: slice.color }} />
+          <div
+            key={slice.key}
+            className="h-full transition-[width] duration-slow ease-emphasized"
+            style={{ width: `${slice.percent}%`, backgroundColor: slice.color }}
+          />
         ) : null,
       )}
     </div>

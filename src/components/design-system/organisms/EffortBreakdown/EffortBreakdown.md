@@ -63,3 +63,9 @@ import { EffortBreakdown } from '@/components/design-system/organisms/EffortBrea
 - The model rows keep the bar on its own line, so the card works down to about 300px without scrolling; a long model name truncates with its full id in `title`.
 - It has no AI affordance.
 - Memoised, because the Models page re-renders with every shared poll.
+
+## Motion
+
+- The all-models bar grows from the left once on mount (600ms), and every slice eases its width (320ms) when the mix changes.
+- The per-model bars do not grow on mount, so a list that re-orders never replays it.
+- Under `prefers-reduced-motion` the global rule makes this instant.

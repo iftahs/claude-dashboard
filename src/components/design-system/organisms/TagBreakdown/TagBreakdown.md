@@ -55,10 +55,15 @@ import { TagBreakdown } from '@/components/design-system/organisms/TagBreakdown/
 
 - Presentational: the grouping, the colours and the labels come from the view model. Tag colours are `tagColor()`; the untagged entry uses the `tag-untagged` token.
 - A project with several tags counts toward each, so the shares describe attribution, not a partition of one total.
-- Slices are separated by a small gap instead of a stroke, and the donut does not animate.
+- Slices are separated by a small gap instead of a stroke, and the donut sweeps in once.
 - The hover read-out is a `ChartTooltip`. A tag name truncates in the list with its full text in `title`; the numbers never wrap.
 - Memoised: the view model changes only when the sessions, the costs or the tags do.
 
 ## Private parts
 
 - `TagBreakdownTooltip` - adapts Recharts' hovered slice to `ChartTooltip`.
+
+## Motion
+
+- The donut sweeps in once (450ms, ease-out), when it first has data; later updates redraw without animation.
+- Reduced motion or a hidden tab: no entrance. Recharts animates in JavaScript, so this is checked in code rather than left to the stylesheet.

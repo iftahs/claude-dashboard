@@ -70,3 +70,8 @@ A group of independent choices:
 - Controlled only: the consumer owns `checked`.
 - The check glyph comes straight from `lucide-react`, because an atom cannot import the `Icon` atom.
 - The label text wraps; the box never shrinks.
+
+## Motion
+
+- The box eases its border and fill over 120ms when it is checked or disabled.
+- Under `prefers-reduced-motion` the global rule makes this instant.

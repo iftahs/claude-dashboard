@@ -70,3 +70,8 @@ Both platforms:
 - The meter tone comes from `limitTone()` in `@/lib/limits`.
 - The link is kept only when it is an `http` or `https` address; the view builder drops anything else.
 - It has no loading state of its own: the page shows the card only once the provider has reported the credits.
+
+## Motion
+
+- The link eases its colour over 120ms; the meter grows and glides (see `ProgressBar`).
+- Under `prefers-reduced-motion` the global rule makes this instant.

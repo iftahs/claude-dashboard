@@ -32,6 +32,7 @@
 | `description` | `ReactNode` | - | One or two sentences of detail, or richer content such as a command to copy. |
 | `action` | `{ label: string; onClick: () => void }` | - | One small secondary button under the text. |
 | `dismissible` | `boolean` | `true` | `false` hides the close button. |
+| `leaving` | `boolean` | `false` | The toast is on its way out: it slides out and ignores the pointer. |
 
 ## Variants
 
@@ -76,4 +77,10 @@ The shape of an item with an action:
 ## Notes
 
 - `position: fixed` at `z-50`. It is rendered in place, not in a portal, so dialogs opened later stack above it.
-- It does not animate and does not time toasts out: auto-dismiss is the hook's decision.
+- It does not time toasts out: auto-dismiss is the hook's decision.
+
+## Motion
+
+- A toast slides in when it joins `items`. An item with `leaving: true` slides out; the owner drops it from `items` once the 160ms are over.
+- The remaining toasts close the gap without animation.
+- Under `prefers-reduced-motion` the global rule makes this instant.

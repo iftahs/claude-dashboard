@@ -23,6 +23,7 @@ rather than writing raw markup.
 
 | Component | Purpose | Doc |
 |---|---|---|
+| ActivityBars | Tiny three-bar equalizer that moves while something is running, drawn in the current text colour. | [ActivityBars.md](atoms/ActivityBars/ActivityBars.md) |
 | Badge | Short status or count label on a soft tinted fill. | [Badge.md](atoms/Badge/Badge.md) |
 | Button | Triggers an action with a text label, optionally led by an icon passed as a child. | [Button.md](atoms/Button/Button.md) |
 | Card | Flat surface container with a hairline border and a 10px radius that holds one block of content. | [Card.md](atoms/Card/Card.md) |
@@ -42,9 +43,10 @@ rather than writing raw markup.
 | SegmentedControl | Row of two to five always-visible options on a neutral track, one of which is selected. | [SegmentedControl.md](atoms/SegmentedControl/SegmentedControl.md) |
 | Select | Dropdown that picks one value from a short list of options, with a trigger styled like an input. | [Select.md](atoms/Select/Select.md) |
 | SettingRow | One setting inside a settings card: its name and a sentence of explanation beside the control that changes it, with room for extra content underneath. | [SettingRow.md](atoms/SettingRow/SettingRow.md) |
-| Skeleton | One pulsing placeholder block that stands in for content while it loads. | [Skeleton.md](atoms/Skeleton/Skeleton.md) |
+| Skeleton | One shimmering placeholder block that stands in for content while it loads. | [Skeleton.md](atoms/Skeleton/Skeleton.md) |
 | Sparkline | Draws a tiny bar trend from a list of numbers, with no axes, labels or tooltip. | [Sparkline.md](atoms/Sparkline/Sparkline.md) |
 | StatusDot | Small round dot that shows a status tone, with an optional live pulse and screen-reader label. | [StatusDot.md](atoms/StatusDot/StatusDot.md) |
+| SweepBar | Thin indeterminate progress line whose segment travels left to right while something is running. | [SweepBar.md](atoms/SweepBar/SweepBar.md) |
 | Table | Full-width table element that sets the base type and holds header and body rows. | [Table.md](atoms/Table/Table.md) |
 | TableCell | Table cell that renders a column header, a text cell or a right-aligned monospace number. | [TableCell.md](atoms/TableCell/TableCell.md) |
 | TableRow | Table row with a top hairline, an optional hover fill and a selected state. | [TableRow.md](atoms/TableRow/TableRow.md) |

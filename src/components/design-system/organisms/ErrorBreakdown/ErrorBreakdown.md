@@ -59,3 +59,8 @@ import { ErrorBreakdown } from '@/components/design-system/organisms/ErrorBreakd
 
 - The chart has one series, so it has no legend; the tooltip names it and adds the day's total calls.
 - Memoised, so an unrelated page update does not redraw the chart.
+
+## Motion
+
+- The failures-per-day line draws in once (450ms, ease-out), when it first has data; later updates redraw without animation. The ranked bars grow and glide (see `ProgressBar`).
+- Reduced motion or a hidden tab: no entrance. Recharts animates in JavaScript, so this is checked in code rather than left to the stylesheet.

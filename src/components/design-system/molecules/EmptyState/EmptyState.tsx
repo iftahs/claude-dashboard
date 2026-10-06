@@ -4,7 +4,7 @@ import type { EmptyStateProps } from './types';
 
 export function EmptyState({ title, icon = 'inbox', description, action, className }: EmptyStateProps) {
   return (
-    <div className={cn('flex flex-col items-center justify-center gap-2 py-12 text-center', className)}>
+    <div className={cn('flex animate-fade-in flex-col items-center justify-center gap-2 py-12 text-center', className)}>
       <Icon name={icon} size={20} className="text-fg-subtle" />
       <p className="text-body font-medium text-fg">{title}</p>
       {description ? <p className="max-w-sm text-small text-fg-muted">{description}</p> : null}

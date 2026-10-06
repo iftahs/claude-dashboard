@@ -1,6 +1,6 @@
 import { cva } from 'class-variance-authority';
 
-export const progressBarTrackVariants = cva('w-full overflow-hidden rounded-full bg-surface-hover', {
+export const progressBarTrackVariants = cva('isolate w-full overflow-hidden rounded-full bg-surface-hover', {
   variants: {
     size: {
       sm: 'h-1',
@@ -13,7 +13,8 @@ export const progressBarTrackVariants = cva('w-full overflow-hidden rounded-full
   },
 });
 
-export const progressBarFillVariants = cva('h-full rounded-full', {
+// A full-width fill slid into the track keeps its round cap, which a scaled fill would squash.
+export const progressBarFillVariants = cva('h-full w-full rounded-full transition-transform duration-slow ease-emphasized', {
   variants: {
     tone: {
       accent: 'bg-accent',

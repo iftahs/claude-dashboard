@@ -1,3 +1,4 @@
+import { ActivityBars } from '@/components/design-system/atoms/ActivityBars/ActivityBars';
 import { Badge } from '@/components/design-system/atoms/Badge/Badge';
 import { Chip } from '@/components/design-system/atoms/Chip/Chip';
 import { ElapsedTime } from '@/components/design-system/atoms/ElapsedTime/ElapsedTime';
@@ -7,7 +8,9 @@ import { ProgressBar } from '@/components/design-system/atoms/ProgressBar/Progre
 import { Skeleton } from '@/components/design-system/atoms/Skeleton/Skeleton';
 import { Sparkline } from '@/components/design-system/atoms/Sparkline/Sparkline';
 import { StatusDot } from '@/components/design-system/atoms/StatusDot/StatusDot';
+import { SweepBar } from '@/components/design-system/atoms/SweepBar/SweepBar';
 import { SplitLayout } from '@/components/design-system/templates/SplitLayout/SplitLayout';
+import { cn } from '@/lib/cn';
 import { modelColor } from '@/lib/palette';
 import { Specimen } from '../Specimen/Specimen';
 import {
@@ -21,6 +24,8 @@ import {
   ROW,
   SPARK_VALUES,
   STATUSES,
+  SUNKEN_WELL,
+  SWEEP_TONES,
 } from '../utils';
 
 export function StatusAtoms() {
@@ -85,6 +90,49 @@ export function StatusAtoms() {
         </Specimen>
       </SplitLayout>
       <SplitLayout>
+        <Specimen name="SweepBar" note="Indeterminate 2px line in four tones, then pinned to the bottom edge of a well" layout="stack">
+          <div className="flex max-w-xs flex-col gap-3">
+            {SWEEP_TONES.map((tone) => (
+              <SweepBar key={tone} tone={tone} label={`Running, ${tone}`} />
+            ))}
+          </div>
+          <div className={cn(SUNKEN_WELL, 'max-w-xs text-small text-fg-muted')}>
+            A running agent
+            <SweepBar tone="success" className="absolute inset-x-1.5 bottom-0 w-auto bg-transparent" />
+          </div>
+        </Specimen>
+        <Specimen name="ActivityBars" note="Three bars in the current text colour, beside the word that names the state" layout="stack">
+          <div className="flex flex-wrap items-center gap-5">
+            <span className={INLINE_STATUS}>
+              <ActivityBars className="text-success" />
+              Running
+            </span>
+            <span className={INLINE_STATUS}>
+              <ActivityBars className="text-accent" />
+              Working
+            </span>
+            <span className={INLINE_STATUS}>
+              <ActivityBars className="text-info" />
+              Syncing
+            </span>
+            <span className={INLINE_STATUS}>
+              <ActivityBars />
+              Inherited colour
+            </span>
+          </div>
+          <div className="flex flex-wrap items-center gap-3">
+            <Badge tone="success">
+              <ActivityBars />
+              Running
+            </Badge>
+            <Badge tone="success">
+              <ActivityBars />
+              Delegating
+            </Badge>
+          </div>
+        </Specimen>
+      </SplitLayout>
+      <SplitLayout>
         <Specimen name="ProgressBar" note="40, 83 and 92 in accent, warning and danger" layout="stack">
           {METERS.map((meter) => (
             <ProgressBar key={meter.label} label={meter.label} value={meter.percent} tone={meter.tone} />
@@ -111,10 +159,15 @@ export function StatusAtoms() {
             <ElapsedTime since={PAGE_LOADED_AT - 4_632_000} className="font-mono text-mono text-fg" />
           </div>
         </Specimen>
-        <Specimen name="Skeleton" note="Blocks in the shape of the content" layout="stack">
+        <Specimen name="Skeleton" note="Blocks in the shape of the content, shimmering on the card and on a sunken well" layout="stack">
           <div aria-busy="true" className="flex max-w-xs flex-col gap-3">
             <Skeleton width="40%" height={14} />
             <Skeleton height={8} />
+            <Skeleton height={8} />
+            <Skeleton width="72%" height={8} />
+          </div>
+          <div aria-busy="true" className={cn(SUNKEN_WELL, 'flex max-w-xs flex-col gap-3')}>
+            <Skeleton width="40%" height={14} />
             <Skeleton height={8} />
             <Skeleton width="72%" height={8} />
           </div>

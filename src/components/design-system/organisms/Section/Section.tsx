@@ -1,4 +1,5 @@
-import { useId } from 'react';
+import { useId, useState } from 'react';
+import type { AnimationEvent } from 'react';
 import { Card } from '@/components/design-system/atoms/Card/Card';
 import { Markdown } from '@/components/design-system/atoms/Markdown/Markdown';
 import { AiInsightButton } from '@/components/design-system/molecules/AiInsightButton/AiInsightButton';
@@ -29,6 +30,17 @@ export function Section({
   const hasData = state?.kind !== 'loading' && state?.kind !== 'error';
   const message = state?.kind === 'error' || state?.kind === 'empty';
   const result = ai?.result ?? null;
+  const loading = state?.kind === 'loading';
+  const [wasLoading, setWasLoading] = useState(loading);
+  const [revealing, setRevealing] = useState(false);
+  if (wasLoading !== loading) {
+    setWasLoading(loading);
+    setRevealing(!loading && !state);
+  }
+  // The class comes off once it has played, so the body is not left as a stacking context over its chart tooltips.
+  const endReveal = (event: AnimationEvent<HTMLDivElement>) => {
+    if (event.target === event.currentTarget) setRevealing(false);
+  };
 
   return (
     <Card
@@ -54,7 +66,15 @@ export function Section({
           ) : undefined
         }
       />
-      <div className={cn('min-w-0', grow && 'flex flex-1 flex-col', grow && (message ? 'justify-center' : 'justify-end'))}>
+      <div
+        className={cn(
+          'min-w-0',
+          grow && 'flex flex-1 flex-col',
+          grow && (message ? 'justify-center' : 'justify-end'),
+          revealing && 'animate-fade-in',
+        )}
+        onAnimationEnd={revealing ? endReveal : undefined}
+      >
         {state?.kind === 'loading' ? (
           <SkeletonPreset
             variant={state.skeleton ?? 'text'}

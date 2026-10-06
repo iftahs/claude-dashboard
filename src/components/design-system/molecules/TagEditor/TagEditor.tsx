@@ -86,7 +86,7 @@ export function TagEditor({ value, onChange, label, suggestions = [], addLabel =
               aria-label={`Rename tag ${tag}`}
               title={`Rename tag ${tag}`}
               onClick={() => open({ kind: 'rename', tag }, tag)}
-              className={cn('flex h-full min-w-0 items-center gap-1.5 rounded-l-control pl-2 pr-1 hover:text-fg', FOCUS_RING_INSET)}
+              className={cn('flex h-full min-w-0 items-center gap-1.5 rounded-l-control pl-2 pr-1 transition-colors duration-fast ease-standard hover:text-fg', FOCUS_RING_INSET)}
             >
               <span aria-hidden="true" className="size-1.5 flex-none rounded-full" style={{ backgroundColor: tagColor(tag) }} />
               <span className="min-w-0 truncate">{tag}</span>
@@ -95,7 +95,7 @@ export function TagEditor({ value, onChange, label, suggestions = [], addLabel =
               type="button"
               aria-label={`Remove tag ${tag}`}
               onClick={() => remove(tag)}
-              className={cn('flex h-full flex-none items-center rounded-r-control pl-0.5 pr-1.5 text-fg-subtle hover:text-fg', FOCUS_RING_INSET)}
+              className={cn('flex h-full flex-none items-center rounded-r-control pl-0.5 pr-1.5 text-fg-subtle transition-colors duration-fast ease-standard hover:text-fg', FOCUS_RING_INSET)}
             >
               <Icon name="x" size={12} />
             </button>
@@ -123,7 +123,7 @@ export function TagEditor({ value, onChange, label, suggestions = [], addLabel =
                 event.preventDefault();
                 pick(tag);
               }}
-              className="inline-flex h-[22px] flex-none items-center rounded-control border border-dashed border-line-strong px-2 font-mono text-mono text-fg-subtle hover:text-fg"
+              className="inline-flex h-[22px] flex-none items-center rounded-control border border-dashed border-line-strong px-2 font-mono text-mono text-fg-subtle transition-colors duration-fast ease-standard hover:text-fg"
             >
               {tag}
             </button>

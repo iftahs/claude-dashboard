@@ -55,3 +55,9 @@ import { LiteLlmBilledCard } from '@/components/design-system/organisms/LiteLlmB
 - Memoised on `view`: build it in a `useMemo` in the page hook.
 - These amounts are a real bill, so they are written without the tilde that marks an estimate.
 - It can exceed the estimate, because the gateway also bills failed and retried requests; the help text says so.
+
+## Motion
+
+- The daily bars grow in once, when the chart first has data (450ms); later updates redraw without animation.
+- The token-mix bar grows from the left once on mount (600ms), and its segments ease their width (320ms).
+- Reduced motion or a hidden tab: no entrance. Recharts animates in JavaScript, so this is checked in code rather than left to the stylesheet.

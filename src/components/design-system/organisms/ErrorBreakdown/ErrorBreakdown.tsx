@@ -1,10 +1,10 @@
-import { memo } from 'react';
+import { memo, useState } from 'react';
 import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { GroupLabel } from '@/components/design-system/atoms/GroupLabel/GroupLabel';
 import { ChartTooltip } from '@/components/design-system/molecules/ChartTooltip/ChartTooltip';
 import { RankedMeterList } from '@/components/design-system/molecules/RankedMeterList/RankedMeterList';
 import { Section } from '@/components/design-system/organisms/Section/Section';
-import { CHART_AXIS, CHART_GRID } from '@/lib/chart-theme';
+import { CHART_AXIS, CHART_ENTRANCE, CHART_GRID, chartMotionAllowed } from '@/lib/chart-theme';
 import type { ErrorBreakdownProps, ErrorTrendTooltipState } from './types';
 import {
   CATEGORY_LIST_LABEL,
@@ -27,6 +27,8 @@ function trendTooltip({ active, payload }: ErrorTrendTooltipState) {
 }
 
 export const ErrorBreakdown = memo(function ErrorBreakdown({ view, className }: ErrorBreakdownProps) {
+  const [played, setPlayed] = useState(false);
+
   return (
     <Section title={view.title} description={view.description} help={view.help} state={view.state} ai={view.ai} className={className}>
       <div className="flex flex-col gap-5">
@@ -61,7 +63,9 @@ export const ErrorBreakdown = memo(function ErrorBreakdown({ view, className }: 
                     strokeWidth={2}
                     dot={false}
                     activeDot={TREND_ACTIVE_DOT}
-                    isAnimationActive={false}
+                    isAnimationActive={!played && chartMotionAllowed()}
+                    onAnimationEnd={() => setPlayed(true)}
+                    {...CHART_ENTRANCE}
                   />
                 </LineChart>
               </ResponsiveContainer>

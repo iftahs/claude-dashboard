@@ -52,3 +52,8 @@ import { CacheEfficiencyChart } from '@/components/design-system/organisms/Cache
 - Memoised on `view`: build it in a `useMemo` in the page hook.
 - The hit rate is cache reads divided by all tokens, on a fixed 0 to 100% axis that is 44px wide so the "100%" tick is never clipped.
 - Styled only through `@/lib/chart-theme`: gridlines, axis ticks, the line cursor, line width, the active dot and the reference line.
+
+## Motion
+
+- The lines draw in once (450ms, ease-out), when the chart first has data, for up to 60 days. Every later update, poll or resize redraws without animation.
+- Reduced motion or a hidden tab: no entrance. Recharts animates in JavaScript, so this is checked in code rather than left to the stylesheet.

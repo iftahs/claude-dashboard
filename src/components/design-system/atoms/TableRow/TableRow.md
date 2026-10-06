@@ -62,3 +62,8 @@ Clickable row, selected when its detail is open:
 - Renders a native `<tr>`.
 - `interactive` is visual only. A clickable row must also be reachable by keyboard: put a real link or button in its first cell, or give the row `tabIndex={0}` and an Enter/Space handler. The focus ring is drawn inside the row so a clipping card does not hide it.
 - Selection is shown by fill and text colour together; expose it to assistive tech on the control that toggles it (for example `aria-expanded` or `aria-current`).
+
+## Motion
+
+- An `interactive` row eases its hover and selected fill over 120ms.
+- Under `prefers-reduced-motion` the global rule makes this instant.

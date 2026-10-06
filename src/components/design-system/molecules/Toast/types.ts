@@ -9,5 +9,6 @@ export interface ToastProps {
   onDismiss?: () => void;
   action?: ReactNode;
   dismissLabel?: string;
+  leaving?: boolean;
   className?: string;
 }

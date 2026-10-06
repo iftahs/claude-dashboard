@@ -25,6 +25,7 @@
 | `onDismiss` | `() => void` | - | Renders the close button and is called when it is clicked. |
 | `action` | `ReactNode` | - | Controls under the text, usually one small `Button`. |
 | `dismissLabel` | `string` | `'Dismiss'` | Name and tooltip of the close button. |
+| `leaving` | `boolean` | `false` | Plays the slide out and hides the toast from assistive technology. The owner unmounts it 160ms later. |
 | `className` | `string` | - | Extra classes merged onto the box. |
 
 ## Variants
@@ -64,5 +65,10 @@ With an action composed by the organism that stacks the toasts:
 
 ## Notes
 
-- One toast only: stacking, positioning, timing and enter or exit motion belong to the organism and hook that own the queue.
+- One toast only: stacking, positioning and timing belong to the organism and hook that own the queue. The toast plays its own slide in, and its slide out when `leaving` is set.
 - The title and the description wrap inside the 340px box.
+
+## Motion
+
+- Slides in from the right on mount (220ms) and slides out when `leaving` is set (160ms).
+- Under `prefers-reduced-motion` the global rule makes this instant.

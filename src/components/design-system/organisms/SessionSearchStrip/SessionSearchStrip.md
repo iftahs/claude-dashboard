@@ -61,3 +61,8 @@ import { SessionSearchStrip } from '@/components/design-system/organisms/Session
 - Presentational: it runs no request. The page hook owns the query, the debounce and the fetch.
 - Titles, project names and snippets truncate to one line and are `dir="auto"`; the date and the match count never wrap.
 - The field stays in place while results come and go, so typing is never interrupted by a layout shift above it.
+
+## Motion
+
+- Result rows ease their hover fill over 120ms.
+- Under `prefers-reduced-motion` the global rule makes this instant.

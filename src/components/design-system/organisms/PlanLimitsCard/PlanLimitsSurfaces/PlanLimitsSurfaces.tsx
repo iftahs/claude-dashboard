@@ -7,9 +7,13 @@ import type { PlanLimitsSurfacesProps } from './types';
 export function PlanLimitsSurfaces({ surfaces }: PlanLimitsSurfacesProps) {
   return (
     <div className="flex min-w-0 flex-col gap-1.5 pt-0.5">
-      <div aria-hidden="true" className="flex h-1 w-full overflow-hidden rounded-full bg-surface-hover">
+      <div aria-hidden="true" className="flex h-1 w-full origin-left animate-grow-x overflow-hidden rounded-full bg-surface-hover">
         {surfaces.map((surface) => (
-          <div key={surface.key} style={{ width: `${surface.percent}%`, backgroundColor: surface.color }} />
+          <div
+            key={surface.key}
+            className="transition-[width] duration-slow ease-emphasized"
+            style={{ width: `${surface.percent}%`, backgroundColor: surface.color }}
+          />
         ))}
       </div>
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1">

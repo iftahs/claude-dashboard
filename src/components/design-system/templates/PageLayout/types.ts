@@ -6,4 +6,5 @@ export interface PageLayoutProps {
   header?: ReactNode;
   children: ReactNode;
   width?: PageLayoutWidth;
+  entrance?: boolean;
 }

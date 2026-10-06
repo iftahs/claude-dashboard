@@ -26,6 +26,13 @@ export const CHART_REFERENCE_LINE = { strokeDasharray: '4 3', strokeOpacity: 0.5
 
 export const CHART_REFERENCE_LABEL = { fill: token('chart-axis'), fontSize: 12, position: 'insideTopRight' } as const;
 
+export const CHART_ENTRANCE = { animationBegin: 0, animationDuration: 450, animationEasing: 'ease-out' } as const;
+
+// Recharts animates in JavaScript, so the reduced-motion stylesheet rule cannot reach it.
+export function chartMotionAllowed(): boolean {
+  return !document.hidden && !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+}
+
 export const PLATFORM_COLORS = {
   claude: token('platform-claude'),
   codex: token('platform-codex'),

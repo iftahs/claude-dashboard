@@ -2,7 +2,7 @@ import { Badge } from '@/components/design-system/atoms/Badge/Badge';
 import type { SidebarFooterProps } from './types';
 
 const LINK =
-  'rounded-tag text-fg-muted hover:text-fg focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus';
+  'rounded-tag text-fg-muted transition-colors duration-fast ease-standard hover:text-fg focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus';
 
 export function SidebarFooter({ dataDirs, version, credit }: SidebarFooterProps) {
   // One folder reads as just the path; several get their platform name.
@@ -15,7 +15,7 @@ export function SidebarFooter({ dataDirs, version, credit }: SidebarFooterProps)
     ) : null;
 
   return (
-    <div className="-mt-3 flex flex-none flex-col gap-1 border-t border-line px-2 pt-3">
+    <div className="-mt-3 flex flex-none animate-fade-in flex-col gap-1 border-t border-line px-2 pt-3">
       {dataDirs.map((dir) => (
         <span
           key={`${dir.label}:${dir.path}`}

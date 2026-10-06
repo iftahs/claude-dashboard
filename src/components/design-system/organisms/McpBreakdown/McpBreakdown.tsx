@@ -14,10 +14,14 @@ export function McpBreakdown({ view, className }: McpBreakdownProps) {
     <Section title={view.title} description={view.description} help={view.help} state={view.state} ai={view.ai} className={className}>
       <div className="flex flex-col gap-5">
         <div className="flex flex-col gap-3">
-          <div role="img" aria-label={splitLabel(view)} className="flex h-2 w-full gap-0.5 overflow-hidden rounded-full">
+          <div role="img" aria-label={splitLabel(view)} className="flex h-2 w-full origin-left animate-grow-x gap-0.5 overflow-hidden rounded-full">
             {segments.map((segment) =>
               segment.percent > 0 ? (
-                <div key={segment.key} className="h-full" style={{ width: `${segment.percent}%`, backgroundColor: segment.color }} />
+                <div
+                  key={segment.key}
+                  className="h-full transition-[width] duration-slow ease-emphasized"
+                  style={{ width: `${segment.percent}%`, backgroundColor: segment.color }}
+                />
               ) : null,
             )}
           </div>

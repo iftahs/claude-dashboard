@@ -71,3 +71,10 @@ Small range picker in a card header:
 
 - Controlled only: the consumer owns `value`.
 - Never wraps and never shrinks; keep labels to one or two short words.
+
+## Motion
+
+- The selected fill is one thumb that slides and resizes between options (180ms). It is measured from the selected option, and again whenever an option or the track resizes.
+- It is placed before the first paint, so it never slides in from the edge. Until it has been measured, or while the control is hidden, the selected option draws its own fill.
+- Option labels ease their colour over 120ms. The thumb is `aria-hidden` and sits before the options, whose order and `aria-pressed` are unchanged.
+- Under `prefers-reduced-motion` the global rule makes this instant.

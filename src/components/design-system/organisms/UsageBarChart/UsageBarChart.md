@@ -35,7 +35,7 @@
 
 - Series: one per model with a value in the range, largest total at the bottom, coloured by `modelColor()`. The `<synthetic>` model and models with no value for the metric are left out.
 - Projected: one neutral series named "Projected" on the appended days, with a dashed "Today" line at the current bucket.
-- Bars animate only up to 60 buckets, so a long range does not replay hundreds of bars on every poll.
+- Bars grow in once, when the chart first has data, and only up to 60 buckets. Later updates, polls and resizes redraw without animation.
 - The top segment of every stack has rounded corners, whichever model it is.
 
 ## Usage
@@ -77,3 +77,8 @@ Daily estimated cost with a projection:
 - Bars are effective tokens (input, output and cache writes). The total with cache reads appears only in the hover read-out.
 - Styled only through `@/lib/chart-theme`: horizontal gridlines, axis ticks, cursor, bar radius, the today line and the projected fill.
 - It has no card of its own: place it inside a `Section`.
+
+## Motion
+
+- Bars grow in once (450ms, ease-out), when the chart first has data, for up to 60 buckets. Every later update, poll or resize redraws without animation.
+- Reduced motion or a hidden tab: no entrance. Recharts animates in JavaScript, so this is checked in code rather than left to the stylesheet.

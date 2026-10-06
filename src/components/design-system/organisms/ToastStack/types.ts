@@ -13,6 +13,7 @@ export interface ToastStackItem {
   description?: ReactNode;
   action?: ToastStackAction;
   dismissible?: boolean;
+  leaving?: boolean;
 }
 
 export interface ToastStackProps {

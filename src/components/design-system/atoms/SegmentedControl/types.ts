@@ -13,3 +13,8 @@ export interface SegmentedControlProps<T extends string = string> {
   size?: SegmentedControlSize;
   className?: string;
 }
+
+export interface SegmentedControlThumb {
+  left: number;
+  width: number;
+}

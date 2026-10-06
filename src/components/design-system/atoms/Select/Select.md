@@ -72,3 +72,9 @@ With a placeholder, small:
 - Controlled only: the consumer owns `value` and updates it in `onValueChange`.
 - An option `value` of `''` is not allowed by Radix (it means "no selection"); use a sentinel such as `'all'`.
 - The list renders in a portal at `z-50`, outside the app shell, so it sets its own `text-body`, `fg` and tabular numerals.
+
+## Motion
+
+- The trigger's colours ease over 120ms. The list scales in from the trigger (160ms) and out (120ms) through Radix `data-state`.
+- Highlighted options change at once, so keyboard movement is never delayed.
+- Under `prefers-reduced-motion` the global rule makes this instant.

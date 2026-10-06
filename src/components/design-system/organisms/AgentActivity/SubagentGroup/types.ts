@@ -5,4 +5,6 @@ export interface SubagentGroupProps {
   running: RunningSubagentView[];
   completed: CompletedSubagentView[];
   wide?: boolean;
+  enter?: boolean;
+  className?: string;
 }

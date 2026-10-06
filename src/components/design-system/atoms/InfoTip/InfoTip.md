@@ -60,3 +60,8 @@ Opening below:
 - The glyph is 16px square so it lines up with a 12px label; the clickable area extends 4px beyond it on every side (24px).
 - The bubble renders in a portal at `z-50`.
 - The icon comes straight from `lucide-react`, because an atom cannot import the `Icon` atom.
+
+## Motion
+
+- The popover scales in from the icon (160ms) and out (120ms); the icon eases its colour over 120ms.
+- Under `prefers-reduced-motion` the global rule makes this instant.

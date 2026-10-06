@@ -73,3 +73,9 @@ Three equal columns that stay side by side down to 768px, with the tighter gap:
 - The cells are the children themselves - no wrapper element is added - so a child may carry its own grid classes.
 - A fragment is flattened: each of its elements is a cell. A child that renders nothing takes no cell, so the next child moves into its place.
 - Layout only: no state, no hooks, no data.
+
+## Motion
+
+- While the enclosing `PageLayout` is entering, each column rises in (8px, 320ms) 40ms after the one before it, up to 120ms, continuing the page's own stagger.
+- Nothing is animated after that window, and nothing outside a `PageLayout`.
+- Under `prefers-reduced-motion` the global rule makes this instant.

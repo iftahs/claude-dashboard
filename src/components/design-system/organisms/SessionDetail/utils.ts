@@ -6,4 +6,4 @@ export const TRANSCRIPT_LABEL = 'Transcript';
 export const LINES_UNIT = 'lines';
 
 export const LINK_CLASS =
-  'inline-flex h-[22px] max-w-full items-center gap-1.5 rounded-control border border-line px-2 font-mono text-mono text-accent-fg hover:border-line-strong hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus';
+  'inline-flex h-[22px] max-w-full items-center gap-1.5 rounded-control border border-line px-2 font-mono text-mono text-accent-fg transition-colors duration-fast ease-standard hover:border-line-strong hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus';

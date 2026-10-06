@@ -54,3 +54,8 @@ Standing alone, with a text alternative:
 
 - Fills the width of its container; bars share it equally with a 4px gap.
 - Bars are at least 3px tall, so zero, negative and non-finite values still show a stub. An all-zero series draws flat stubs.
+
+## Motion
+
+- The bars scale up from the baseline once, 100ms after mount (320ms, `transform` only). Later value changes are not animated.
+- Reduced motion: the bars are at full height from the first paint.

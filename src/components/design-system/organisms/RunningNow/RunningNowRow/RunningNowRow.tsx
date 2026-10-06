@@ -1,3 +1,4 @@
+import { ActivityBars } from '@/components/design-system/atoms/ActivityBars/ActivityBars';
 import { Badge } from '@/components/design-system/atoms/Badge/Badge';
 import { Chip } from '@/components/design-system/atoms/Chip/Chip';
 import { ElapsedTime } from '@/components/design-system/atoms/ElapsedTime/ElapsedTime';
@@ -8,7 +9,16 @@ import type { RunningNowRowProps } from './types';
 export function RunningNowRow({ row }: RunningNowRowProps) {
   return (
     <li className="flex h-11 min-w-0 items-center gap-3">
-      {row.waiting ? <StatusDot tone="danger" /> : <StatusDot tone="success" pulse label="Running" />}
+      <span className="flex w-3 flex-none items-center justify-center text-success">
+        {row.waiting ? (
+          <StatusDot tone="danger" />
+        ) : (
+          <>
+            <ActivityBars />
+            <span className="sr-only">Running</span>
+          </>
+        )}
+      </span>
       <span title={row.project} className="min-w-0 flex-1 truncate text-body font-medium text-fg sm:max-w-[40%] sm:flex-none">
         {row.project}
       </span>

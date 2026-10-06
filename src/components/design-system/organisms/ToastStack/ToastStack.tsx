@@ -1,5 +1,6 @@
 import { Button } from '@/components/design-system/atoms/Button/Button';
 import { Toast } from '@/components/design-system/molecules/Toast/Toast';
+import { cn } from '@/lib/cn';
 import type { ToastStackProps } from './types';
 
 export function ToastStack({ items, onDismiss, label = 'Notifications' }: ToastStackProps) {
@@ -16,7 +17,8 @@ export function ToastStack({ items, onDismiss, label = 'Notifications' }: ToastS
           tone={item.tone}
           title={item.title}
           description={item.description}
-          className="pointer-events-auto flex-none"
+          leaving={item.leaving}
+          className={cn('flex-none', item.leaving ? 'pointer-events-none' : 'pointer-events-auto')}
           onDismiss={item.dismissible === false ? undefined : () => onDismiss(item.id)}
           action={
             item.action ? (

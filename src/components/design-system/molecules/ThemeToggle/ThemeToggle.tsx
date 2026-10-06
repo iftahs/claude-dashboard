@@ -10,7 +10,7 @@ export function ThemeToggle({ theme, onToggle, className }: ThemeToggleProps) {
   return (
     <Tooltip content={label} side="bottom">
       <IconButton label={label} onClick={onToggle} className={className}>
-        <Icon name={icon} />
+        <Icon key={icon} name={icon} className="animate-scale-in" />
       </IconButton>
     </Tooltip>
   );

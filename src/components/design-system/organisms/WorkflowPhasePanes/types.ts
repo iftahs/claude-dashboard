@@ -16,6 +16,5 @@ export interface WorkflowPhasePanesProps {
 
 export interface AgentDotLook {
   tone: StatusDotTone;
-  pulse: boolean;
-  badge: BadgeTone | null;
+  badge: BadgeTone;
 }

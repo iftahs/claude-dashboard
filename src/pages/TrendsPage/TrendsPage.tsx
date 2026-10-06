@@ -17,6 +17,7 @@ import { PageLayout } from '@/components/design-system/templates/PageLayout/Page
 import { SectionStackLayout } from '@/components/design-system/templates/SectionStackLayout/SectionStackLayout';
 import { StatGridLayout } from '@/components/design-system/templates/StatGridLayout/StatGridLayout';
 import { useTrendsPage } from '@/hooks/useTrendsPage';
+import { cn } from '@/lib/cn';
 
 const TABS_ID = 'trends';
 const TABS_LABEL = 'Trends views';
@@ -50,10 +51,12 @@ export function TrendsPage() {
       }
     >
       <div
+        key={page.view}
         role="tabpanel"
         id={`${TABS_ID}-panel-${page.view}`}
         aria-labelledby={`${TABS_ID}-tab-${page.view}`}
-        className="flex min-w-0 flex-col gap-6"
+        className={cn('flex min-w-0 flex-col gap-6', page.viewFade.className)}
+        onAnimationEnd={page.viewFade.onAnimationEnd}
       >
         {page.view === 'spend' ? (
           <>

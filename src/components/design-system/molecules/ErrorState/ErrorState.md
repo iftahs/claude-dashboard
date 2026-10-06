@@ -78,3 +78,8 @@ A caught render error, with the message as collapsed detail:
 
 - It has no card of its own: place it inside the `Card` whose content failed.
 - It never retries by itself. `onRetry` comes from the hook that owns the request.
+
+## Motion
+
+- Fades in on mount (180ms). The details toggle eases its colour over 120ms.
+- Under `prefers-reduced-motion` the global rule makes this instant.

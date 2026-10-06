@@ -10,7 +10,7 @@ export function InfoTip({ content, label = 'More information', side = 'top', cla
         type="button"
         aria-label={label}
         className={cn(
-          'relative inline-flex size-4 flex-none items-center justify-center rounded-full text-fg-subtle after:absolute after:-inset-1 hover:text-fg focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus data-[state=open]:text-fg',
+          'relative inline-flex size-4 flex-none items-center justify-center rounded-full text-fg-subtle transition-colors duration-fast ease-standard after:absolute after:-inset-1 hover:text-fg focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus data-[state=open]:text-fg',
           className,
         )}
       >
@@ -22,7 +22,7 @@ export function InfoTip({ content, label = 'More information', side = 'top', cla
           sideOffset={6}
           collisionPadding={8}
           aria-label={label}
-          className="z-50 max-w-[260px] rounded-control border border-line bg-surface-raised px-3 py-2 text-small tabular-nums text-fg shadow-pop outline-none"
+          className="z-50 max-w-[260px] origin-[var(--radix-popover-content-transform-origin)] rounded-control border border-line bg-surface-raised px-3 py-2 text-small tabular-nums text-fg shadow-pop outline-none data-[state=closed]:animate-scale-out data-[state=open]:animate-scale-in"
         >
           {content}
         </PopoverPrimitive.Content>

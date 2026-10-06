@@ -21,6 +21,7 @@ import { SectionStackLayout } from '@/components/design-system/templates/Section
 import { SplitLayout } from '@/components/design-system/templates/SplitLayout/SplitLayout';
 import { StatGridLayout } from '@/components/design-system/templates/StatGridLayout/StatGridLayout';
 import { useInsightsPage } from '@/hooks/useInsightsPage';
+import { cn } from '@/lib/cn';
 
 const TABS_ID = 'insights';
 const TABS_LABEL = 'Insights views';
@@ -49,10 +50,12 @@ export function InsightsPage() {
       </SectionStackLayout>
 
       <div
+        key={page.view}
         role="tabpanel"
         id={`${TABS_ID}-panel-${page.view}`}
         aria-labelledby={`${TABS_ID}-tab-${page.view}`}
-        className="flex min-w-0 flex-col gap-6"
+        className={cn('flex min-w-0 flex-col gap-6', page.viewFade.className)}
+        onAnimationEnd={page.viewFade.onAnimationEnd}
       >
         {page.view === 'reliability' ? (
           <>

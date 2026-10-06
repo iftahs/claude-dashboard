@@ -59,3 +59,8 @@ import { ModelBreakdown } from '@/components/design-system/organisms/ModelBreakd
 - Colours come from `modelColor()`: a model keeps its colour on every chart.
 - The cost is an estimated equivalent API cost, written with a tilde. A model with no price, such as the Codex guardian review model, is left out of the cost list.
 - Memoised, because the models poll refreshes every few seconds.
+
+## Motion
+
+- The donut sweeps in once (450ms, ease-out), when it first has data; later updates redraw without animation. The efficiency bars grow and glide (see `ProgressBar`).
+- Reduced motion or a hidden tab: no entrance. Recharts animates in JavaScript, so this is checked in code rather than left to the stylesheet.

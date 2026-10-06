@@ -98,7 +98,9 @@ export function SessionDetailBody({ view, transcript, onToggleTranscript, onRetr
           </Button>
           {transcript.count ? <span className="whitespace-nowrap text-caption text-fg-subtle">{transcript.count}</span> : null}
         </div>
-        {transcript.open ? <TranscriptPane id={transcriptId} view={transcript} onRetry={onRetryTranscript} /> : null}
+        {transcript.open ? (
+          <TranscriptPane id={transcriptId} view={transcript} onRetry={onRetryTranscript} className="animate-fade-in" />
+        ) : null}
       </div>
     </div>
   );

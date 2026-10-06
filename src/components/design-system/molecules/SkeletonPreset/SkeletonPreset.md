@@ -63,7 +63,7 @@ A stat tile and a table:
 
 - The root is a `role="status"` region holding the visually hidden word "Loading"; every block is `aria-hidden`, so assistive tech gets one short message instead of a pile of empty boxes.
 - The word "Loading" is never shown on screen: sighted readers get the shape of the content.
-- The pulse is removed under `prefers-reduced-motion`.
+- The shimmer is removed under `prefers-reduced-motion`.
 
 ## Notes
 

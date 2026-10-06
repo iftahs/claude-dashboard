@@ -83,3 +83,9 @@ Several cards in a row:
 - Tones come from `limitTone()` in `@/lib/limits` for every row, including per-model windows.
 - A window the plan does not have is left out instead of drawn at 0%.
 - Presentational: reset texts are refreshed by a tick in the page hook.
+
+## Motion
+
+- Each meter grows from zero on mount and glides to a new value (see `ProgressBar`).
+- The surface split bar grows from the left once on mount (600ms), and its segments ease their width (320ms).
+- Under `prefers-reduced-motion` the global rule makes this instant.

@@ -1,10 +1,18 @@
+import { useEffect, useState } from 'react';
 import { cn } from '@/lib/cn';
 import { progressBarFillVariants, progressBarTrackVariants } from './ProgressBar.variants';
 import type { ProgressBarProps } from './types';
-import { clampPercent } from './utils';
+import { GROW_DELAY_MS, clampPercent, prefersReducedMotion } from './utils';
 
 export function ProgressBar({ value, tone, size, label, className }: ProgressBarProps) {
   const percent = clampPercent(value);
+  const [grown, setGrown] = useState(prefersReducedMotion);
+
+  // A timer, not an animation frame: frames stop in a hidden tab and the bar would stay empty.
+  useEffect(() => {
+    const timer = setTimeout(() => setGrown(true), GROW_DELAY_MS);
+    return () => clearTimeout(timer);
+  }, []);
 
   return (
     <div
@@ -15,7 +23,7 @@ export function ProgressBar({ value, tone, size, label, className }: ProgressBar
       aria-valuemax={100}
       className={cn(progressBarTrackVariants({ size }), className)}
     >
-      <div className={progressBarFillVariants({ tone })} style={{ width: `${percent}%` }} />
+      <div className={progressBarFillVariants({ tone })} style={{ transform: `translateX(${(grown ? percent : 0) - 100}%)` }} />
     </div>
   );
 }

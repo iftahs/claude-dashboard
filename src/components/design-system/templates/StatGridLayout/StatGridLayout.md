@@ -74,3 +74,9 @@ A dense strip of six:
 
 - The cells are the children themselves - no wrapper element is added. A fragment is flattened, and a child that renders nothing takes no cell.
 - Layout only: no state, no hooks, no data.
+
+## Motion
+
+- While the enclosing `PageLayout` is entering, each tile rises in (8px, 320ms) 40ms after the one before it, up to 120ms, continuing the page's own stagger.
+- Nothing is animated after that window, and nothing outside a `PageLayout`.
+- Under `prefers-reduced-motion` the global rule makes this instant.

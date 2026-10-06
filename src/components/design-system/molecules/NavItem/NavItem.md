@@ -63,3 +63,9 @@ In the rail:
 
 - Fills the width of its container: stack items in a column with a 2px gap.
 - It never routes by itself. The page or a hook passes `onClick` and decides how to navigate.
+
+## Motion
+
+- Hover and active colours ease over 120ms.
+- The label fades in (180ms) whenever the item mounts expanded, which is what happens when the rail expands.
+- Under `prefers-reduced-motion` the global rule makes this instant.

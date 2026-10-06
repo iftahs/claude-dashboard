@@ -58,3 +58,8 @@ No matches, with an action composed by the organism:
 - It has no card of its own: place it inside a `Card` or a page region.
 - The description is at most 384px wide so it wraps into a readable block.
 - Copy rules: no exclamation marks, no emoji, say what to do next.
+
+## Motion
+
+- Fades in on mount (180ms).
+- Under `prefers-reduced-motion` the global rule makes this instant.

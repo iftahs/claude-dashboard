@@ -83,8 +83,14 @@ Minimal, no rail and no drawer:
 
 - Sets the page defaults for everything inside it: `bg-canvas`, `text-fg`, `font-sans`, `text-body` and tabular numerals. Content portaled to `<body>` (tooltips, menus, dialogs) is outside the shell and does not inherit them.
 - While the drawer is open the `sidebar` slot is mounted twice (the hidden column and the drawer). Keep element ids out of it, and pass the expanded sidebar while the drawer is open: `collapsed={sidebarCollapsed && !drawerOpen}`.
-- The drawer is always 240px wide and appears without animation.
+- The drawer is always 240px wide.
 - Layering: topbar `z-10`, drawer `z-40`, skip link `z-50`. Popovers and tooltips at `z-50` stay above the drawer.
 - The scrolling column has `scroll-pt-topbar`, so anchors and focused elements are not hidden under the pinned topbar.
 - The sidebar column and the scrolling column are positioned (`relative`), so absolutely positioned content inside them, such as visually hidden text, scrolls with them and can never make the document itself scroll.
 - The sidebar column's width includes its 1px hairline: the slot is 239px wide, or 55px in the rail. In the rail, pad the slot 12px on the left and 11px on the right so 32px items sit on whole pixels.
+
+## Motion
+
+- The sidebar column animates its width between 240px and 56px (180ms). The slot inside it takes its final width at once, so the navigation is clipped while the column moves and never reflows.
+- The drawer slides in from the left over a fading scrim (220ms) and slides out on close (160ms). It stays mounted until the exit has ended, inert to the pointer and hidden from assistive technology; focus returns to the opener at once.
+- Under `prefers-reduced-motion` the global rule makes this instant.

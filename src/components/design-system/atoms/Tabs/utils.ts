@@ -1,3 +1,5 @@
+import type { TabMarker } from './types';
+
 export function tabElementId(id: string | undefined, value: string): string | undefined {
   return id ? `${id}-tab-${value}` : undefined;
 }
@@ -13,4 +15,8 @@ export function targetTabIndex(key: string, current: number, count: number): num
   if (key === 'Home') return 0;
   if (key === 'End') return count - 1;
   return null;
+}
+
+export function sameMarker(a: TabMarker | null, b: TabMarker | null): boolean {
+  return a === b || (a !== null && b !== null && a.left === b.left && a.width === b.width);
 }

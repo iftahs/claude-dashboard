@@ -34,7 +34,7 @@ export function NavItem({ href, label, icon, active = false, collapsed = false, 
   return (
     <a href={href} aria-current={current} onClick={onClick} className={cn(navItemVariants({ active, collapsed }), className)}>
       <Icon name={icon} />
-      <span className="min-w-0 flex-1 truncate">{label}</span>
+      <span className="min-w-0 flex-1 animate-fade-in truncate">{label}</span>
       {badge}
     </a>
   );

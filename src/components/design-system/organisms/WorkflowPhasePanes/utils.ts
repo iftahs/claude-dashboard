@@ -9,10 +9,9 @@ export const PHASE_STATE_LABEL: Record<WorkflowPhaseState, string> = {
   pending: 'Not started',
 };
 
-export const AGENT_DOT_LOOK: Record<Exclude<WorkflowAgentState, 'done' | 'error'>, AgentDotLook> = {
-  running: { tone: 'success', pulse: true, badge: null },
-  queued: { tone: 'info', pulse: false, badge: 'info' },
-  stalled: { tone: 'neutral', pulse: false, badge: 'neutral' },
+export const AGENT_DOT_LOOK: Record<Extract<WorkflowAgentState, 'queued' | 'stalled'>, AgentDotLook> = {
+  queued: { tone: 'info', badge: 'info' },
+  stalled: { tone: 'neutral', badge: 'neutral' },
 };
 
 export const FACT_TONE_CLASS: Record<WorkflowFactTone, string> = {

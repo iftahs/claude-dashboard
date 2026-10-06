@@ -1,7 +1,7 @@
 import { cva } from 'class-variance-authority';
 
 export const selectTriggerVariants = cva(
-  'inline-flex min-w-0 items-center justify-between gap-3 whitespace-nowrap rounded-control border border-line-control bg-surface text-fg focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus disabled:cursor-not-allowed disabled:border-line disabled:bg-surface-hover disabled:text-fg-disabled data-[placeholder]:text-fg-subtle disabled:data-[placeholder]:text-fg-disabled',
+  'inline-flex min-w-0 items-center justify-between gap-3 whitespace-nowrap rounded-control border border-line-control bg-surface text-fg transition-colors duration-fast ease-standard focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus disabled:cursor-not-allowed disabled:border-line disabled:bg-surface-hover disabled:text-fg-disabled data-[placeholder]:text-fg-subtle disabled:data-[placeholder]:text-fg-disabled',
   {
     variants: {
       size: {

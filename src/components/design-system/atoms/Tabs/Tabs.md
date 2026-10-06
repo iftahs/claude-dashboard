@@ -29,7 +29,7 @@
 
 ## Variants
 
-- Selected tab: `fg` text over a 2px `accent` underline.
+- Selected tab: `fg` text over a 2px `accent` underline, drawn by one marker that slides between tabs.
 - Other tabs: `fg-muted` text that turns `fg` on hover, no underline.
 - `count` renders after the label in regular-weight monospace `fg-subtle`.
 - The list draws a `line` hairline along its bottom edge; the selected underline sits on top of it.
@@ -77,3 +77,10 @@ With counts:
 - Controlled only: the consumer owns `value`. A `value` that matches no item leaves every tab unselected and keeps the first one reachable by keyboard.
 - Tabs are 36px tall, 20px apart, never wrap and never shrink.
 - A tab `value` is used inside element ids, so keep it free of spaces.
+
+## Motion
+
+- The underline is one marker that slides and resizes between tabs (180ms). It is measured from the selected tab, and again whenever a tab or the list resizes.
+- It is placed before the first paint, so it never slides in from the edge. Until it has been measured, the selected tab draws its own underline.
+- Tab labels ease their colour over 120ms. Roles, ids, focus order and arrow keys are unchanged.
+- Under `prefers-reduced-motion` the global rule makes this instant.

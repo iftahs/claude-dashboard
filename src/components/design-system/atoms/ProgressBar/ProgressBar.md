@@ -55,4 +55,10 @@ Thin, Codex series:
 ## Notes
 
 - Fills the width of its container.
-- The fill does not animate.
+
+## Motion
+
+- The fill grows from zero 100ms after mount and glides to a new `value` (320ms). It is a full-width bar slid into the track with `transform`, so nothing reflows and its cap stays round.
+- `aria-valuenow` always reports the real value, also while the fill is still growing.
+- The first growth is started by a timer, not a CSS animation, so a list that re-orders its rows never replays it.
+- Reduced motion: the fill is at its value from the first paint and jumps to a new one.

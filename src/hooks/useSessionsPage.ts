@@ -8,6 +8,8 @@ import { useSessionPeriod } from './useSessionPeriod';
 import { useSource } from './useSource';
 import { useTags } from './useTags';
 import { useTranscript } from './useTranscript';
+import { useViewFade } from './useViewFade';
+import type { ViewFade } from './useViewFade';
 import type { ExportFormat } from '@/lib/export';
 import { buildProjectStats } from '@/lib/project';
 import {
@@ -48,6 +50,7 @@ export interface SessionsPageView {
   tabs: readonly SessionsTabItem[] | null;
   description: string;
   onViewChange: (view: SessionsView) => void;
+  viewFade: ViewFade;
   exportDisabled: boolean;
   onExport: (format: ExportFormat) => void;
   stats: SessionStatsView;
@@ -232,11 +235,14 @@ export function useSessionsPage(): SessionsPageView {
 
   const onProjectTagsChange = useCallback((path: string, next: string[]) => setTagsFor(path, next), [setTagsFor]);
 
+  const viewFade = useViewFade(view);
+
   return {
     view,
     tabs: hasProjects ? sessionsTabs(noun) : null,
     description: sessionsDescription(noun),
     onViewChange,
+    viewFade,
     exportDisabled: !canExport,
     onExport,
     stats,

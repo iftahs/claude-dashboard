@@ -69,3 +69,8 @@ import { AiChat } from '@/components/design-system/organisms/AiChat/AiChat';
 - The list scrolls to its end whenever a message arrives or grows, and again when the follow-up suggestions change the height of the footer.
 - UI-only state: the draft in the field. The conversation, the suggestions and the request belong to the page hook.
 - Bubbles are at most 768px or 85% of the card wide, whichever is smaller.
+
+## Motion
+
+- Links in the answers ease their colour over 120ms.
+- Under `prefers-reduced-motion` the global rule makes this instant.
