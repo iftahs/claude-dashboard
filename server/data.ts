@@ -26,6 +26,7 @@ import {
 } from './event-store.ts';
 
 const TTL_MS = 5000;
+const MAX_STALE_MS = 30_000;
 
 /** Memo-token resolution (see dataFingerprint) — memoised output never trails the scan clock by more than this. */
 const MEMO_BUCKET_MS = 60_000;
@@ -425,21 +426,28 @@ async function rescan(): Promise<void> {
   );
 }
 
-/** Refresh if the TTL elapsed; concurrent callers share one in-flight scan. */
+export type Freshness = 'fresh' | 'stale' | 'block';
+
+export function freshness(now: number, computedAt: number): Freshness {
+  if (computedAt === 0) return 'block';
+  const age = now - computedAt;
+  if (age < TTL_MS) return 'fresh';
+  return age < MAX_STALE_MS ? 'stale' : 'block';
+}
+
+/** Refresh if the TTL elapsed; concurrent callers share one in-flight scan and wait for it only on 'block'. */
 async function ensureFresh(): Promise<void> {
-  if (computedAt !== 0 && Date.now() - computedAt < TTL_MS) return;
-  if (inflight) {
-    await inflight;
-    return;
-  }
-  inflight = rescan().catch((e) => {
-    console.error('[store] scan failed:', e);
-  });
-  try {
-    await inflight;
-  } finally {
-    inflight = null;
-  }
+  const state = freshness(Date.now(), computedAt);
+  if (state === 'fresh') return;
+  // Cleared by the scan itself: on the stale path no caller awaits it.
+  inflight ??= rescan()
+    .catch((e) => {
+      console.error('[store] scan failed:', e);
+    })
+    .finally(() => {
+      inflight = null;
+    });
+  if (state === 'block') await inflight;
 }
 
 export async function getEvents(): Promise<{ events: UsageEvent[]; computedAt: number }> {
