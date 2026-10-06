@@ -39,11 +39,9 @@ export interface RouteGroup {
 
 // Pages are code-split: each is its own chunk, so recharts and the charts stay out of the first paint.
 const OverviewPage = lazy(() => import('@/pages/OverviewPage/OverviewPage').then((m) => ({ default: m.OverviewPage })));
-const LiveTab = lazy(() => import('@/components/legacy/tabs/LiveTab/LiveTab').then((m) => ({ default: m.LiveTab })));
-const AgentsTab = lazy(() => import('@/components/legacy/tabs/AgentsTab/AgentsTab').then((m) => ({ default: m.AgentsTab })));
-const WorkflowsTab = lazy(() =>
-  import('@/components/legacy/tabs/WorkflowsTab/WorkflowsTab').then((m) => ({ default: m.WorkflowsTab })),
-);
+const LivePage = lazy(() => import('@/pages/LivePage/LivePage').then((m) => ({ default: m.LivePage })));
+const AgentsPage = lazy(() => import('@/pages/AgentsPage/AgentsPage').then((m) => ({ default: m.AgentsPage })));
+const WorkflowsPage = lazy(() => import('@/pages/WorkflowsPage/WorkflowsPage').then((m) => ({ default: m.WorkflowsPage })));
 const TrendsTab = lazy(() => import('@/components/legacy/tabs/TrendsTab/TrendsTab').then((m) => ({ default: m.TrendsTab })));
 const ModelsTab = lazy(() => import('@/components/legacy/tabs/ModelsTab/ModelsTab').then((m) => ({ default: m.ModelsTab })));
 const InsightsTab = lazy(() =>
@@ -52,13 +50,9 @@ const InsightsTab = lazy(() =>
 const SessionsTab = lazy(() =>
   import('@/components/legacy/tabs/SessionsTab/SessionsTab').then((m) => ({ default: m.SessionsTab })),
 );
-const WorkspaceTab = lazy(() =>
-  import('@/components/legacy/tabs/WorkspaceTab/WorkspaceTab').then((m) => ({ default: m.WorkspaceTab })),
-);
-const AiTab = lazy(() => import('@/components/legacy/tabs/AiTab/AiTab').then((m) => ({ default: m.AiTab })));
-const SettingsTab = lazy(() =>
-  import('@/components/legacy/tabs/SettingsTab/SettingsTab').then((m) => ({ default: m.SettingsTab })),
-);
+const WorkspacePage = lazy(() => import('@/pages/WorkspacePage/WorkspacePage').then((m) => ({ default: m.WorkspacePage })));
+const AiPage = lazy(() => import('@/pages/AiPage/AiPage').then((m) => ({ default: m.AiPage })));
+const SettingsPage = lazy(() => import('@/pages/SettingsPage/SettingsPage').then((m) => ({ default: m.SettingsPage })));
 
 export const ROUTE_GROUPS: readonly RouteGroup[] = [
   { id: 'monitor', label: 'Monitor' },
@@ -74,7 +68,7 @@ export const ROUTES: readonly AppRoute[] = [
     label: 'Live usage',
     group: 'monitor',
     icon: 'activity',
-    element: <LegacyTabFrame routeId="live">{({ limits }) => <LiveTab limits={limits} />}</LegacyTabFrame>,
+    element: <LivePage />,
   },
   {
     id: 'agents',
@@ -82,11 +76,7 @@ export const ROUTES: readonly AppRoute[] = [
     label: 'Agents',
     group: 'monitor',
     icon: 'bot',
-    element: (
-      <LegacyTabFrame routeId="agents">
-        <AgentsTab />
-      </LegacyTabFrame>
-    ),
+    element: <AgentsPage />,
   },
   {
     id: 'workflows',
@@ -96,11 +86,7 @@ export const ROUTES: readonly AppRoute[] = [
     icon: 'workflow',
     // Codex records no workflow runs, so the page has nothing to show there.
     hideFor: ['codex'],
-    element: (
-      <LegacyTabFrame routeId="workflows">
-        <WorkflowsTab />
-      </LegacyTabFrame>
-    ),
+    element: <WorkflowsPage />,
   },
   {
     id: 'trends',
@@ -156,11 +142,7 @@ export const ROUTES: readonly AppRoute[] = [
     label: 'Workspace',
     group: 'tools',
     icon: 'folder',
-    element: (
-      <LegacyTabFrame routeId="workspace">
-        <WorkspaceTab />
-      </LegacyTabFrame>
-    ),
+    element: <WorkspacePage />,
   },
   {
     id: 'ai',
@@ -168,11 +150,7 @@ export const ROUTES: readonly AppRoute[] = [
     label: 'AI insights',
     group: 'tools',
     icon: 'sparkles',
-    element: (
-      <LegacyTabFrame routeId="ai">
-        <AiTab />
-      </LegacyTabFrame>
-    ),
+    element: <AiPage />,
   },
   {
     id: 'settings',
@@ -180,11 +158,7 @@ export const ROUTES: readonly AppRoute[] = [
     label: 'Settings',
     group: 'pinned',
     icon: 'sliders',
-    element: (
-      <LegacyTabFrame routeId="settings">
-        <SettingsTab />
-      </LegacyTabFrame>
-    ),
+    element: <SettingsPage />,
   },
 ];
 

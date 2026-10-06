@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { ago } from './format';
-import { windowName } from './limits';
+import { liveWindowEta, windowName } from './limits';
 import type { ActiveBlock, CodexLiveData, CodexWindow } from '@/types';
 
 // Normalised so the gauge does not care whose window it is (Claude.ai's five_hour, Codex's 5-hour or weekly).
@@ -133,5 +133,108 @@ export function codexGaugeLabels(live: CodexLiveData | null | undefined, windowS
     connectingBadge: 'Local rollouts (connecting to ChatGPT...)',
     current: 'This window',
     previous: 'Prev window',
+  };
+}
+
+export interface GaugeInput {
+  block: ActiveBlock | null;
+  live: GaugeLive | null;
+  isApi: boolean;
+  costPerDay: number;
+  dailyLimit: number | null;
+  todayActualCost: number | null;
+  // null = unknown: the reading carries raw tokens instead of a guessed %.
+  blockLimit: number | null;
+  windowMs: number;
+  now: number;
+}
+
+export type GaugePaceTone = 'danger' | 'warning' | 'neutral';
+
+export interface GaugeReading {
+  hasLive: boolean;
+  effective: number;
+  prevEffective: number;
+  cacheReads: number;
+  cost: number;
+  prevCost: number;
+  capPct: number | null;
+  tokPct: number | null;
+  noActiveBlock: boolean;
+  startsAt: number | null;
+  resetsAt: number;
+  remainingMs: number;
+  burnRatePerHour: number;
+  burnCostPerHour: number;
+  minsUntilLimit: number | null;
+  projectedPct: number | null;
+  paceTone: GaugePaceTone;
+}
+
+export function gaugeReading({
+  block,
+  live,
+  isApi,
+  costPerDay,
+  dailyLimit,
+  todayActualCost,
+  blockLimit,
+  windowMs,
+  now,
+}: GaugeInput): GaugeReading {
+  const hasLive = !isApi && !!live;
+
+  const blockEnded = !!block && (!block.isActive || block.resetsAt <= now);
+  const current = blockEnded ? null : block?.totals;
+  const previous = blockEnded ? block?.totals : block?.prevTotals;
+  const effective = current?.effectiveTokens ?? 0;
+  const prevEffective = previous?.effectiveTokens ?? 0;
+  const cacheReads = current?.cacheReadTokens ?? 0;
+  const cost = current?.cost ?? 0;
+  const prevCost = previous?.cost ?? 0;
+
+  const dailySpend = todayActualCost ?? costPerDay;
+  const capPct = isApi && dailyLimit ? Math.min(100, (dailySpend / dailyLimit) * 100) : null;
+  const tokPct = hasLive ? live!.pct : blockLimit ? Math.min(100, (effective / blockLimit) * 100) : null;
+
+  const liveResetsAt = hasLive && live!.resetsAt ? Date.parse(live!.resetsAt) : NaN;
+  const liveWindow = !Number.isNaN(liveResetsAt);
+  const noActiveBlock = hasLive ? live!.resetsAt == null : blockEnded;
+  const resetsAt = liveWindow ? liveResetsAt : block?.resetsAt ?? now + windowMs;
+  const startsAt = liveWindow ? liveResetsAt - windowMs : block && !blockEnded ? block.start : null;
+
+  const elapsedMs = Math.max(60_000, now - (block?.start ?? now));
+  const burnRatePerHour = effective > 0 ? Math.round((effective / elapsedMs) * 3600_000) : 0;
+  const burnCostPerHour = cost > 0 ? (cost / elapsedMs) * 3600_000 : 0;
+
+  let minsUntilLimit: number | null = null;
+  let projectedPct: number | null = null;
+  if (hasLive && liveWindow) {
+    ({ minsUntilLimit, projectedPct } = liveWindowEta(live!.pct, liveResetsAt, windowMs, now));
+  } else if (!hasLive && blockLimit && burnRatePerHour > 0) {
+    minsUntilLimit = Math.round((Math.max(0, blockLimit - effective) / burnRatePerHour) * 60);
+  }
+
+  const paceTone: GaugePaceTone =
+    isApi || minsUntilLimit === null ? 'neutral' : minsUntilLimit < 30 ? 'danger' : minsUntilLimit < 60 ? 'warning' : 'neutral';
+
+  return {
+    hasLive,
+    effective,
+    prevEffective,
+    cacheReads,
+    cost,
+    prevCost,
+    capPct,
+    tokPct,
+    noActiveBlock,
+    startsAt,
+    resetsAt,
+    remainingMs: Math.max(0, resetsAt - now),
+    burnRatePerHour,
+    burnCostPerHour,
+    minsUntilLimit,
+    projectedPct,
+    paceTone,
   };
 }

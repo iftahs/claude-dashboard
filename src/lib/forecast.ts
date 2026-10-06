@@ -8,7 +8,10 @@ export interface WeeklyForecast {
   label: string;
   /** Severity color for the label. */
   color: string;
+  tone: ForecastTone;
 }
+
+export type ForecastTone = 'danger' | 'warning' | 'neutral';
 
 function formatEta(ms: number): string {
   if (ms < 3_600_000) return `${Math.max(1, Math.round(ms / 60_000))}m`;
@@ -42,14 +45,20 @@ export function buildWeeklyForecast(input: {
   const projectedPct = elapsedFrac > 0 ? pct / elapsedFrac : pct;
 
   if (pct >= 100) {
-    return { projectedPct: 100, willExceed: true, label: 'weekly limit reached', color: '#ef4444' };
+    return { projectedPct: 100, willExceed: true, label: 'weekly limit reached', color: '#ef4444', tone: 'danger' };
   }
 
   if (projectedPct >= 100 && pct > 0) {
     // Remaining time until usage hits 100% at the current pace.
     const msTo100 = (100 / pct) * elapsed - elapsed;
-    const color = msTo100 < 86_400_000 ? '#ef4444' : '#f59e0b';
-    return { projectedPct, willExceed: true, label: `on pace to hit limit in ~${formatEta(msTo100)}`, color };
+    const soon = msTo100 < 86_400_000;
+    return {
+      projectedPct,
+      willExceed: true,
+      label: `on pace to hit limit in ~${formatEta(msTo100)}`,
+      color: soon ? '#ef4444' : '#f59e0b',
+      tone: soon ? 'danger' : 'warning',
+    };
   }
 
   return {
@@ -57,5 +66,6 @@ export function buildWeeklyForecast(input: {
     willExceed: false,
     label: `on track · ~${Math.round(projectedPct)}% by reset`,
     color: '#71717a',
+    tone: 'neutral',
   };
 }

@@ -12,11 +12,6 @@ export interface LiveAgentsData extends Omit<LiveSubagents, 'mainAgents' | 'coun
   counts: LiveSubagents['counts'] & { yourTurn?: number };
 }
 
-/** Elapsed seconds since a unix-ms timestamp */
-export function elapsedSec(startedAt: number): number {
-  return Math.max(0, Math.floor((Date.now() - startedAt) / 1000));
-}
-
 /** Format elapsed seconds as "1m 23s" or "45s" */
 export function formatElapsed(sec: number): string {
   if (sec < 60) return `${sec}s`;

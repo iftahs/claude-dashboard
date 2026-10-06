@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { MouseEvent } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { BRAND } from '@/lib/platform';
+import { SETTINGS_SECTIONS, settingsHref } from '@/lib/views/settings';
 import { ROUTE_GROUPS } from '@/routes';
 import type { RouteIcon } from '@/routes';
 import { useActiveRoute } from './useActiveRoute';
@@ -141,9 +142,17 @@ export function useAppShell() {
       });
     }
     actions.push(...exportCommands);
+    const settings: PaletteCommand[] = SETTINGS_SECTIONS.map((section) => ({
+      id: `settings-${section.id}`,
+      label: `Settings: ${section.label}`,
+      icon: 'sliders',
+      keywords: section.keywords,
+      onSelect: () => navigateTo(settingsHref(section.id)),
+    }));
     return [
       { id: 'go', heading: 'Go to', items: go },
       { id: 'actions', heading: 'Actions', items: actions },
+      { id: 'settings', heading: 'Settings', items: settings },
     ];
   }, [
     tabs, route.id, navigateTo, platformOptions, platform, setPlatform, surfaceShown, sourceOptions, source, setSource,

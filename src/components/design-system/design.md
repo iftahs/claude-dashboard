@@ -26,6 +26,7 @@ rather than writing raw markup.
 | Badge | Short status or count label on a soft tinted fill. | [Badge.md](atoms/Badge/Badge.md) |
 | Button | Triggers an action with a text label, optionally led by an icon passed as a child. | [Button.md](atoms/Button/Button.md) |
 | Card | Flat surface container with a hairline border and a 10px radius that holds one block of content. | [Card.md](atoms/Card/Card.md) |
+| Checkbox | Labelled box that switches one setting on or off, or picks one of several independent choices. | [Checkbox.md](atoms/Checkbox/Checkbox.md) |
 | Chip | Compact monospace tag for a model, project or other identifier, with an optional colour dot. | [Chip.md](atoms/Chip/Chip.md) |
 | ElapsedTime | Ticking text that shows how long ago a moment was, as a running duration or as a relative time. | [ElapsedTime.md](atoms/ElapsedTime/ElapsedTime.md) |
 | GroupLabel | Uppercase section heading in the label style, with an optional quiet note after it. | [GroupLabel.md](atoms/GroupLabel/GroupLabel.md) |
@@ -40,6 +41,7 @@ rather than writing raw markup.
 | ProgressBar | Horizontal meter that fills a rounded track to a percentage in a status tone. | [ProgressBar.md](atoms/ProgressBar/ProgressBar.md) |
 | SegmentedControl | Row of two to five always-visible options on a neutral track, one of which is selected. | [SegmentedControl.md](atoms/SegmentedControl/SegmentedControl.md) |
 | Select | Dropdown that picks one value from a short list of options, with a trigger styled like an input. | [Select.md](atoms/Select/Select.md) |
+| SettingRow | One setting inside a settings card: its name and a sentence of explanation beside the control that changes it, with room for extra content underneath. | [SettingRow.md](atoms/SettingRow/SettingRow.md) |
 | Skeleton | One pulsing placeholder block that stands in for content while it loads. | [Skeleton.md](atoms/Skeleton/Skeleton.md) |
 | Sparkline | Draws a tiny bar trend from a list of numbers, with no axes, labels or tooltip. | [Sparkline.md](atoms/Sparkline/Sparkline.md) |
 | StatusDot | Small round dot that shows a status tone, with an optional live pulse and screen-reader label. | [StatusDot.md](atoms/StatusDot/StatusDot.md) |
@@ -79,15 +81,39 @@ rather than writing raw markup.
 
 | Component | Purpose | Doc |
 |---|---|---|
+| AgentActivity | Card that shows one platform's agents working right now: each main session or thread with its state, its running subagents nested beneath it and the ones that just finished. | [AgentActivity.md](organisms/AgentActivity/AgentActivity.md) |
+| AgentHistoryStrip | Card that sums up one platform's subagent use over a period: how many were spawned, how many per session that delegated, the share of sessions that delegated, and which types did the work. | [AgentHistoryStrip.md](organisms/AgentHistoryStrip/AgentHistoryStrip.md) |
+| AiChat | Chat surface for asking questions about usage: a scrolling list of questions and markdown answers, suggested questions, and a composer pinned to the bottom of the card. | [AiChat.md](organisms/AiChat/AiChat.md) |
+| AiSettings | Settings card for AI insights: the provider, the model and the API key that power the AI chat and the AI button on each card. | [AiSettings.md](organisms/AiSettings/AiSettings.md) |
+| AlertSettings | Settings card for the dashboard's three kinds of alerts: an agent waiting on you, a plan limit crossing a threshold, and spend crossing a spending cap. | [AlertSettings.md](organisms/AlertSettings/AlertSettings.md) |
 | CommandPalette | Modal search box that filters grouped commands as the reader types and runs the chosen one from the keyboard or with a click. | [CommandPalette.md](organisms/CommandPalette/CommandPalette.md) |
+| DataSettings | Settings card for what the dashboard keeps, sends and reads: the history archive with its forget action, the telemetry opt-out, the data folders and the installed version. | [DataSettings.md](organisms/DataSettings/DataSettings.md) |
+| DisplaySettings | Settings card for how the dashboard looks and counts: the first day of the week and the dark or light theme. | [DisplaySettings.md](organisms/DisplaySettings/DisplaySettings.md) |
 | ExportMenu | Small "Export" button that opens a menu with two choices, CSV and JSON, and reports the chosen format. | [ExportMenu.md](organisms/ExportMenu/ExportMenu.md) |
+| ExtraUsageCard | Card for paying beyond the plan: Anthropic extra usage credits against their monthly limit, or the ChatGPT credit balance and reset credits, or a sentence saying why it is off. | [ExtraUsageCard.md](organisms/ExtraUsageCard/ExtraUsageCard.md) |
+| GeneralSettings | Settings card for how the dashboard reads your accounts: the Claude usage mode with what was detected, and the read-only status of the Codex login. | [GeneralSettings.md](organisms/GeneralSettings/GeneralSettings.md) |
+| HourlyUsageChart | Card with the effective tokens used in each recent hour, stacked by model, with its own loading, error and empty states. | [HourlyUsageChart.md](organisms/HourlyUsageChart/HourlyUsageChart.md) |
+| LimitContributors | Card that says what is driving limit usage over the last day or week: headline behaviours in a sentence each, then the share taken by skills, subagents, plugins and MCP servers. | [LimitContributors.md](organisms/LimitContributors/LimitContributors.md) |
+| LimitGauge | Card for one platform's current rate-limit window: the share used as a large number over a meter, when the window started and resets, and the local facts behind it such as tokens, estimated cost, previous window and pace. | [LimitGauge.md](organisms/LimitGauge/LimitGauge.md) |
 | LimitGlance | Card that shows one platform's plan limits at a glance: a row per rate-limit window with its percentage, meter and reset time, or the spending caps when there are no plan windows. | [LimitGlance.md](organisms/LimitGlance/LimitGlance.md) |
+| LimitHitsCard | Card that counts how often a usage limit blocked work: hits in the last 7 and 30 days, whether one is blocking right now, and the most recent episodes with what was hit and for how long. | [LimitHitsCard.md](organisms/LimitHitsCard/LimitHitsCard.md) |
+| PlanLimitsCard | Card with every rate-limit window one plan reports, each as a meter with its share used and reset time, plus the weekly forecast, the split by surface, gated premium models and the plan name. | [PlanLimitsCard.md](organisms/PlanLimitsCard/PlanLimitsCard.md) |
+| PluginsInventory | Card that lists the integrations installed on this machine as groups of chips with a count each: MCP servers, plugins, marketplaces, skills, automations and hooks. | [PluginsInventory.md](organisms/PluginsInventory/PluginsInventory.md) |
+| ProfileCard | Card that shows how one platform is configured on this machine: its default model and plan as facts, its switches as status badges, and the lists it has authorized. | [ProfileCard.md](organisms/ProfileCard/ProfileCard.md) |
 | RunningNow | Card that summarises what is running right now: counts of running agents, agents waiting on you and running workflows, then a short list of the sessions and workflows behind them. | [RunningNow.md](organisms/RunningNow/RunningNow.md) |
 | Section | The standard data card of a page: a titled card with a description, help, an actions slot and an AI explanation, whose body shows the content or a built-in loading, error or empty state. | [Section.md](organisms/Section/Section.md) |
 | Sidebar | App navigation: the product name with the collapse button, grouped page links with live badges, pinned links at the bottom and a footer with the data folders, version and credit. | [Sidebar.md](organisms/Sidebar/Sidebar.md) |
+| SpendCapsCard | Card that sets today's, this week's and this month's spend against the spending caps from Settings, one meter per capped period. | [SpendCapsCard.md](organisms/SpendCapsCard/SpendCapsCard.md) |
+| SpendingCapsSettings | Settings card for the spending caps: a daily, weekly and monthly amount in US dollars per platform, each platform saved or cleared on its own. | [SpendingCapsSettings.md](organisms/SpendingCapsSettings/SpendingCapsSettings.md) |
 | SpendToday | Card that shows one of today's totals as a large number with its change against the recent daily average, a seven-day sparkline, and an optional daily cap meter and platform split. | [SpendToday.md](organisms/SpendToday/SpendToday.md) |
+| TasksPanel | Card with two lists side by side: the tasks the coding agent is tracking, each with its status, and the plan documents it saved, each with its size and age. | [TasksPanel.md](organisms/TasksPanel/TasksPanel.md) |
 | ToastStack | Stack of toasts pinned to the bottom right of the viewport, oldest on top, each with its own dismiss button and optional action. | [ToastStack.md](organisms/ToastStack/ToastStack.md) |
 | Topbar | Row of global controls for the app shell: the page title, the platform and surface switchers, limit and agent status chips, the command palette button, the theme toggle and the live indicator. | [Topbar.md](organisms/Topbar/Topbar.md) |
+| UsageBarChart | Stacked bar chart of usage over time, one bar per bucket and one segment per model, in effective tokens or estimated cost, with optional projected bars and a today marker. | [UsageBarChart.md](organisms/UsageBarChart/UsageBarChart.md) |
+| WorkflowPhasePanes | Two panes for one workflow run: its phases on the left and the agents of the selected phase on the right, where each agent row expands to its detail. | [WorkflowPhasePanes.md](organisms/WorkflowPhasePanes/WorkflowPhasePanes.md) |
+| WorkflowRunCard | Card for one running workflow: a header with its status, name, summary, agent progress and running time, over its phases and the agents of the selected phase. | [WorkflowRunCard.md](organisms/WorkflowRunCard/WorkflowRunCard.md) |
+| WorkflowRunRow | Card for one finished workflow run: its status, name, summary, model and age on one line, its totals and estimated cost on the next, and expandable details with its phases, agents and log tail. | [WorkflowRunRow.md](organisms/WorkflowRunRow/WorkflowRunRow.md) |
+| WorkflowStatsGrid | The nine all-time workflow totals as stat tiles: runs, success rate, tokens, agents, average duration, estimated cost, tool calls, top model and busiest day. | [WorkflowStatsGrid.md](organisms/WorkflowStatsGrid/WorkflowStatsGrid.md) |
 
 ## Templates
 

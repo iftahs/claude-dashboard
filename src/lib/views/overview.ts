@@ -267,7 +267,7 @@ function codexWindows(live: CodexLiveData, pickBinding: BindingPicker, now: numb
   return windowViews(slots, limitReadings(null, live), pickBinding, now);
 }
 
-function capViews(rows: BudgetPeriod[], showUncapped: boolean, now: number): LimitCapView[] {
+export function capViews(rows: BudgetPeriod[], showUncapped: boolean, now: number): LimitCapView[] {
   return rows
     .filter((row) => showUncapped || row.cap !== null)
     .map((row) => {
