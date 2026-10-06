@@ -9,7 +9,12 @@ export function StatusChip({ href, tone, icon, pulse = false, tooltip, className
   return (
     <Tooltip content={tooltip} side="bottom">
       <a href={href} className={cn(statusChipVariants({ tone }), className)} {...props}>
-        {pulse ? <StatusDot tone="success" size="sm" pulse /> : null}
+        {pulse ? (
+          // The icon's 14px box, so the chip keeps its width when the dot and the icon swap.
+          <span className="inline-flex size-3.5 flex-none items-center justify-center">
+            <StatusDot tone="success" size="sm" pulse />
+          </span>
+        ) : null}
         {icon ? <Icon name={icon} size={14} /> : null}
         {children}
       </a>

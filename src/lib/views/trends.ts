@@ -181,6 +181,7 @@ export interface SourcesSplitView {
   title: string;
   description: string;
   help: string;
+  state: SectionState | null;
   rows: SourcesSplitRowView[];
 }
 
@@ -460,8 +461,11 @@ function present(...items: (TrendsTileLine | null)[]): TrendsTileLine[] {
   return items.filter((item): item is TrendsTileLine => !!item && item.length > 0);
 }
 
-function pending(loading: boolean, title: string, skeleton: SectionSkeleton, rows?: number): SectionState {
-  return loading ? { kind: 'loading', skeleton, rows } : { kind: 'error', title, description: SERVER_DOWN };
+// A usage bar chart with its legend: 260px of plot, a 12px gap and a 16px legend line.
+const USAGE_CHART_HEIGHT = 288;
+
+function pending(loading: boolean, title: string, skeleton: SectionSkeleton, rows?: number, height?: number): SectionState {
+  return loading ? { kind: 'loading', skeleton, rows, height } : { kind: 'error', title, description: SERVER_DOWN };
 }
 
 function axisDay(weekDays: number): (ms: number) => string {
@@ -674,7 +678,9 @@ export function buildDailyTrend({
     delta: delta === null ? null : { label: `${signed(delta)} vs previous period`, up: delta > 0 },
     canExport: !!weekly,
   };
-  if (!weekly) return { ...view, state: pending(loading, 'Could not load daily usage', 'chart', Math.min(weekDays, 30)) };
+  if (!weekly) {
+    return { ...view, state: pending(loading, 'Could not load daily usage', 'chart', Math.min(weekDays, 30), USAGE_CHART_HEIGHT) };
+  }
   if (weekly.totals.totalTokens === 0) {
     return {
       ...view,
@@ -840,17 +846,29 @@ export function computeCodexSplit(codexSplit: CodexSplit): SplitSegment[] {
 }
 
 // A $0 segment (the unpriced guardian model) shows tokens only.
+function sourcesHead(weekDays: number, platform: Platform): Pick<SourcesSplitView, 'title' | 'description' | 'help'> {
+  const codex = platform === 'codex';
+  return {
+    title: codex ? 'Threads and reviews' : 'Where it ran',
+    description: `Share of effective tokens by ${codex ? 'thread kind' : 'surface'}, ${rangeText(weekDays).toLowerCase()}`,
+    help: sourcesHelp(platform),
+  };
+}
+
+// Holds the split card's place while the first response is on its way, so the chart under it does not move.
+export function sourcesSplitLoading(weekDays: number, platform: Platform): SourcesSplitView {
+  return { ...sourcesHead(weekDays, platform), state: { kind: 'loading', skeleton: 'bars', rows: 2 }, rows: [] };
+}
+
 export function buildSourcesSplit(
   splitSegments: SplitSegment[] | null,
   weekDays: number,
   platform: Platform,
 ): SourcesSplitView | null {
   if (!splitSegments || splitSegments.length === 0) return null;
-  const codex = platform === 'codex';
   return {
-    title: codex ? 'Threads and reviews' : 'Where it ran',
-    description: `Share of effective tokens by ${codex ? 'thread kind' : 'surface'}, ${rangeText(weekDays).toLowerCase()}`,
-    help: sourcesHelp(platform),
+    ...sourcesHead(weekDays, platform),
+    state: null,
     rows: splitSegments.map((segment) => ({
       key: segment.key,
       label: segment.label,

@@ -12,6 +12,7 @@ import { usePolling } from './usePolling';
 import { useSource } from './useSource';
 import { buildBudgetRows, type BudgetInput, type BudgetPeriod } from '@/lib/budget';
 import { coverageDays } from '@/lib/coverage';
+import { estimatedWindows } from '@/lib/gauge';
 import type { Limits } from '@/lib/limits';
 import {
   TREND_DAYS,
@@ -25,7 +26,7 @@ import {
   type RunningNowView,
   type SpendTodayView,
 } from '@/lib/views/overview';
-import type { WeekStart } from '@/lib/week';
+import { nextWeekReset, type WeekStart } from '@/lib/week';
 import type { CodexConfigData, WeeklyData } from '@/types';
 
 export type OverviewNavigate = (event: MouseEvent<HTMLAnchorElement>, href: string) => void;
@@ -65,7 +66,7 @@ export function useOverviewPage(): OverviewPageView {
   const navigate = useNavigate();
   const { platform, showClaude, showCodex, effectiveSource } = useSource();
   const { configData, configLoading, isApi, weekStart } = useConfigMode();
-  const { liveUsage, codexLive, liveWeekly, liveSubagents, codexAgents, workflows } = useLiveData();
+  const { liveUsage, codexLive, liveWeekly, recent, liveSubagents, codexAgents, workflows } = useLiveData();
   const [caps] = usePlatformLimits();
   const limits = useLimits();
   const { costPerDay } = useCostMetrics();
@@ -132,6 +133,12 @@ export function useOverviewPage(): OverviewPageView {
   const codexBudgetFailed = both ? !codexScoped.data && !!codexScoped.error : weeklyFailed;
   const plan = configData?.subscriptionType ?? configData?.rateLimitTier;
   const claudeLoading = configPending || liveUsage.loading;
+  const block = recent.data?.activeBlock ?? null;
+  const weekSplit = both ? liveWeekly.data?.bySource : undefined;
+  const claudeWeekEffective = weekSplit
+    ? weekSplit.code.effectiveTokens + weekSplit.cowork.effectiveTokens
+    : (liveWeekly.data?.totals.effectiveTokens ?? null);
+  const localsSettled = (!!recent.data || !!recent.error) && (!!liveWeekly.data || !!liveWeekly.error);
   const limitCards = useMemo(() => {
     const now = Date.now();
     const cards: LimitGlanceView[] = [];
@@ -140,6 +147,9 @@ export function useOverviewPage(): OverviewPageView {
         buildClaudeLimits({
           live: claudeLive,
           loading: claudeLoading,
+          estimate: localsSettled
+            ? estimatedWindows({ block, weeklyEffective: claudeWeekEffective, weekResetsAt: nextWeekReset(now, weekStart), now })
+            : null,
           plan,
           apiMode: isApi,
           budget: claudeBudget,
@@ -164,8 +174,8 @@ export function useOverviewPage(): OverviewPageView {
     }
     return markBinding(cards, binding);
   }, [
-    showClaude, showCodex, claudeLive, claudeLoading, plan, isApi, claudeBudget, claudeBudgetFailed,
-    codexLiveData, codexLoading, codexApiKey, codexBudget, codexBudgetFailed, binding, tick,
+    showClaude, showCodex, claudeLive, claudeLoading, block, claudeWeekEffective, localsSettled, weekStart, plan, isApi,
+    claudeBudget, claudeBudgetFailed, codexLiveData, codexLoading, codexApiKey, codexBudget, codexBudgetFailed, binding, tick,
   ]);
 
   const claudeAgents = showClaude ? liveSubagents.data : null;

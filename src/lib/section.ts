@@ -10,6 +10,8 @@ export interface SectionLoadingState {
   kind: 'loading';
   skeleton?: SectionSkeleton;
   rows?: number;
+  // Height in px of the loaded body, so the card does not resize when the data lands.
+  height?: number;
 }
 
 export interface SectionErrorState {

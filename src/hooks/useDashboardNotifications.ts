@@ -11,6 +11,28 @@ import { useBudgetAlerts } from './useBudgetAlerts';
 import { useLimitAlerts } from './useLimitAlerts';
 import { isTokenExpired } from '../lib/gauge';
 
+const SIGN_IN_TOAST_MS = 12_000;
+const SHOWN_PREFIX = 'claude-dashboard-toast-shown:';
+
+// A sign-in toast shows once per browser session for a given problem; the inline callouts keep the detail on screen.
+function alreadyShown(id: string, kind: string): boolean {
+  try {
+    if (sessionStorage.getItem(SHOWN_PREFIX + id) === kind) return true;
+    sessionStorage.setItem(SHOWN_PREFIX + id, kind);
+  } catch {
+    /* storage blocked: show it */
+  }
+  return false;
+}
+
+function forgetShown(id: string): void {
+  try {
+    sessionStorage.removeItem(SHOWN_PREFIX + id);
+  } catch {
+    /* storage blocked */
+  }
+}
+
 /**
  * App-level side effects: anonymous analytics + the toast notifications that
  * replaced the old inline banners (update available, Claude.ai offline/expired,
@@ -53,6 +75,8 @@ export function useDashboardNotifications(activeTab: string) {
   // while the live API reports an error, auto-clears when it recovers.
   useEffect(() => {
     const err = !isApi ? liveUsage.data?.error : undefined;
+    // Recovered: the next failure is news again.
+    if (liveUsage.data && !liveUsage.data.error) forgetShown('offline');
     // Nothing on screen is Claude.ai's while the platform switcher is on Codex —
     // an Anthropic token the user isn't currently using must not raise a toast.
     if (!err || !showClaude) {
@@ -74,37 +98,41 @@ export function useDashboardNotifications(activeTab: string) {
     // Upstream Anthropic outage (5xx) — not a token problem; running `claude` won't help.
     const upstream = /:\s*5\d\d\b/.test(err) || lc.includes('service unavailable')
       || lc.includes('bad gateway') || lc.includes('gateway timeout');
+    if (alreadyShown('offline', expired ? 'expired' : upstream ? 'upstream' : 'offline')) return;
     notify({
       id: 'offline',
       severity: 'warning',
-      title: expired ? 'Claude.ai session expired'
+      timeoutMs: SIGN_IN_TOAST_MS,
+      title: expired ? 'Claude sign-in expired'
         : upstream ? 'Claude.ai service unavailable'
         : 'Claude.ai connection offline',
       message: expired
-        // The server's message is runtime-aware (host vs Docker) — relay it.
-        ? err
+        // The server's runtime-aware detail (host vs Docker) stays in the inline callouts.
+        ? 'Run `claude` in a terminal to refresh live limits.'
         : upstream
         ? `Anthropic's usage service is temporarily unavailable (${err.match(/5\d\d/)?.[0] ?? '5xx'}). It's on their side — the dashboard keeps retrying and this clears on its own.`
         : `${err} — try running \`claude\` in a terminal.`,
     });
-  }, [isApi, detectedMode, showClaude, liveUsage.data?.error, notify, dismiss]);
+  }, [isApi, detectedMode, showClaude, liveUsage.data, notify, dismiss]);
 
   // Codex token expired/rejected — Codex counterpart of the Claude.ai toast; the ChatGPT app refreshes its own token, the dashboard never does.
   useEffect(() => {
     const err = showCodex ? codexLive.data?.error : undefined;
+    if (codexLive.data && !codexLive.data.error) forgetShown('codex-offline');
     const rejected = !!err && /rejected/i.test(err);
     if (!err || !(isTokenExpired(err) || rejected)) {
       dismiss('codex-offline');
       return;
     }
+    if (alreadyShown('codex-offline', rejected ? 'rejected' : 'expired')) return;
     notify({
       id: 'codex-offline',
       severity: 'warning',
-      title: rejected ? 'Codex sign-in rejected' : 'Codex token expired',
-      // The server's message says what to do (open the ChatGPT desktop app / sign in again).
-      message: err,
+      timeoutMs: SIGN_IN_TOAST_MS,
+      title: rejected ? 'Codex sign-in rejected' : 'Codex sign-in expired',
+      message: rejected ? 'Sign in again in the ChatGPT desktop app.' : 'Open the ChatGPT desktop app to refresh live limits.',
     });
-  }, [showCodex, codexLive.data?.error, notify, dismiss]);
+  }, [showCodex, codexLive.data, notify, dismiss]);
 
   // Pay-as-you-go note — shown once per session when API mode is active and Claude is on screen; waits for /api/sources so a Codex-only user never sees it.
   const apiNotified = useRef(false);

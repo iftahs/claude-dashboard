@@ -110,10 +110,16 @@ function windowLabel(days: InsightDays): string {
   return `last ${days} days`;
 }
 
-function pendingState<T>(poll: InsightPoll<T>, what: string, skeleton: SectionSkeleton, rows?: number): SectionState | null {
+function pendingState<T>(
+  poll: InsightPoll<T>,
+  what: string,
+  skeleton: SectionSkeleton,
+  rows?: number,
+  height?: number,
+): SectionState | null {
   if (poll.data !== null) return null;
   if (poll.error && !poll.loading) return { kind: 'error', title: `Could not load ${what}`, description: SERVER_DOWN };
-  return { kind: 'loading', skeleton, rows };
+  return { kind: 'loading', skeleton, rows, height };
 }
 
 function share(part: number, whole: number): number {
@@ -293,7 +299,7 @@ export function buildErrorBreakdown({ poll, platform, days, ai }: SectionInput<I
         ? " Codex failures: a shell command that exited non-zero is 'Command failed', a patch that did not apply 'Patch failed', and an MCP tool's error 'MCP error'."
         : ''
     }`,
-    state: pendingState(poll, 'tool errors', 'bars', 5),
+    state: pendingState(poll, 'tool errors', 'bars', 8, 520),
     ai,
     categories: [],
     tools: [],

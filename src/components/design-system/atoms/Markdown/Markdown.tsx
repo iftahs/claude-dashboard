@@ -1,8 +1,8 @@
 import { cn } from '@/lib/cn';
 import type { InlineToken, MarkdownProps } from './types';
-import { parseBlocks } from './utils';
+import { parseBlocks, parseInline } from './utils';
 
-export function Markdown({ text, className }: MarkdownProps) {
+export function Markdown({ text, inline = false, className }: MarkdownProps) {
   const renderInline = (tokens: InlineToken[]) =>
     tokens.map((token) => {
       if (token.kind === 'text') return token.text;
@@ -22,6 +22,8 @@ export function Markdown({ text, className }: MarkdownProps) {
       }
       return <em key={token.key}>{token.text}</em>;
     });
+
+  if (inline) return <span className={className}>{renderInline(parseInline(text, 'i'))}</span>;
 
   return (
     <div className={cn('text-body text-fg-muted', className)}>

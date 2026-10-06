@@ -7,6 +7,7 @@
 
 - While a card's first request is in flight: render the preset that matches what the card will hold.
 - `rows` to match the amount of content that is coming, so the layout does not jump when it arrives.
+- `height` when the loaded block has a known height (a chart, a fixed list), so the cards below do not move.
 
 ## When NOT to use
 
@@ -20,6 +21,7 @@
 |---|---|---|---|
 | `variant` | `'text' \| 'stat' \| 'chart' \| 'bars' \| 'table' \| 'gauge'` | required | Which shape to draw. |
 | `rows` | `number` | per variant | How many repeated shapes: text lines (3), chart bars (12), meter rows (4), table body rows (5), gauge rows (1). Ignored by `stat`. Clamped to 1-40. |
+| `height` | `number` | - | Height in px of the content that is coming, so the card keeps its size when it arrives. It sets the height of `chart` and the minimum height of every other variant. |
 | `className` | `string` | - | Extra classes merged onto the root, for example a height for `chart`. |
 
 ## Variants

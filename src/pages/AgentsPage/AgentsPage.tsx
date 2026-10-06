@@ -5,6 +5,7 @@ import { AgentHistoryStrip } from '@/components/design-system/organisms/AgentHis
 import { PageLayout } from '@/components/design-system/templates/PageLayout/PageLayout';
 import { SectionStackLayout } from '@/components/design-system/templates/SectionStackLayout/SectionStackLayout';
 import { SplitLayout } from '@/components/design-system/templates/SplitLayout/SplitLayout';
+import { ReservedBlock } from '@/components/common/ReservedBlock/ReservedBlock';
 import { useAgentsPage } from '@/hooks/useAgentsPage';
 
 export function AgentsPage() {
@@ -13,11 +14,13 @@ export function AgentsPage() {
 
   return (
     <PageLayout header={<PageHeader description={description} />}>
-      <SectionStackLayout title={<GroupLabel>Now</GroupLabel>}>
-        {activity.map((view) => (
-          <AgentActivity key={view.platform} view={view} />
-        ))}
-      </SectionStackLayout>
+      <ReservedBlock id="agents-now" settled={activity.every((view) => view.state?.kind !== 'loading')}>
+        <SectionStackLayout title={<GroupLabel>Now</GroupLabel>}>
+          {activity.map((view) => (
+            <AgentActivity key={view.platform} view={view} />
+          ))}
+        </SectionStackLayout>
+      </ReservedBlock>
       <SectionStackLayout title={<GroupLabel>History</GroupLabel>}>
         {strips.length > 1 ? <SplitLayout>{strips}</SplitLayout> : strips}
       </SectionStackLayout>

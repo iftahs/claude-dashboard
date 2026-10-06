@@ -11,6 +11,7 @@ import { SpendCapsCard } from '@/components/design-system/organisms/SpendCapsCar
 import { PageLayout } from '@/components/design-system/templates/PageLayout/PageLayout';
 import { SectionStackLayout } from '@/components/design-system/templates/SectionStackLayout/SectionStackLayout';
 import { SplitLayout } from '@/components/design-system/templates/SplitLayout/SplitLayout';
+import { ReservedBlock } from '@/components/common/ReservedBlock/ReservedBlock';
 import { useLivePage } from '@/hooks/useLivePage';
 
 const DESCRIPTION = 'Your current window, plan limits and what is driving them.';
@@ -46,43 +47,47 @@ export function LivePage() {
         />
       }
     >
-      <SectionStackLayout title={<GroupLabel>Current window</GroupLabel>}>
-        {gauges.length > 1 ? <SplitLayout>{gauges}</SplitLayout> : null}
-        {gauges.length === 1 ? (
-          <SplitLayout ratio="1:2" collapseBelow="xl">
-            {gauges}
-            {chart}
-          </SplitLayout>
-        ) : (
-          chart
-        )}
-      </SectionStackLayout>
+      <ReservedBlock id="live-window" settled={view.windowSettled}>
+        <SectionStackLayout title={<GroupLabel>Current window</GroupLabel>}>
+          {gauges.length > 1 ? <SplitLayout>{gauges}</SplitLayout> : null}
+          {gauges.length === 1 ? (
+            <SplitLayout ratio="1:2" collapseBelow="xl">
+              {gauges}
+              {chart}
+            </SplitLayout>
+          ) : (
+            chart
+          )}
+        </SectionStackLayout>
+      </ReservedBlock>
 
       {plans.length > 0 || extras.length > 0 ? (
-        <SectionStackLayout title={<GroupLabel>Plan limits</GroupLabel>}>
-          {plans.length > 1 ? (
-            <SplitLayout>
-              {plans.map((plan) => (
-                <PlanLimitsCard key={plan.key} view={plan} />
-              ))}
-            </SplitLayout>
-          ) : null}
-          {plans.length === 1 && extras.length === 1 ? (
-            <SplitLayout ratio="2:1" collapseBelow="xl">
-              <PlanLimitsCard view={plans[0]} columns={2} />
-              <ExtraUsageCard view={extras[0]} />
-            </SplitLayout>
-          ) : null}
-          {plans.length === 1 && extras.length !== 1 ? <PlanLimitsCard view={plans[0]} columns={2} /> : null}
-          {extras.length > 1 ? (
-            <SplitLayout>
-              {extras.map((extra) => (
-                <ExtraUsageCard key={extra.platform} view={extra} />
-              ))}
-            </SplitLayout>
-          ) : null}
-          {plans.length !== 1 && extras.length === 1 ? <ExtraUsageCard view={extras[0]} /> : null}
-        </SectionStackLayout>
+        <ReservedBlock id="live-plans" settled={view.plansSettled}>
+          <SectionStackLayout title={<GroupLabel>Plan limits</GroupLabel>}>
+            {plans.length > 1 ? (
+              <SplitLayout>
+                {plans.map((plan) => (
+                  <PlanLimitsCard key={plan.key} view={plan} />
+                ))}
+              </SplitLayout>
+            ) : null}
+            {plans.length === 1 && extras.length === 1 ? (
+              <SplitLayout ratio="2:1" collapseBelow="xl">
+                <PlanLimitsCard view={plans[0]} columns={2} />
+                <ExtraUsageCard view={extras[0]} />
+              </SplitLayout>
+            ) : null}
+            {plans.length === 1 && extras.length !== 1 ? <PlanLimitsCard view={plans[0]} columns={2} /> : null}
+            {extras.length > 1 ? (
+              <SplitLayout>
+                {extras.map((extra) => (
+                  <ExtraUsageCard key={extra.platform} view={extra} />
+                ))}
+              </SplitLayout>
+            ) : null}
+            {plans.length !== 1 && extras.length === 1 ? <ExtraUsageCard view={extras[0]} /> : null}
+          </SectionStackLayout>
+        </ReservedBlock>
       ) : null}
 
       <SectionStackLayout title={<GroupLabel>Drivers</GroupLabel>}>

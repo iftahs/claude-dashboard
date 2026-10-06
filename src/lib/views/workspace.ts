@@ -282,7 +282,7 @@ function profileCard(key: WorkspacePlatform, source: ProfileSource<unknown>, bod
     ? null
     : source.error && !source.loading
       ? { kind: 'error', title: PROFILE_ERROR[key], description: `${cleanError(source.error)} — the dashboard keeps retrying.` }
-      : { kind: 'loading', skeleton: 'text', rows: PROFILE_SKELETON_ROWS };
+      : { kind: 'loading', skeleton: 'text', rows: PROFILE_SKELETON_ROWS, height: 400 };
   return { key, ...PROFILE_HEAD[key], state, ...(body ?? EMPTY_BODY) };
 }
 
@@ -451,7 +451,7 @@ export function inventoryState(source: ProfileSource<InventoryData>, body: Inven
   if (!body) {
     return source.error && !source.loading
       ? { kind: 'error', title: 'Could not load the integration inventory', description: `${cleanError(source.error)} — the dashboard keeps retrying.` }
-      : { kind: 'loading', skeleton: 'text', rows: 6 };
+      : { kind: 'loading', skeleton: 'text', rows: 6, height: 280 };
   }
   const empty = body.defaults.length === 0 && body.groups.every((group) => group.count === 0);
   return empty

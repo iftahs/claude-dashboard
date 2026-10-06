@@ -35,6 +35,35 @@ export const SOURCE_LABELS: Record<SourceFilter, string> = {
 };
 
 const PLATFORM_KEY = 'claude-dashboard-platform';
+const HINT_KEY = 'claude-dashboard-sources-hint';
+
+// What the last /api/sources said, so the first paint uses the same switchers and data URLs as the loaded page.
+interface SourcesHint {
+  codex: boolean;
+  cowork: boolean;
+  claude: boolean;
+  claudeDir: string;
+  coworkDir: string;
+  codexDir: string;
+}
+
+function loadHint(): SourcesHint | null {
+  try {
+    const v = JSON.parse(localStorage.getItem(HINT_KEY) ?? 'null') as Partial<SourcesHint> | null;
+    if (!v || typeof v !== 'object') return null;
+    const text = (x: unknown) => (typeof x === 'string' ? x : '');
+    return {
+      codex: v.codex === true,
+      cowork: v.cowork === true,
+      claude: v.claude !== false,
+      claudeDir: text(v.claudeDir),
+      coworkDir: text(v.coworkDir),
+      codexDir: text(v.codexDir),
+    };
+  } catch {
+    return null;
+  }
+}
 
 /** The platform the user last picked, or null when they never picked one. */
 function loadPlatform(): Platform | null {
@@ -100,17 +129,20 @@ export function SourceProvider({ children }: { children: ReactNode }) {
   const sources = sourcesInfo.data;
   const sourcesLoaded = !!sources;
   const sourcesError = sources ? null : sourcesInfo.error;
-  const coworkAvailable = !!sources?.cowork?.available;
-  const codexAvailable = !!sources?.codex?.available;
+  // Until the first answer the layout-driving flags come from the last session's hint; sourcesLoaded, hasScopeData and the counts stay honest.
+  const [hint] = useState(loadHint);
+  const coworkAvailable = sources ? !!sources.cowork?.available : !!hint?.cowork;
+  const codexAvailable = sources ? !!sources.codex?.available : !!hint?.codex;
   const codeN = sources?.code?.events ?? 0;
   const coworkN = sources?.cowork?.events ?? 0;
   const codexN = sources?.codex?.events ?? 0;
   const claudeAvailable = codeN + coworkN > 0;
+  const hasClaudeEvents = sources ? claudeAvailable : hint?.claude ?? true;
   const [storedPlatform, setStoredPlatform] = useState<Platform | null>(loadPlatform);
   const [source, setSourceState] = useState<SourceFilter>('all');
 
   // With no stored choice, a Codex-only user (Codex events, no Claude/Cowork ones) starts on Codex instead of an empty Claude dashboard.
-  const defaultPlatform: Platform = codexAvailable && codeN + coworkN === 0 ? 'codex' : 'claude';
+  const defaultPlatform: Platform = codexAvailable && !hasClaudeEvents ? 'codex' : 'claude';
   const platform: Platform = codexAvailable ? storedPlatform ?? defaultPlatform : 'claude';
 
   // The surface filter narrows the Claude side only, and only while it is offered.
@@ -120,9 +152,22 @@ export function SourceProvider({ children }: { children: ReactNode }) {
     ? null
     : (platform === 'codex' ? codexN : platform === 'claude' ? claudeN : codeN + coworkN + codexN) > 0;
 
-  const claudeDirPath = sources?.claudeDir ?? '';
-  const coworkDirPath = sources?.coworkDir ?? '';
-  const codexDirPath = sources?.codexDir ?? '';
+  const claudeDirPath = sources ? sources.claudeDir ?? '' : hint?.claudeDir ?? '';
+  const coworkDirPath = sources ? sources.coworkDir ?? '' : hint?.coworkDir ?? '';
+  const codexDirPath = sources ? sources.codexDir ?? '' : hint?.codexDir ?? '';
+
+  useEffect(() => {
+    if (!sources) return;
+    const next: SourcesHint = {
+      codex: codexAvailable,
+      cowork: coworkAvailable,
+      claude: claudeAvailable,
+      claudeDir: claudeDirPath,
+      coworkDir: coworkDirPath,
+      codexDir: codexDirPath,
+    };
+    try { localStorage.setItem(HINT_KEY, JSON.stringify(next)); } catch { /* private mode */ }
+  }, [sources, codexAvailable, coworkAvailable, claudeAvailable, claudeDirPath, coworkDirPath, codexDirPath]);
   const dataDirs = useMemo<DataDir[]>(() => {
     const dirs: DataDir[] = [];
     if (platform !== 'codex') {

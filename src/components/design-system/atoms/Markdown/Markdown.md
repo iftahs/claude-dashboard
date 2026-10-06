@@ -7,6 +7,7 @@
 
 - AI replies and AI-drafted insight text.
 - Any short model-written text that may carry bold, italics, inline code, headings or lists.
+- One sentence from the server that may name a command in backticks, with `inline`, inside a toast, a callout or an empty state.
 
 ## When NOT to use
 
@@ -18,6 +19,7 @@
 | Prop | Type | Default | Description |
 |---|---|---|---|
 | `text` | `string` | required | The markdown source. |
+| `inline` | `boolean` | `false` | Renders a single `<span>` with bold, italics and inline code only, in the font size and colour of the surrounding text. Use it inside a `<p>` or another phrase. |
 | `className` | `string` | - | Extra classes merged onto the wrapper, for example `text-fg` or `text-small`. |
 
 ## Usage
@@ -36,6 +38,14 @@ Smaller, inside a card footnote:
 
 ```tsx
 <Markdown text={insight} className="text-small" />
+```
+
+A server sentence inside a callout:
+
+```tsx
+<Callout tone="warning" title="Sign-in expired">
+  <Markdown inline text={notice} />
+</Callout>
 ```
 
 ## a11y

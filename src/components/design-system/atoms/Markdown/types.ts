@@ -1,5 +1,6 @@
 export interface MarkdownProps {
   text: string;
+  inline?: boolean;
   className?: string;
 }
 

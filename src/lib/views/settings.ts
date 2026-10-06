@@ -296,7 +296,7 @@ export function codexAccountRows(config: CodexConfigData | null, live: CodexLive
   } else if (config && config.authMode === null) {
     rows.push({ label: 'Token', value: 'Not signed in', note: 'No Codex login found in auth.json.', tone: 'warn' });
   } else if (!live) {
-    rows.push({ label: 'Token', value: 'Checking…', tone: 'muted' });
+    rows.push({ label: 'Token', value: 'Checking…', note: 'Reading the Codex login.', tone: 'muted' });
   } else if (live.error) {
     const expired = /expired/i.test(live.error);
     rows.push({

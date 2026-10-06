@@ -4,11 +4,12 @@ import { skeletonPresetShapeVariants, skeletonPresetVariants } from './SkeletonP
 import type { SkeletonPresetProps } from './types';
 import { TABLE_NUMERIC_COLUMNS, chartBarHeight, labelWidth, rowIndexes, textLineWidth } from './utils';
 
-export function SkeletonPreset({ variant, rows, className }: SkeletonPresetProps) {
+export function SkeletonPreset({ variant, rows, height, className }: SkeletonPresetProps) {
   const items = rowIndexes(variant, rows);
+  const reserve = height === undefined ? undefined : variant === 'chart' ? { height } : { minHeight: height };
 
   return (
-    <div role="status" className={cn(skeletonPresetVariants({ variant }), className)}>
+    <div role="status" className={cn(skeletonPresetVariants({ variant }), className)} style={reserve}>
       <span className="sr-only">Loading</span>
       <div aria-hidden="true" className={skeletonPresetShapeVariants({ variant })}>
         {variant === 'text' ? (

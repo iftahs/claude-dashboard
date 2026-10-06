@@ -1,7 +1,8 @@
 import { memo, useId } from 'react';
 import { Badge } from '@/components/design-system/atoms/Badge/Badge';
 import { Card } from '@/components/design-system/atoms/Card/Card';
-import { EmptyState } from '@/components/design-system/molecules/EmptyState/EmptyState';
+import { Markdown } from '@/components/design-system/atoms/Markdown/Markdown';
+import { Callout } from '@/components/design-system/molecules/Callout/Callout';
 import { ErrorState } from '@/components/design-system/molecules/ErrorState/ErrorState';
 import { SkeletonPreset } from '@/components/design-system/molecules/SkeletonPreset/SkeletonPreset';
 import { cn } from '@/lib/cn';
@@ -14,7 +15,6 @@ export const LimitGlance = memo(function LimitGlance({ view, href, onNavigate, c
   const titleId = useId();
   const { status, windows, caps, message, note } = view;
   const ready = status === 'ready';
-  const hasRows = windows.length > 0 || caps.length > 0;
 
   return (
     <Card aria-labelledby={titleId} className={cn('relative flex flex-col gap-4', href && 'hover:border-line-strong', className)}>
@@ -41,15 +41,10 @@ export const LimitGlance = memo(function LimitGlance({ view, href, onNavigate, c
 
       {status === 'error' && message ? <ErrorState title={message.title} description={message.description} className="py-6" /> : null}
 
-      {ready && message && !hasRows ? (
-        <EmptyState icon="info" title={message.title} description={message.description} className="py-6" />
-      ) : null}
-
-      {ready && message && hasRows ? (
-        <div className="flex flex-col gap-1">
-          <p className="text-body font-medium text-fg">{message.title}</p>
-          <p className="text-small text-fg-muted">{message.description}</p>
-        </div>
+      {ready && message ? (
+        <Callout tone={message.tone ?? 'neutral'}>
+          <span className="font-medium">{message.title}.</span> <Markdown inline text={message.description} />
+        </Callout>
       ) : null}
 
       {ready && windows.length > 0 ? (

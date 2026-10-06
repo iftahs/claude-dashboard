@@ -330,7 +330,7 @@ export function buildAgentHistory({ platform, scope, data, loading, error }: Age
   const { rows, rest } = topTypes(data?.byType ?? {}, HISTORY_TYPE_LIMIT);
 
   let state: SectionState | null = null;
-  if (!data && (loading || !error)) state = { kind: 'loading', skeleton: 'bars', rows: 3 };
+  if (!data && (loading || !error)) state = { kind: 'loading', skeleton: 'bars', rows: 4, height: 200 };
   else if (!data) state = { kind: 'error', title: 'Could not load subagent history', description: SERVER_DOWN };
   else if (data.spawns === 0) {
     state = {

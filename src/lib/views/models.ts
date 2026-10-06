@@ -30,6 +30,8 @@ function estCost(amount: number): string {
 }
 const SYNTHETIC_MODEL = '<synthetic>';
 const WINDOW = 'last 7 days';
+// Body height of the two model cards with a typical handful of models, so the cost card under them stays put while they load.
+const CARD_BODY_HEIGHT = 300;
 
 export const MODELS_DESCRIPTION: Record<Platform, string> = {
   claude: 'Which models your usage leans on, how hard they reason and what they cost at list price.',
@@ -92,7 +94,7 @@ export function buildModelBreakdown({ poll, platform, ai }: ModelBreakdownInput)
     const state: SectionState =
       poll.error && !poll.loading
         ? { kind: 'error', title: 'Could not load the model breakdown', description: SERVER_DOWN }
-        : { kind: 'loading', skeleton: 'bars', rows: 5 };
+        : { kind: 'loading', skeleton: 'bars', rows: 5, height: CARD_BODY_HEIGHT };
     return { ...view, state };
   }
   const used = data.models
@@ -217,7 +219,7 @@ export function buildEffortBreakdown({ poll, platform }: EffortBreakdownInput): 
     const state: SectionState =
       poll.error && !poll.loading
         ? { kind: 'error', title: 'Could not load reasoning effort', description: SERVER_DOWN }
-        : { kind: 'loading', skeleton: 'bars', rows: 5 };
+        : { kind: 'loading', skeleton: 'bars', rows: 5, height: CARD_BODY_HEIGHT };
     return { ...view, state };
   }
   if (data.models.length === 0) {

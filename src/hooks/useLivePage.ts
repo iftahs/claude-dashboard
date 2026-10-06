@@ -48,6 +48,9 @@ export interface LivePageView {
   hourly: HourlyUsageView;
   plans: PlanLimitsView[];
   extras: ExtraUsageView[];
+  // The live limits answered (or failed), so these blocks have their final shape.
+  windowSettled: boolean;
+  plansSettled: boolean;
   contributors: LimitContributorsView[];
   onContribRange: (key: string, range: ContribRange) => void;
   limitHits: LimitHitsView;
@@ -85,14 +88,14 @@ function alertPermission(alertsOn: boolean): AlertPermission | null {
 export function useLivePage(): LivePageView {
   const { platform, showClaude, showCodex, withSrc, effectiveSource } = useSource();
   const { recent, recentHours, setRecentHours, weekly, liveWeekly, liveUsage, codexLive } = useLiveData();
-  const { configData, isApi, weekStart, settings } = useConfigMode();
+  const { configData, modeKnown, isApi, weekStart, settings } = useConfigMode();
   const { costPerDay, coverageDays } = useCostMetrics();
   const { litellmActual } = useLiteLlmActual();
   const [caps] = usePlatformLimits();
   const limits = useLimits();
 
   const both = platform === 'both';
-  const claudePlanMode = showClaude && !!configData && !isApi;
+  const claudePlanMode = showClaude && modeKnown && !isApi;
 
   const accountsLive = usePolling<AccountsLiveData>(showClaude && !isApi ? '/api/accounts/live' : '', ACCOUNTS_POLL_MS);
   const codexBlock = usePolling<CodexBlock>(showCodex ? '/api/codex/block' : '', CODEX_BLOCK_POLL_MS);
@@ -328,6 +331,11 @@ export function useLivePage(): LivePageView {
 
   const onHoursChange = useCallback((value: string) => setRecentHours(Number(value)), [setRecentHours]);
 
+  const limitsAnswered =
+    (!showClaude || isApi || !!liveUsage.data || !!liveUsage.error) && (!showCodex || !!codexLive.data || !!codexLive.error);
+  const windowSettled = limitsAnswered && gauges.every((gauge) => gauge.state?.kind !== 'loading');
+  const plansSettled = limitsAnswered && plans.every((card) => card.state?.kind !== 'loading');
+
   return {
     both,
     hours: String(recentHours),
@@ -337,6 +345,8 @@ export function useLivePage(): LivePageView {
     hourly,
     plans,
     extras,
+    windowSettled,
+    plansSettled,
     contributors,
     onContribRange,
     limitHits,

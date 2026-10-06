@@ -5,7 +5,7 @@ import { NO_COST, barLabel } from './utils';
 
 export const SourcesSplitChart = memo(function SourcesSplitChart({ view, className }: SourcesSplitChartProps) {
   return (
-    <Section title={view.title} description={view.description} help={view.help} className={className}>
+    <Section title={view.title} description={view.description} help={view.help} state={view.state} className={className}>
       <div role="img" aria-label={barLabel(view.rows)} className="flex h-3 w-full gap-0.5 overflow-hidden rounded-full">
         {view.rows.map((row) => (
           <span key={row.key} style={{ width: `${row.width}%`, backgroundColor: row.color }} />

@@ -1,3 +1,4 @@
+import { Markdown } from '@/components/design-system/atoms/Markdown/Markdown';
 import { ToastStack } from '@/components/design-system/organisms/ToastStack/ToastStack';
 import type { ToastStackItem } from '@/components/design-system/organisms/ToastStack/types';
 import { useNotifications } from '@/hooks/useNotifications';
@@ -13,7 +14,7 @@ export function NotificationHost() {
       id: n.id,
       tone: TONES[n.severity] ?? 'info',
       title: n.title,
-      description: n.content ?? (n.message ? <span className="whitespace-pre-line">{n.message}</span> : undefined),
+      description: n.content ?? (n.message ? <Markdown inline text={n.message} className="whitespace-pre-line" /> : undefined),
       action: n.action,
       dismissible: n.dismissible,
     }),

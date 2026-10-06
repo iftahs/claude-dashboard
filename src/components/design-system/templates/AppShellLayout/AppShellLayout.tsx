@@ -41,7 +41,7 @@ export function AppShellLayout({
         Skip to content
       </a>
       <aside className={appShellSidebarVariants({ collapsed: sidebarCollapsed })}>{sidebar}</aside>
-      <div className="relative flex min-w-0 flex-1 scroll-pt-topbar flex-col overflow-y-auto">
+      <div className="relative flex min-w-0 flex-1 scroll-pt-topbar flex-col overflow-y-auto [scrollbar-gutter:stable]">
         <header className="sticky top-0 z-10 flex h-topbar flex-none items-center gap-3 border-b border-line bg-canvas px-4 lg:px-8">
           {topbar}
         </header>

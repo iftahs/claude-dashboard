@@ -26,18 +26,16 @@ export function SidebarFooter({ dataDirs, version, credit }: SidebarFooterProps)
           {dir.path}
         </span>
       ))}
-      {version?.current || update ? (
-        <div className="flex min-w-0 items-center gap-2 text-caption text-fg-subtle">
-          {version?.current ? <span className="whitespace-nowrap">v{version.current}</span> : null}
-          {update && version?.changelogUrl ? (
-            <a href={version.changelogUrl} target="_blank" rel="noreferrer" className={LINK}>
-              {update}
-            </a>
-          ) : (
-            update
-          )}
-        </div>
-      ) : null}
+      <div className="flex min-h-4 min-w-0 items-center gap-2 text-caption text-fg-subtle">
+        {version?.current ? <span className="whitespace-nowrap">v{version.current}</span> : null}
+        {update && version?.changelogUrl ? (
+          <a href={version.changelogUrl} target="_blank" rel="noreferrer" className={LINK}>
+            {update}
+          </a>
+        ) : (
+          update
+        )}
+      </div>
       {credit || version?.repoUrl ? (
         <p className="truncate text-caption text-fg-subtle">
           {credit ? (

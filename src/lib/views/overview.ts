@@ -2,7 +2,7 @@ import { agentProjectLabel, displayModel } from '@/lib/agents';
 import { formatResetCountdown, type BudgetPeriod } from '@/lib/budget';
 import { coverageDays } from '@/lib/coverage';
 import { ago, compact, untilFull, usd } from '@/lib/format';
-import { isTokenExpired } from '@/lib/gauge';
+import { ESTIMATE_GUIDE_NOTE, estimateLabel, isTokenExpired, type EstimatedWindow } from '@/lib/gauge';
 import { limitReadings, limitTone, windowName, type LimitReading } from '@/lib/limits';
 import { modelColor } from '@/lib/palette';
 import { PLATFORM_NOUN, type Platform } from '@/lib/platform';
@@ -16,13 +16,15 @@ export type OverviewStatus = 'loading' | 'error' | 'ready';
 export interface OverviewMessage {
   title: string;
   description: string;
+  tone?: 'warning' | 'neutral';
 }
 
 export interface LimitWindowView {
   key: string;
   label: string;
   percent: number;
-  tone: OverviewTone;
+  value: string;
+  tone: OverviewTone | 'neutral';
   reset: string[];
   binding: boolean;
 }
@@ -123,6 +125,8 @@ export interface BindingMark {
 export interface ClaudeLimitsInput {
   live: LiveUsageData | null;
   loading: boolean;
+  // Rough windows from local logs for when live limits fail; null while the local polls are still loading.
+  estimate: EstimatedWindow[] | null;
   plan: string | null | undefined;
   apiMode: boolean;
   budget: BudgetPeriod[] | null;
@@ -242,10 +246,30 @@ function windowView(slot: WindowSlot, reading: LimitReading | undefined, pickBin
     key: slot.key,
     label: slot.label,
     percent,
+    value: `${percent}%`,
     tone: toneFor(percent),
     reset: shown?.reached ? ['Limit reached.', ...reset] : reset,
     binding: false,
   };
+}
+
+const ESTIMATE_LABEL: Record<EstimatedWindow['key'], string> = { block: '5-hour limit', weekly: 'Weekly limit' };
+
+function estimateViews(windows: EstimatedWindow[], now: number): LimitWindowView[] {
+  return windows.map((window) => ({
+    key: `claude-estimate-${window.key}`,
+    label: ESTIMATE_LABEL[window.key],
+    percent: window.percent,
+    value: estimateLabel(window.percent),
+    tone: 'neutral',
+    reset: [
+      ...(window.percent >= 100 ? ['At the rough guide,', "which is not your plan's limit."] : ['Rough estimate.']),
+      ...(window.resetsAt === null
+        ? ['Opens with your next message']
+        : [`Resets in ${untilFull(window.resetsAt)},`, resetClock(window.resetsAt, now)]),
+    ],
+    binding: false,
+  }));
 }
 
 function windowViews(slots: WindowSlot[], readings: LimitReading[], pickBinding: BindingPicker, now: number): LimitWindowView[] {
@@ -334,6 +358,7 @@ function windowsCard(base: LimitCardBase, windows: LimitWindowView[], note: stri
 export function buildClaudeLimits({
   live,
   loading,
+  estimate,
   plan,
   apiMode,
   budget,
@@ -345,8 +370,16 @@ export function buildClaudeLimits({
   if (apiMode) return capsCard(base, budget, budgetFailed, true, null, now);
   if (live && !live.error) return windowsCard(base, claudeWindows(live, pickBinding, now), null, 'Claude.ai');
   if (live?.error) {
-    const title = isTokenExpired(live.error) ? 'Claude.ai token expired' : 'Claude live limits unavailable';
-    return capsCard(base, budget, budgetFailed, false, { title, description: live.error }, now);
+    if (!estimate) return limitCard(base, { status: 'loading' });
+    const message = isTokenExpired(live.error)
+      ? { title: 'Claude sign-in expired', description: 'Run `claude` in a terminal to refresh live limits.' }
+      : { title: 'Claude live limits unavailable', description: live.error };
+    return limitCard(base, {
+      message: { ...message, tone: 'warning' },
+      windows: estimateViews(estimate, now),
+      caps: budget ? capViews(budget, false, now) : [],
+      note: ESTIMATE_GUIDE_NOTE,
+    });
   }
   if (loading) return limitCard(base, { status: 'loading' });
   return limitCard(base, { status: 'error', message: { title: 'Could not load Claude limits', description: SERVER_DOWN } });
@@ -368,11 +401,11 @@ export function buildCodexLimits({
   if (live?.error) {
     const message = isTokenExpired(live.error)
       ? {
-          title: 'Codex token expired',
+          title: 'Codex sign-in expired',
           description: 'Open the ChatGPT desktop app once. It refreshes its own token and this card recovers on the next poll.',
         }
       : { title: 'Codex live limits unavailable', description: live.error };
-    return capsCard(base, budget, budgetFailed, false, message, now);
+    return capsCard(base, budget, budgetFailed, false, { ...message, tone: 'warning' }, now);
   }
   if (loading) return limitCard(base, { status: 'loading' });
   return limitCard(base, { status: 'error', message: { title: 'Could not load Codex limits', description: SERVER_DOWN } });
@@ -391,7 +424,9 @@ export function markBinding(cards: LimitGlanceView[], binding: BindingMark | nul
 }
 
 export function limitsNote(cards: LimitGlanceView[]): string {
-  if (cards.some((card) => card.windows.length > 0)) return 'How much of each window is used';
+  const windows = cards.flatMap((card) => card.windows);
+  if (windows.length > 0 && windows.every((row) => row.tone === 'neutral')) return 'Rough estimates from local logs';
+  if (windows.length > 0) return 'How much of each window is used';
   if (cards.some((card) => card.caps.length > 0)) return 'Spend against your caps';
   return '';
 }

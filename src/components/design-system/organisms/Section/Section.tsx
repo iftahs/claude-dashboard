@@ -1,5 +1,6 @@
 import { useId } from 'react';
 import { Card } from '@/components/design-system/atoms/Card/Card';
+import { Markdown } from '@/components/design-system/atoms/Markdown/Markdown';
 import { AiInsightButton } from '@/components/design-system/molecules/AiInsightButton/AiInsightButton';
 import { AiInsightInline } from '@/components/design-system/molecules/AiInsightInline/AiInsightInline';
 import { CardHeader } from '@/components/design-system/molecules/CardHeader/CardHeader';
@@ -58,13 +59,14 @@ export function Section({
           <SkeletonPreset
             variant={state.skeleton ?? 'text'}
             rows={state.rows}
+            height={state.height}
             className={cn(flush && state.skeleton !== 'table' && 'px-4 pb-4')}
           />
         ) : null}
         {state?.kind === 'error' ? (
           <ErrorState
             title={state.title}
-            description={state.description}
+            description={state.description ? <Markdown inline text={state.description} /> : undefined}
             onRetry={state.onRetry}
             className={cn('py-6', flush && 'px-4')}
           />
@@ -72,7 +74,7 @@ export function Section({
         {state?.kind === 'empty' ? (
           <EmptyState
             title={state.title}
-            description={state.description}
+            description={state.description ? <Markdown inline text={state.description} /> : undefined}
             icon={state.icon}
             action={state.action}
             className={cn('py-6', flush && 'px-4')}

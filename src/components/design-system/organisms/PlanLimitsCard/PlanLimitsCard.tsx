@@ -5,10 +5,10 @@ import { Section } from '@/components/design-system/organisms/Section/Section';
 import { cn } from '@/lib/cn';
 import { PlanLimitsRow } from './PlanLimitsRow/PlanLimitsRow';
 import type { PlanLimitsCardProps } from './types';
-import { ACTIVE_LABEL } from './utils';
+import { ACTIVE_LABEL, ESTIMATE_LABEL } from './utils';
 
 export const PlanLimitsCard = memo(function PlanLimitsCard({ view, columns = 1, className }: PlanLimitsCardProps) {
-  const { account, plan, active, rows, gates, note } = view;
+  const { account, plan, active, estimate, rows, gates, note } = view;
 
   return (
     <Section
@@ -25,9 +25,10 @@ export const PlanLimitsCard = memo(function PlanLimitsCard({ view, columns = 1, 
       state={view.state}
       className={cn(active && 'border-accent', className)}
       actions={
-        active || plan ? (
+        active || estimate || plan ? (
           <>
             {active ? <Badge tone="accent">{ACTIVE_LABEL}</Badge> : null}
+            {estimate ? <Badge>{ESTIMATE_LABEL}</Badge> : null}
             {plan ? <Badge>{plan}</Badge> : null}
           </>
         ) : undefined

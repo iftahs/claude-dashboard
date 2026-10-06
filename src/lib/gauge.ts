@@ -11,6 +11,36 @@ export interface GaugeLive {
 
 export const BLOCK_MS = 5 * 3600_000;
 export const DEFAULT_BLOCK_LIMIT = 6000000; // 6.0M effective tokens
+export const DEFAULT_WEEKLY_LIMIT = 35_000_000;
+
+export const ESTIMATE_GUIDE_NOTE =
+  'Live limits are unavailable. These bars are rough estimates from local logs, against a guide of 6M effective tokens per 5 hours and 35M per week. Your plan may allow more or less.';
+
+// A window guessed from local logs against the rough guide: never a real limit, so it carries no tone and no "reached".
+export interface EstimatedWindow {
+  key: 'block' | 'weekly';
+  percent: number;
+  resetsAt: number | null;
+}
+
+export function estimatedWindows(input: {
+  block: ActiveBlock | null;
+  weeklyEffective: number | null;
+  weekResetsAt: number;
+  now: number;
+}): EstimatedWindow[] {
+  const { block, weeklyEffective, weekResetsAt, now } = input;
+  const ended = !block || !block.isActive || block.resetsAt <= now;
+  const share = (tokens: number, guide: number) => Math.min(100, Math.round((tokens / guide) * 100));
+  return [
+    { key: 'block', percent: ended ? 0 : share(block.totals.effectiveTokens, DEFAULT_BLOCK_LIMIT), resetsAt: ended ? null : block.resetsAt },
+    { key: 'weekly', percent: share(weeklyEffective ?? 0, DEFAULT_WEEKLY_LIMIT), resetsAt: weekResetsAt },
+  ];
+}
+
+export function estimateLabel(percent: number): string {
+  return `~${percent}%`;
+}
 
 /** "~15m" / "~2h 5m" for a minute count. */
 export function formatMins(mins: number): string {

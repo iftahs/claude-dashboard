@@ -27,6 +27,7 @@ import {
   buildPeakHours,
   buildPlatformCompare,
   buildSourcesSplit,
+  sourcesSplitLoading,
   buildSpendKpis,
   cacheSeriesFor,
   computeCodexSplit,
@@ -194,13 +195,13 @@ export function useTrendsPage(): TrendsPageView {
   // Split by what the platform has: Code and Cowork, Codex threads and guardian reviews, or all three under Both. A Code-only user gets no split.
   const surfaceSplit = both || (showSurfaceToggle && source === 'all');
   const sources = useMemo(() => {
-    if (!weeklyData) return null;
+    if (!weeklyData) return weeklyLoading && (platform === 'codex' || surfaceSplit) ? sourcesSplitLoading(weekDays, platform) : null;
     if (platform === 'codex') {
       return buildSourcesSplit(weeklyData.codexSplit ? computeCodexSplit(weeklyData.codexSplit) : null, weekDays, platform);
     }
     if (!surfaceSplit) return null;
     return buildSourcesSplit(weeklyData.bySource ? computeSourceSplit(weeklyData.bySource) : null, weekDays, platform);
-  }, [weeklyData, platform, surfaceSplit, weekDays]);
+  }, [weeklyData, weeklyLoading, platform, surfaceSplit, weekDays]);
 
   const daily = useMemo(
     () =>

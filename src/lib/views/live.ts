@@ -6,8 +6,11 @@ import {
   BLOCK_MS,
   CODEX_COVERAGE,
   DEFAULT_BLOCK_LIMIT,
+  ESTIMATE_GUIDE_NOTE,
   codexGaugeLive,
   codexGaugeWindow,
+  estimateLabel,
+  estimatedWindows,
   formatMins,
   gaugeReading,
   isTokenExpired,
@@ -144,7 +147,7 @@ export interface PlanLimitRowView {
   label: string;
   value: string;
   percent: number;
-  tone: LiveTone;
+  tone: LiveMeterTone;
   note: string;
   forecast: PlanLimitForecastView | null;
   surfaces: PlanSurfaceView[];
@@ -164,6 +167,7 @@ export interface PlanLimitsView {
   account: string | null;
   plan: string | null;
   active: boolean;
+  estimate: boolean;
   help: string;
   state: SectionState | null;
   rows: PlanLimitRowView[];
@@ -332,7 +336,8 @@ export const CONTRIB_RANGE_OPTIONS: readonly ContribRangeOption[] = [
 
 const DAY_MS = 86_400_000;
 const WEEK_MS = 7 * DAY_MS;
-const DEFAULT_WEEKLY_LIMIT = 35_000_000;
+// A usage bar chart with its legend: 260px of plot, a 12px gap and a 16px legend line.
+const USAGE_CHART_HEIGHT = 288;
 const SERVER_DOWN = 'The dashboard server did not answer. It keeps retrying.';
 const NEXT_MESSAGE = 'Opens with your next message';
 const PAUSES = 'usage pauses at your plan limit until the next reset.';
@@ -389,7 +394,7 @@ const CLAUDE_GAUGE_API_HELP =
   "Estimated cost of your current 5-hour usage block in your most recent session: a window opens at its first message, and the first message after it ends opens the next. Dollar figures use Anthropic's published API rates and are computed from local logs. The bar fills against your daily spending cap when one is set in Settings.";
 const CLAUDE_GAUGE_GATEWAY_HELP =
   'The big number is the estimated cost of your current 5-hour block (published API rates, from local logs). The daily cap bar uses your real billed spend so far today from your LiteLLM gateway. See Spend vs caps below for the real today, week and month figures. Set a daily cap in Settings.';
-const ESTIMATED_BLOCK = 'Estimated against a rough guide of 6M effective tokens per 5 hours.';
+const ESTIMATED_BLOCK = "A rough estimate against a guide of 6M effective tokens per 5 hours, not your plan's real limit.";
 const CLAUDE_TOKENS_HELP = 'Input, output and cache writes. Cache reads do not count toward limits.';
 const CODEX_TOKENS_HELP = 'Input and output. Cached input does not count toward limits.';
 const CODEX_EXPIRED =
@@ -416,7 +421,7 @@ function gaugeView(copy: GaugeCopy, status: GaugeStatus, core: GaugeCore): Limit
   const blank = { description: null, value: '', caption: '', meter: null, rows: [] };
 
   if (!core.block && core.loading) {
-    return { ...base, ...blank, badge: null, notice: null, state: { kind: 'loading', skeleton: 'gauge', rows: 2 } };
+    return { ...base, ...blank, badge: null, notice: null, state: { kind: 'loading', skeleton: 'gauge', rows: 1 } };
   }
   if (!core.block && !core.live && core.failed) {
     return {
@@ -467,18 +472,17 @@ function gaugeView(copy: GaugeCopy, status: GaugeStatus, core: GaugeCore): Limit
     value = compact(reading.effective);
     caption = 'effective tokens, limit unknown';
     meter = { label: copy.title, percent: 0, tone: 'neutral', caption: null };
+  } else if (!reading.hasLive) {
+    value = estimateLabel(Math.round(reading.tokPct));
+    caption = `estimated, ${left}`;
+    meter = { label: copy.title, percent: reading.tokPct, tone: 'neutral', caption: ESTIMATED_BLOCK };
   } else {
     value = `${reading.tokPct.toFixed(0)}%`;
     caption =
-      reading.hasLive && reading.tokPct >= 100 && !reading.noActiveBlock
+      reading.tokPct >= 100 && !reading.noActiveBlock
         ? `used, limit reached, resets in ${untilFull(reading.resetsAt)}`
         : `used, ${left}`;
-    meter = {
-      label: copy.title,
-      percent: reading.tokPct,
-      tone: toneFor(reading.tokPct),
-      caption: reading.hasLive ? null : ESTIMATED_BLOCK,
-    };
+    meter = { label: copy.title, percent: reading.tokPct, tone: toneFor(reading.tokPct), caption: null };
   }
 
   const rows: LimitGaugeRowView[] = [
@@ -503,7 +507,8 @@ function gaugeView(copy: GaugeCopy, status: GaugeStatus, core: GaugeCore): Limit
       ? `${compact(reading.burnRatePerHour)} / hr`
       : null;
   if (burn) rows.push({ key: 'burn', label: 'Burn rate', value: burn, tone: 'default', help: null });
-  if (!isApi && (reading.tokPct ?? 0) < 100) {
+  // Without live data the ETA would come from the rough guide, so it is not shown.
+  if (!isApi && reading.hasLive && (reading.tokPct ?? 0) < 100) {
     if (reading.minsUntilLimit !== null) {
       rows.push({
         key: 'eta',
@@ -512,7 +517,7 @@ function gaugeView(copy: GaugeCopy, status: GaugeStatus, core: GaugeCore): Limit
         tone: reading.paceTone === 'neutral' ? 'default' : reading.paceTone,
         help: null,
       });
-    } else if (reading.projectedPct !== null && reading.hasLive) {
+    } else if (reading.projectedPct !== null) {
       rows.push({
         key: 'eta',
         label: 'Projected at reset',
@@ -558,11 +563,10 @@ export function buildClaudeGauge(input: ClaudeGaugeInput): LimitGaugeView {
   } else if (live) {
     status = { badge: { label: 'Live', tone: 'success', live: true }, source: 'Live from Claude.ai, across every device.', notice: null };
   } else if (liveError) {
-    const expired = isTokenExpired(liveError);
     status = {
-      badge: { label: expired ? 'Expired' : 'Offline', tone: 'warning', live: false },
+      badge: { label: 'Estimate', tone: 'neutral', live: false },
       source: 'Showing local logs only.',
-      notice: { title: expired ? 'Claude.ai token expired' : 'Claude live limits unavailable', description: liveError },
+      notice: { title: isTokenExpired(liveError) ? 'Claude sign-in expired' : 'Claude live limits unavailable', description: liveError },
     };
   } else {
     status = {
@@ -619,10 +623,10 @@ export function buildCodexGauge(input: CodexGaugeInput): LimitGaugeView {
   } else if (liveError) {
     const expired = isTokenExpired(liveError);
     status = {
-      badge: { label: expired ? 'Expired' : 'Offline', tone: 'warning', live: false },
+      badge: { label: 'Local only', tone: 'neutral', live: false },
       source: 'Showing local rollouts only.',
       notice: expired
-        ? { title: 'Codex token expired', description: CODEX_EXPIRED }
+        ? { title: 'Codex sign-in expired', description: CODEX_EXPIRED }
         : { title: 'Codex live limits unavailable', description: liveError },
     };
   } else {
@@ -666,7 +670,7 @@ export function buildHourly({ recent, loading, failed, hours, platform, coworkOn
     const state: SectionState =
       failed && !loading
         ? { kind: 'error', title: 'Could not load hourly usage', description: SERVER_DOWN }
-        : { kind: 'loading', skeleton: 'chart', rows: Math.min(hours, 24) };
+        : { kind: 'loading', skeleton: 'chart', rows: Math.min(hours, 24), height: USAGE_CHART_HEIGHT };
     return { ...view, state };
   }
   if (recent.totals.totalTokens === 0) {
@@ -718,8 +722,6 @@ const CODEX_PLAN_HELP = `Your ChatGPT plan's Codex rate-limit windows: the 5-hou
 const CLAUDE_PLAN_TITLE = 'Claude plan limits';
 const CLAUDE_PLAN_LABELS: PlanLabels = { block: '5-hour limit', weekly: 'Weekly limit, all models' };
 const CODEX_PLAN_LABELS: PlanLabels = { block: '5-hour limit', weekly: 'Weekly limit' };
-const OFFLINE_PLAN_NOTE =
-  'Live limits are unavailable. These bars are estimated from local logs against a rough guide of 6M effective tokens per 5 hours and 35M per week.';
 export const PLAN_SURFACE_HELP =
   'Where the weekly usage so far came from, by surface. The shares add up to 100% of what you have used this week, not of the weekly limit.';
 const SURFACE_COLORS: Record<string, string> = {
@@ -757,8 +759,8 @@ function parseReset(iso: string | null | undefined): number | null {
   return Number.isNaN(at) ? null : at;
 }
 
-function meterRow(key: string, label: string, percent: number, note: string, live: boolean): PlanLimitRowView {
-  const reached = live && percent >= 100 && note !== NEXT_MESSAGE;
+function meterRow(key: string, label: string, percent: number, note: string): PlanLimitRowView {
+  const reached = percent >= 100 && note !== NEXT_MESSAGE;
   return {
     key,
     label,
@@ -771,44 +773,53 @@ function meterRow(key: string, label: string, percent: number, note: string, liv
   };
 }
 
+const AT_GUIDE = "At the rough guide, which is not your plan's limit.";
+
+// Guessed from local logs: neutral, no forecast and never "reached", because the guide is not the plan's limit.
+function estimateRows({ labels, block, weeklyEffective, weekStart, now }: Omit<PlanRowsInput, 'source'>): PlanLimitRowView[] {
+  return estimatedWindows({ block, weeklyEffective, weekResetsAt: nextWeekReset(now, weekStart), now }).map((window) => ({
+    key: window.key,
+    label: labels[window.key],
+    value: estimateLabel(window.percent),
+    percent: window.percent,
+    tone: 'neutral',
+    note: `${window.percent >= 100 ? AT_GUIDE : 'Rough estimate.'} ${resetNote(window.resetsAt, now)}`,
+    forecast: null,
+    surfaces: [],
+  }));
+}
+
 function planRows({ source, labels, block, weeklyEffective, weekStart, now }: PlanRowsInput): PlanLimitRowView[] {
+  if (!source) return estimateRows({ labels, block, weeklyEffective, weekStart, now });
   const rows: PlanLimitRowView[] = [];
 
-  if (!source || source.fiveHour) {
-    const blockEnded = !source && (!block || !block.isActive || block.resetsAt <= now);
-    const percent = source
-      ? Math.round(source.fiveHour?.utilization ?? 0)
-      : blockEnded
-        ? 0
-        : Math.min(100, Math.round(((block?.totals.effectiveTokens ?? 0) / DEFAULT_BLOCK_LIMIT) * 100));
-    const liveReset = source ? parseReset(source.fiveHour?.resetsAt) : null;
-    const idle = source ? source.fiveHour?.resetsAt == null : blockEnded;
+  if (source.fiveHour) {
+    const liveReset = parseReset(source.fiveHour.resetsAt);
     const resetsAt = liveReset ?? block?.resetsAt ?? now + BLOCK_MS;
-    rows.push(meterRow('block', labels.block, percent, resetNote(idle ? null : resetsAt, now), !!source));
+    const note = resetNote(source.fiveHour.resetsAt == null ? null : resetsAt, now);
+    rows.push(meterRow('block', labels.block, Math.round(source.fiveHour.utilization ?? 0), note));
   }
 
-  if (!source || source.weekly) {
-    const raw = source
-      ? (source.weekly?.utilization ?? 0)
-      : Math.min(100, ((weeklyEffective ?? 0) / DEFAULT_WEEKLY_LIMIT) * 100);
-    const liveReset = source ? parseReset(source.weekly?.resetsAt) : null;
-    const idle = !!source && source.weekly?.resetsAt == null;
+  if (source.weekly) {
+    const raw = source.weekly.utilization ?? 0;
+    const liveReset = parseReset(source.weekly.resetsAt);
+    const idle = source.weekly.resetsAt == null;
     const resetsAt = liveReset ?? nextWeekReset(now, weekStart);
     const windowStart = liveReset !== null ? liveReset - WEEK_MS : startOfWeek(now, weekStart);
     const forecast = idle ? null : buildWeeklyForecast({ pct: raw, windowStart, resetsAt, now });
     rows.push({
-      ...meterRow('weekly', labels.weekly, Math.round(raw), resetNote(idle ? null : resetsAt, now), !!source),
+      ...meterRow('weekly', labels.weekly, Math.round(raw), resetNote(idle ? null : resetsAt, now)),
       forecast: forecast
         ? { label: sentence(forecast.label.replace(' · ', ', ')), tone: forecast.tone, willExceed: forecast.willExceed }
         : null,
-      surfaces: source ? surfaceSegments(source.breakdown) : [],
+      surfaces: surfaceSegments(source.breakdown),
     });
   }
 
-  for (const scoped of source?.scoped ?? []) {
+  for (const scoped of source.scoped) {
     const resetsAt = parseReset(scoped.resetsAt);
     const note = scoped.resetsAt == null ? NEXT_MESSAGE : resetsAt === null ? 'Reset time unknown' : resetNote(resetsAt, now);
-    rows.push(meterRow(scoped.label, scoped.label, Math.round(scoped.utilization), note, true));
+    rows.push(meterRow(scoped.label, scoped.label, Math.round(scoped.utilization), note));
   }
 
   return rows;
@@ -881,7 +892,7 @@ function codexSnapshotNote(live: CodexLiveData): string {
 type PlanCardBase = Pick<PlanLimitsView, 'key' | 'platform' | 'title' | 'plan' | 'active' | 'help'>;
 
 function planCard(base: PlanCardBase, rest: Partial<PlanLimitsView>): PlanLimitsView {
-  return { ...base, account: null, state: null, rows: [], gates: [], note: null, ...rest };
+  return { ...base, account: null, estimate: false, state: null, rows: [], gates: [], note: null, ...rest };
 }
 
 export function buildClaudePlans({
@@ -911,7 +922,7 @@ export function buildClaudePlans({
           state: {
             kind: 'empty',
             icon: 'alert',
-            title: isTokenExpired(account.live.error) ? 'Token expired for this account' : 'Live limits unavailable for this account',
+            title: isTokenExpired(account.live.error) ? 'Sign-in expired for this account' : 'Live limits unavailable for this account',
             description: account.live.error,
           },
         });
@@ -935,8 +946,9 @@ export function buildClaudePlans({
   const source = live && !live.error ? claudeSource(live) : null;
   return [
     planCard(base, {
+      estimate: !source,
       rows: planRows({ source, labels, block, weeklyEffective, weekStart, now }),
-      note: source ? null : OFFLINE_PLAN_NOTE,
+      note: source ? null : ESTIMATE_GUIDE_NOTE,
     }),
   ];
 }
@@ -965,7 +977,7 @@ export function buildCodexPlan({ live, failed, weekStart, now }: CodexPlanInput)
       state: {
         kind: 'empty',
         icon: 'alert',
-        title: expired ? 'Codex token expired' : 'Codex live limits unavailable',
+        title: expired ? 'Codex sign-in expired' : 'Codex live limits unavailable',
         description: expired ? CODEX_EXPIRED : error,
       },
     });
