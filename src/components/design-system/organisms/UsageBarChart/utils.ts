@@ -33,7 +33,8 @@ const AXIS_WIDTH: Record<UsageBarMetric, number> = { tokens: 44, cost: 56 };
 const LEGEND_INSET: Record<UsageBarMetric, string> = { tokens: 'pl-11', cost: 'pl-14' };
 
 export function formatValue(value: number, metric: UsageBarMetric): string {
-  return metric === 'cost' ? usd(value) : compact(value);
+  if (metric === 'cost') return value === 0 ? '$0' : usd(value);
+  return compact(value);
 }
 
 export function axisWidth(metric: UsageBarMetric): number {
@@ -126,6 +127,12 @@ export function buildUsageBars({
   if (projected) series.push({ key: PROJECTION_KEY, label: PROJECTED_TEXT, color: CHART_PROJECTED_FILL });
 
   return { rows, series, todayLabel: projected ? labelFor(now) : null };
+}
+
+export function topSeries(row: UsageBarRow | undefined, series: readonly UsageBarSeries[]): string | null {
+  let top: string | null = null;
+  if (row) for (const entry of series) if (Number(row[entry.key]) > 0) top = entry.key;
+  return top;
 }
 
 export function footerLines(row: UsageBarRow, metric: UsageBarMetric): UsageBarFooterLine[] {

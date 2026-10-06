@@ -6,8 +6,6 @@ export interface WeeklyForecast {
   willExceed: boolean;
   /** Compact display string, e.g. "on track · ~72% by reset" or "limit in ~2d". */
   label: string;
-  /** Severity color for the label. */
-  color: string;
   tone: ForecastTone;
 }
 
@@ -45,7 +43,7 @@ export function buildWeeklyForecast(input: {
   const projectedPct = elapsedFrac > 0 ? pct / elapsedFrac : pct;
 
   if (pct >= 100) {
-    return { projectedPct: 100, willExceed: true, label: 'weekly limit reached', color: '#ef4444', tone: 'danger' };
+    return { projectedPct: 100, willExceed: true, label: 'weekly limit reached', tone: 'danger' };
   }
 
   if (projectedPct >= 100 && pct > 0) {
@@ -56,7 +54,6 @@ export function buildWeeklyForecast(input: {
       projectedPct,
       willExceed: true,
       label: `on pace to hit limit in ~${formatEta(msTo100)}`,
-      color: soon ? '#ef4444' : '#f59e0b',
       tone: soon ? 'danger' : 'warning',
     };
   }
@@ -65,7 +62,6 @@ export function buildWeeklyForecast(input: {
     projectedPct,
     willExceed: false,
     label: `on track · ~${Math.round(projectedPct)}% by reset`,
-    color: '#71717a',
     tone: 'neutral',
   };
 }

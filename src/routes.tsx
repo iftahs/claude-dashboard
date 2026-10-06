@@ -1,7 +1,6 @@
 import { lazy } from 'react';
 import type { ReactNode } from 'react';
 import { matchPath } from 'react-router-dom';
-import { LegacyTabFrame } from '@/components/common/LegacyTabFrame/LegacyTabFrame';
 import type { IconName } from '@/components/design-system/atoms/Icon/types';
 import type { Platform } from '@/lib/platform';
 
@@ -42,14 +41,10 @@ const OverviewPage = lazy(() => import('@/pages/OverviewPage/OverviewPage').then
 const LivePage = lazy(() => import('@/pages/LivePage/LivePage').then((m) => ({ default: m.LivePage })));
 const AgentsPage = lazy(() => import('@/pages/AgentsPage/AgentsPage').then((m) => ({ default: m.AgentsPage })));
 const WorkflowsPage = lazy(() => import('@/pages/WorkflowsPage/WorkflowsPage').then((m) => ({ default: m.WorkflowsPage })));
-const TrendsTab = lazy(() => import('@/components/legacy/tabs/TrendsTab/TrendsTab').then((m) => ({ default: m.TrendsTab })));
-const ModelsTab = lazy(() => import('@/components/legacy/tabs/ModelsTab/ModelsTab').then((m) => ({ default: m.ModelsTab })));
-const InsightsTab = lazy(() =>
-  import('@/components/legacy/tabs/InsightsTab/InsightsTab').then((m) => ({ default: m.InsightsTab })),
-);
-const SessionsTab = lazy(() =>
-  import('@/components/legacy/tabs/SessionsTab/SessionsTab').then((m) => ({ default: m.SessionsTab })),
-);
+const TrendsPage = lazy(() => import('@/pages/TrendsPage/TrendsPage').then((m) => ({ default: m.TrendsPage })));
+const ModelsPage = lazy(() => import('@/pages/ModelsPage/ModelsPage').then((m) => ({ default: m.ModelsPage })));
+const InsightsPage = lazy(() => import('@/pages/InsightsPage/InsightsPage').then((m) => ({ default: m.InsightsPage })));
+const SessionsPage = lazy(() => import('@/pages/SessionsPage/SessionsPage').then((m) => ({ default: m.SessionsPage })));
 const WorkspacePage = lazy(() => import('@/pages/WorkspacePage/WorkspacePage').then((m) => ({ default: m.WorkspacePage })));
 const AiPage = lazy(() => import('@/pages/AiPage/AiPage').then((m) => ({ default: m.AiPage })));
 const SettingsPage = lazy(() => import('@/pages/SettingsPage/SettingsPage').then((m) => ({ default: m.SettingsPage })));
@@ -94,11 +89,7 @@ export const ROUTES: readonly AppRoute[] = [
     label: 'Trends',
     group: 'analyze',
     icon: 'trending',
-    element: (
-      <LegacyTabFrame routeId="trends">
-        <TrendsTab />
-      </LegacyTabFrame>
-    ),
+    element: <TrendsPage />,
   },
   {
     id: 'models',
@@ -106,11 +97,7 @@ export const ROUTES: readonly AppRoute[] = [
     label: 'Models',
     group: 'analyze',
     icon: 'layers',
-    element: (
-      <LegacyTabFrame routeId="models">
-        <ModelsTab />
-      </LegacyTabFrame>
-    ),
+    element: <ModelsPage />,
   },
   {
     id: 'insights',
@@ -118,11 +105,7 @@ export const ROUTES: readonly AppRoute[] = [
     label: 'Insights',
     group: 'analyze',
     icon: 'bars',
-    element: (
-      <LegacyTabFrame routeId="insights">
-        <InsightsTab />
-      </LegacyTabFrame>
-    ),
+    element: <InsightsPage />,
   },
   {
     id: 'sessions',
@@ -130,11 +113,7 @@ export const ROUTES: readonly AppRoute[] = [
     label: 'Sessions',
     group: 'analyze',
     icon: 'list',
-    element: (
-      <LegacyTabFrame routeId="sessions">
-        <SessionsTab />
-      </LegacyTabFrame>
-    ),
+    element: <SessionsPage />,
   },
   {
     id: 'workspace',

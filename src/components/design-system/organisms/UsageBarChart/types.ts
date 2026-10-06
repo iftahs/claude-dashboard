@@ -1,3 +1,4 @@
+import type { RectangleProps } from 'recharts';
 import type { Bucket } from '@/types';
 
 export type UsageBarMetric = 'tokens' | 'cost';
@@ -26,6 +27,8 @@ export interface UsageBarModelInput {
   now: number;
 }
 
+export type UsageBarShapeProps = RectangleProps & { payload?: UsageBarRow };
+
 export interface UsageBarFooterLine {
   label: string;
   value: string;
@@ -40,6 +43,7 @@ export interface UsageBarChartProps {
   projectionTokensPerDay?: number;
   now?: number;
   height?: number;
+  fill?: boolean;
   ariaLabel?: string;
   className?: string;
 }

@@ -27,6 +27,7 @@
 | `projectionTokensPerDay` | `number` | average of `buckets` | Height of a projected bar under `metric="tokens"`. |
 | `now` | `number` | `Date.now()` at render | The clock used for the today marker and for flagging future buckets. Pass it only from a value that does not change every second. |
 | `height` | `number` | `260` | Height of the plot in pixels. The legend sits under it. |
+| `fill` | `boolean` | `false` | The plot grows to fill a flex column parent (a `Section` with `grow`), and `height` becomes its minimum. |
 | `ariaLabel` | `string` | - | Text alternative of the chart: what it plots and over which range. |
 | `className` | `string` | - | Extra classes merged onto the root. |
 
@@ -35,6 +36,7 @@
 - Series: one per model with a value in the range, largest total at the bottom, coloured by `modelColor()`. The `<synthetic>` model and models with no value for the metric are left out.
 - Projected: one neutral series named "Projected" on the appended days, with a dashed "Today" line at the current bucket.
 - Bars animate only up to 60 buckets, so a long range does not replay hundreds of bars on every poll.
+- The top segment of every stack has rounded corners, whichever model it is.
 
 ## Usage
 

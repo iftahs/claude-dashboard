@@ -36,3 +36,22 @@ export const PLATFORM_NOUN: Record<Platform, string> = {
 export function titleScope(platform: Platform): string {
   return platform === 'claude' ? '' : ` · ${PLATFORM_NOUN[platform]}`;
 }
+
+export type SurfaceKey = UsageSource | 'chat' | 'other';
+
+// One colour per surface on every chart that splits by surface (Live's weekly breakdown, Trends' sources split).
+export const SURFACE_COLOR: Record<SurfaceKey, string> = {
+  code: 'rgb(var(--platform-claude))',
+  cowork: 'rgb(var(--tag-2))',
+  chat: 'rgb(var(--tag-6))',
+  codex: 'rgb(var(--platform-codex))',
+  other: 'rgb(var(--tag-untagged))',
+};
+
+export const SURFACE_LABEL: Record<SurfaceKey, string> = {
+  code: 'Claude Code',
+  cowork: 'Cowork',
+  chat: 'Chats',
+  codex: 'Codex',
+  other: 'Other',
+};

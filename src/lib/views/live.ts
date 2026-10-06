@@ -9,13 +9,12 @@ import {
   codexGaugeLive,
   codexGaugeWindow,
   formatMins,
-  formatRemaining,
   gaugeReading,
   isTokenExpired,
   type GaugeLive,
 } from '@/lib/gauge';
-import { LIMIT_DANGER_PCT, LIMIT_WARN_PCT, limitTone, windowName } from '@/lib/limits';
-import { PLATFORM_NOUN, titleScope, type Platform } from '@/lib/platform';
+import { LIMIT_DANGER_PCT, LIMIT_WARN_PCT, limitReadings, limitTone, windowName } from '@/lib/limits';
+import { PLATFORM_NOUN, SURFACE_COLOR, titleScope, type Platform } from '@/lib/platform';
 import type { SectionState } from '@/lib/section';
 import { capViews, planLabel, resetClock, type LimitCapView } from '@/lib/views/overview';
 import { nextWeekReset, startOfWeek, type WeekStart } from '@/lib/week';
@@ -338,8 +337,6 @@ const SERVER_DOWN = 'The dashboard server did not answer. It keeps retrying.';
 const NEXT_MESSAGE = 'Opens with your next message';
 const PAUSES = 'usage pauses at your plan limit until the next reset.';
 
-const token = (name: string) => `rgb(var(--${name}))`;
-
 function sentence(text: string): string {
   return text.charAt(0).toUpperCase() + text.slice(1);
 }
@@ -361,7 +358,7 @@ function windowClock(ms: number, now: number): string {
   const date = new Date(ms);
   const time = date.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
   if (Math.abs(ms - now) < DAY_MS) return time;
-  return `${date.toLocaleDateString('en-US', { weekday: 'short' })} ${time}`;
+  return `${date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} ${time}`;
 }
 
 interface GaugeStatus {
@@ -444,7 +441,7 @@ function gaugeView(copy: GaugeCopy, status: GaugeStatus, core: GaugeCore): Limit
     now,
   });
 
-  const left = reading.noActiveBlock ? NEXT_MESSAGE.toLowerCase() : `${formatRemaining(reading.remainingMs)} left`;
+  const left = reading.noActiveBlock ? NEXT_MESSAGE.toLowerCase() : `${untilFull(reading.resetsAt)} left`;
   const description = reading.noActiveBlock
     ? NEXT_MESSAGE
     : reading.startsAt !== null
@@ -472,7 +469,10 @@ function gaugeView(copy: GaugeCopy, status: GaugeStatus, core: GaugeCore): Limit
     meter = { label: copy.title, percent: 0, tone: 'neutral', caption: null };
   } else {
     value = `${reading.tokPct.toFixed(0)}%`;
-    caption = `used, ${left}`;
+    caption =
+      reading.hasLive && reading.tokPct >= 100 && !reading.noActiveBlock
+        ? `used, limit reached, resets in ${untilFull(reading.resetsAt)}`
+        : `used, ${left}`;
     meter = {
       label: copy.title,
       percent: reading.tokPct,
@@ -521,6 +521,19 @@ function gaugeView(copy: GaugeCopy, status: GaugeStatus, core: GaugeCore): Limit
         help: null,
       });
     }
+  }
+
+  if (!core.block && core.failed) {
+    return {
+      ...base,
+      state: null,
+      description,
+      value,
+      caption,
+      meter,
+      rows: [],
+      notice: base.notice ?? { title: 'Local usage could not be loaded', description: SERVER_DOWN },
+    };
   }
 
   return { ...base, state: null, description, value, caption, meter, rows };
@@ -579,7 +592,10 @@ function snapshotAge(live: CodexLiveData): string {
 export function buildCodexGauge(input: CodexGaugeInput): LimitGaugeView {
   const { isApi } = input;
   const window = codexGaugeWindow(input.live);
-  const live = codexGaugeLive(input.live);
+  const reading = codexGaugeLive(input.live);
+  const exhausted =
+    !!input.live && !!window && codexReached(input.live).has(window === input.live.fiveHour ? 'codex-5h' : 'codex-weekly');
+  const live = reading && exhausted ? { ...reading, pct: 100 } : reading;
   const liveError = input.live?.error ?? input.liveFailed;
   const windowSec = input.windowSec ?? window?.windowSec ?? BLOCK_MS / 1000;
   const name = windowName(windowSec);
@@ -707,11 +723,11 @@ const OFFLINE_PLAN_NOTE =
 export const PLAN_SURFACE_HELP =
   'Where the weekly usage so far came from, by surface. The shares add up to 100% of what you have used this week, not of the weekly limit.';
 const SURFACE_COLORS: Record<string, string> = {
-  claude_code: PLATFORM_COLORS.claude,
-  cowork: token('tag-2'),
-  chat: token('tag-6'),
+  claude_code: SURFACE_COLOR.code,
+  cowork: SURFACE_COLOR.cowork,
+  chat: SURFACE_COLOR.chat,
 };
-const OTHER_SURFACE_COLOR = token('tag-untagged');
+const OTHER_SURFACE_COLOR = SURFACE_COLOR.other;
 const SURFACE_LABELS: Record<string, string> = {
   claude_code: 'Claude Code',
   cowork: 'Cowork',
@@ -741,8 +757,18 @@ function parseReset(iso: string | null | undefined): number | null {
   return Number.isNaN(at) ? null : at;
 }
 
-function meterRow(key: string, label: string, percent: number, note: string): PlanLimitRowView {
-  return { key, label, value: `${percent}%`, percent, tone: toneFor(percent), note, forecast: null, surfaces: [] };
+function meterRow(key: string, label: string, percent: number, note: string, live: boolean): PlanLimitRowView {
+  const reached = live && percent >= 100 && note !== NEXT_MESSAGE;
+  return {
+    key,
+    label,
+    value: `${percent}%`,
+    percent,
+    tone: toneFor(percent),
+    note: reached ? `Limit reached. ${note}` : note,
+    forecast: null,
+    surfaces: [],
+  };
 }
 
 function planRows({ source, labels, block, weeklyEffective, weekStart, now }: PlanRowsInput): PlanLimitRowView[] {
@@ -758,7 +784,7 @@ function planRows({ source, labels, block, weeklyEffective, weekStart, now }: Pl
     const liveReset = source ? parseReset(source.fiveHour?.resetsAt) : null;
     const idle = source ? source.fiveHour?.resetsAt == null : blockEnded;
     const resetsAt = liveReset ?? block?.resetsAt ?? now + BLOCK_MS;
-    rows.push(meterRow('block', labels.block, percent, resetNote(idle ? null : resetsAt, now)));
+    rows.push(meterRow('block', labels.block, percent, resetNote(idle ? null : resetsAt, now), !!source));
   }
 
   if (!source || source.weekly) {
@@ -771,7 +797,7 @@ function planRows({ source, labels, block, weeklyEffective, weekStart, now }: Pl
     const windowStart = liveReset !== null ? liveReset - WEEK_MS : startOfWeek(now, weekStart);
     const forecast = idle ? null : buildWeeklyForecast({ pct: raw, windowStart, resetsAt, now });
     rows.push({
-      ...meterRow('weekly', labels.weekly, Math.round(raw), resetNote(idle ? null : resetsAt, now)),
+      ...meterRow('weekly', labels.weekly, Math.round(raw), resetNote(idle ? null : resetsAt, now), !!source),
       forecast: forecast
         ? { label: sentence(forecast.label.replace(' · ', ', ')), tone: forecast.tone, willExceed: forecast.willExceed }
         : null,
@@ -782,7 +808,7 @@ function planRows({ source, labels, block, weeklyEffective, weekStart, now }: Pl
   for (const scoped of source?.scoped ?? []) {
     const resetsAt = parseReset(scoped.resetsAt);
     const note = scoped.resetsAt == null ? NEXT_MESSAGE : resetsAt === null ? 'Reset time unknown' : resetNote(resetsAt, now);
-    rows.push(meterRow(scoped.label, scoped.label, Math.round(scoped.utilization), note));
+    rows.push(meterRow(scoped.label, scoped.label, Math.round(scoped.utilization), note, true));
   }
 
   return rows;
@@ -815,10 +841,25 @@ function claudeSource(live: LiveUsageData): PlanSource {
   };
 }
 
+// The provider's limitReached flag marks its fullest open window as exhausted, whatever its % reads (same rule as the topbar chip).
+function codexReached(live: CodexLiveData): Set<string> {
+  return new Set(
+    limitReadings(null, live)
+      .filter((reading) => reading.reached)
+      .map((reading) => reading.key),
+  );
+}
+
 function codexSource(live: CodexLiveData): PlanSource {
-  const window = (info: CodexWindow | null): PlanWindow | null =>
-    info ? { utilization: info.usedPct, resetsAt: info.resetsAt } : null;
-  return { fiveHour: window(live.fiveHour), weekly: window(live.weekly), scoped: [], breakdown: null };
+  const reached = codexReached(live);
+  const window = (key: string, info: CodexWindow | null): PlanWindow | null =>
+    info ? { utilization: reached.has(key) ? 100 : info.usedPct, resetsAt: info.resetsAt } : null;
+  return {
+    fiveHour: window('codex-5h', live.fiveHour),
+    weekly: window('codex-weekly', live.weekly),
+    scoped: [],
+    breakdown: null,
+  };
 }
 
 function codexGates(live: CodexLiveData): PlanGateView[] {
@@ -993,7 +1034,8 @@ export function codexCreditsView(live: CodexLiveData): ExtraUsageView | null {
   const enabled = !!c && (c.hasCredits || c.unlimited);
   const rows: ExtraUsageRowView[] = [];
   if (rc) {
-    rows.push({ label: 'Reset credits', value: `${rc.available} available, ${rc.applicable} applicable now` });
+    rows.push({ label: 'Reset credits', value: `${rc.available} available` });
+    rows.push({ label: 'Applicable now', value: String(rc.applicable) });
   }
   if (c?.overageLimitReached) rows.push({ label: 'Overage limit', value: 'Reached', tone: 'danger' });
   return {
@@ -1126,8 +1168,8 @@ export function buildLimitHits({ data, failed, platform, now }: LimitHitsInput):
     ...view,
     blocked: !!active,
     figures: [
-      { key: '7d', label: 'Last 7 days', value: String(data.episodes7d), note: plural(data.requests7d, 'refused request', 'refused requests'), alert: false },
-      { key: '30d', label: 'Last 30 days', value: String(data.episodes30d), note: plural(data.requests30d, 'refused request', 'refused requests'), alert: false },
+      { key: '7d', label: '7 days', value: String(data.episodes7d), note: plural(data.requests7d, 'refused request', 'refused requests'), alert: false },
+      { key: '30d', label: '30 days', value: String(data.episodes30d), note: plural(data.requests30d, 'refused request', 'refused requests'), alert: false },
       {
         key: 'now',
         label: 'Right now',

@@ -27,17 +27,6 @@ export function limitTone(pct: number): LimitTone {
   return 'success';
 }
 
-/** Fill colour per tone. `success` is the clay accent, not green: a limit bar is usage, not health. */
-export const LIMIT_TONE_COLOR: Record<LimitTone, string> = {
-  success: '#d97757',
-  warning: '#f59e0b',
-  danger: '#ef4444',
-};
-
-export function limitColor(pct: number): string {
-  return LIMIT_TONE_COLOR[limitTone(pct)];
-}
-
 const MIN = 60_000;
 /** Below this much elapsed window time the pace is noise, not a trend. */
 const MIN_ELAPSED_MS = 5 * MIN;

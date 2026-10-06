@@ -28,7 +28,7 @@
 | `columns` | `2 \| 3` | `2` | Number of columns above the `collapseBelow` breakpoint. |
 | `ratio` | `'equal' \| '1:2' \| '2:1'` | `'equal'` | Width ratio of the two columns. Ignored when `columns` is `3`, which is always equal. |
 | `gap` | `'md' \| 'lg'` | `'lg'` | 16px or 24px between cells, both across and down. |
-| `collapseBelow` | `'md' \| 'lg'` | `'lg'` | The breakpoint under which the cells stack in one column: `md` is 768px, `lg` is 1024px. |
+| `collapseBelow` | `'md' \| 'lg' \| 'xl'` | `'lg'` | The breakpoint under which the cells stack in one column: `md` is 768px, `lg` is 1024px, `xl` is 1280px. Use `xl` for a ratio split whose narrow column would drop under about 300px beside the sidebar. |
 
 This template does not spread native attributes - it only accepts the slot and props above.
 

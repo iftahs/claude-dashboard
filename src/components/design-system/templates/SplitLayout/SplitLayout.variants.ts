@@ -18,6 +18,7 @@ export const splitLayoutVariants = cva('grid min-w-0 grid-cols-1 *:min-w-0', {
     collapseBelow: {
       md: '',
       lg: '',
+      xl: '',
     },
   },
   compoundVariants: [
@@ -29,6 +30,10 @@ export const splitLayoutVariants = cva('grid min-w-0 grid-cols-1 *:min-w-0', {
     { columns: 2, ratio: '1:2', collapseBelow: 'lg', class: 'lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]' },
     { columns: 2, ratio: '2:1', collapseBelow: 'lg', class: 'lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]' },
     { columns: 3, collapseBelow: 'lg', class: 'lg:grid-cols-3' },
+    { columns: 2, ratio: 'equal', collapseBelow: 'xl', class: 'xl:grid-cols-2' },
+    { columns: 2, ratio: '1:2', collapseBelow: 'xl', class: 'xl:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]' },
+    { columns: 2, ratio: '2:1', collapseBelow: 'xl', class: 'xl:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]' },
+    { columns: 3, collapseBelow: 'xl', class: 'xl:grid-cols-3' },
   ],
   defaultVariants: {
     columns: 2,
