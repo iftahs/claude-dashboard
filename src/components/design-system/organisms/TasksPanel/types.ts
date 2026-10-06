@@ -1,7 +1,6 @@
-import type { WorkspaceTasksData } from '@/types';
+import type { TasksSectionView } from '@/lib/views/workspace';
 
 export interface TasksPanelProps {
-  data: WorkspaceTasksData | null;
-  /** Shown in the Tasks column when there are none (e.g. a platform with no task tracker). */
-  emptyTasks?: string;
+  view: TasksSectionView;
+  className?: string;
 }

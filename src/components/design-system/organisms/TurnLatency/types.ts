@@ -1,27 +1,24 @@
-import type { InsightsTurns } from '@/types';
-import type { Platform } from '@/hooks/useSource';
+import type { TurnLatencyView } from '@/lib/views/insights';
 
 export interface TurnLatencyProps {
-  data: InsightsTurns | null;
-  /** Under Both the histogram stacks Claude and Codex and the stats split per platform. */
-  platform: Platform;
+  view: TurnLatencyView;
+  className?: string;
 }
 
-export interface HistogramRow {
-  label: string;
-  claude: number;
-  codex: number;
-  total: number;
+export interface LatencyTooltipItem {
+  name?: string | number;
+  value?: number | string | readonly (number | string)[];
+  color?: string;
 }
 
-export interface HistogramTooltipProps {
+export interface LatencyTooltipState {
   active?: boolean;
-  payload?: { payload: HistogramRow }[];
-  split: boolean;
+  payload?: readonly LatencyTooltipItem[];
+  label?: string | number;
 }
 
-export interface LatencyTile {
+export interface LatencyTooltipRow {
   label: string;
   value: string;
-  help: string;
+  color?: string;
 }

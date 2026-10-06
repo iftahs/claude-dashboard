@@ -1,8 +1,14 @@
-import type { InsightsMcp } from '@/types';
-import type { Platform } from '@/hooks/useSource';
+import type { McpBreakdownView } from '@/lib/views/insights';
 
 export interface McpBreakdownProps {
-  data: InsightsMcp | null;
-  /** Names whose built-in tools the split is against (Claude's, Codex's or each agent's). */
-  platform: Platform;
+  view: McpBreakdownView;
+  className?: string;
+}
+
+export interface McpSplitSegment {
+  key: string;
+  label: string;
+  color: string;
+  percent: number;
+  value: string;
 }

@@ -1,9 +1,8 @@
-import type { AiBackend } from '@/types';
-
 export interface AiInsightInlineProps {
+  onDismiss: () => void;
   text?: string;
   loading?: boolean;
   error?: string;
-  backend?: AiBackend;
-  onDismiss: () => void;
+  backendLabel?: string;
+  className?: string;
 }

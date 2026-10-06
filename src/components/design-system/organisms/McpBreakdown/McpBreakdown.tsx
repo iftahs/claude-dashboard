@@ -1,94 +1,66 @@
-import { Skeleton } from '@/components/design-system/atoms/Skeleton/Skeleton';
-import { compact } from '@/lib/format';
-import { builtInCopy } from './utils';
+import { Table } from '@/components/design-system/atoms/Table/Table';
+import { TableCell } from '@/components/design-system/atoms/TableCell/TableCell';
+import { TableRow } from '@/components/design-system/atoms/TableRow/TableRow';
+import { Legend } from '@/components/design-system/molecules/Legend/Legend';
+import { Section } from '@/components/design-system/organisms/Section/Section';
+import { cn } from '@/lib/cn';
 import type { McpBreakdownProps } from './types';
+import { LEGEND_LABEL, TABLE_CAPTION, splitLabel, splitSegments } from './utils';
 
-export function McpBreakdown({ data, platform }: McpBreakdownProps) {
-  const copy = builtInCopy(platform);
-  if (!data) {
-    return (
-      <div className="space-y-4">
-        <Skeleton className="h-6 w-full rounded" />
-        <div className="space-y-2">
-          {Array.from({ length: 4 }).map((_, i) => (
-            <Skeleton key={i} className="h-4 w-full rounded" />
-          ))}
-        </div>
-      </div>
-    );
-  }
-
-  const totalCalls = data.builtinCalls + data.mcpCalls;
-  const builtinPct = totalCalls > 0 ? (data.builtinCalls / totalCalls) * 100 : 0;
-  const mcpPct = 100 - builtinPct;
+export function McpBreakdown({ view, className }: McpBreakdownProps) {
+  const segments = splitSegments(view);
 
   return (
-    <div className="space-y-4">
-      {/* Stacked bar */}
-      <div>
-        <div className="mb-1.5 flex justify-between text-xs text-zinc-500">
-          <span>
-            Built-in{' '}
-            <span className="font-semibold text-zinc-300">{compact(data.builtinCalls)}</span>
-          </span>
-          <span>
-            MCP{' '}
-            <span className="font-semibold text-zinc-300">{compact(data.mcpCalls)}</span>
-          </span>
+    <Section title={view.title} description={view.description} help={view.help} state={view.state} ai={view.ai} className={className}>
+      <div className="flex flex-col gap-5">
+        <div className="flex flex-col gap-3">
+          <div role="img" aria-label={splitLabel(view)} className="flex h-2 w-full gap-0.5 overflow-hidden rounded-full">
+            {segments.map((segment) =>
+              segment.percent > 0 ? (
+                <div key={segment.key} className="h-full" style={{ width: `${segment.percent}%`, backgroundColor: segment.color }} />
+              ) : null,
+            )}
+          </div>
+          <Legend ariaLabel={LEGEND_LABEL} items={segments} />
         </div>
-        <div className="flex h-3 w-full overflow-hidden rounded-full">
-          <div
-            className="h-full bg-clay-500 transition-all duration-700"
-            style={{ width: `${builtinPct}%` }}
-          />
-          <div
-            className="h-full bg-[#6366f1] transition-all duration-700"
-            style={{ width: `${mcpPct}%` }}
-          />
-        </div>
-        <div className="mt-1 flex justify-between text-[10px] text-zinc-600">
-          <span>{builtinPct.toFixed(0)}% built-in</span>
-          <span>{mcpPct.toFixed(0)}% MCP</span>
-        </div>
+
+        <p className="text-small text-fg-muted">{view.explanation}</p>
+
+        {view.servers.length > 0 ? (
+          <div className="overflow-hidden rounded-control border border-line">
+            <Table caption={TABLE_CAPTION}>
+              <thead>
+                <TableRow>
+                  <TableCell header>MCP server</TableCell>
+                  <TableCell header numeric>
+                    Calls
+                  </TableCell>
+                  <TableCell header numeric>
+                    Errors
+                  </TableCell>
+                </TableRow>
+              </thead>
+              <tbody>
+                {view.servers.map((server) => (
+                  <TableRow key={server.server}>
+                    <TableCell truncate title={server.server} className="font-mono text-mono">
+                      {server.server}
+                    </TableCell>
+                    <TableCell numeric className="text-fg">
+                      {server.calls}
+                    </TableCell>
+                    <TableCell numeric className={cn(server.failed ? 'text-danger-fg' : 'text-fg-subtle')}>
+                      {server.errors}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </tbody>
+            </Table>
+          </div>
+        ) : null}
+
+        {view.emptyNote ? <p className="text-small text-fg-muted">{view.emptyNote}</p> : null}
       </div>
-
-      {/* Plain-language explanation of what the split means */}
-      <p className="text-[11px] leading-relaxed text-zinc-500">
-        <span className="text-zinc-400">Built-in</span> = {copy.agentNoun} native tools ({copy.examples}).{' '}
-        <span className="text-zinc-400">MCP</span> = tools from connected MCP servers. Numbers are
-        tool-call counts in this window; <span className="text-red-400">errors</span> are calls that
-        failed (a declined call never reached the server, so it is not one).
-      </p>
-
-      {/* Per-server table: name · calls · errors, columns aligned */}
-      {data.perServer.length > 0 && (
-        <div>
-          <div className="mb-1.5 flex items-center gap-2 border-b border-white/10 pb-1 text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
-            <span className="flex-1">MCP server</span>
-            <span className="w-14 text-right">calls</span>
-            <span className="w-14 text-right">errors</span>
-          </div>
-          <div className="space-y-1.5">
-            {data.perServer.map((s) => (
-              <div key={s.server} className="flex items-center gap-2 text-xs">
-                <span className="flex-1 truncate font-mono text-zinc-400" title={s.server}>
-                  {s.server}
-                </span>
-                <span className="w-14 text-right tabular-nums text-zinc-300">{compact(s.calls)}</span>
-                <span
-                  className={`w-14 text-right tabular-nums ${s.errors > 0 ? 'text-red-400' : 'text-zinc-600'}`}
-                >
-                  {s.errors > 0 ? s.errors : '—'}
-                </span>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {data.perServer.length === 0 && data.mcpCalls === 0 && (
-        <div className="text-sm text-zinc-500">No MCP tool calls in this window.</div>
-      )}
-    </div>
+    </Section>
   );
 }

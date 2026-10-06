@@ -1,21 +1,22 @@
-import type { ComplexityPoint } from '@/types';
-import type { Platform } from '@/hooks/useSource';
+import type { ComplexityPointView, ComplexityScatterView } from '@/lib/views/insights';
 
 export interface ComplexityScatterProps {
-  data: ComplexityPoint[] | null;
-  /** Decides what the dot size is called, and whether dots are coloured per platform (Both). */
-  platform: Platform;
+  view: ComplexityScatterView;
+  className?: string;
 }
 
-export interface TooltipPayloadItem {
-  payload: ComplexityPoint;
+export interface ComplexityTooltipItem {
+  payload?: ComplexityPointView;
 }
 
-export interface TooltipProps {
+export interface ComplexityTooltipState {
   active?: boolean;
-  payload?: TooltipPayloadItem[];
-  /** The dot-size row's label ("Subagents", "Guardian reviews", …). */
-  sizeLabel: string;
-  /** Add a platform row (the Both view mixes Claude and Codex sessions). */
-  showPlatform: boolean;
+  payload?: readonly ComplexityTooltipItem[];
+}
+
+export interface ComplexityLegendItem {
+  key: string;
+  label: string;
+  color: string;
+  shape: 'round';
 }

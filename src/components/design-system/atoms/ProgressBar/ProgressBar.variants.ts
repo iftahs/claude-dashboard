@@ -1,26 +1,30 @@
 import { cva } from 'class-variance-authority';
 
-export const trackVariants = cva('w-full overflow-hidden rounded-full bg-ink-600', {
+export const progressBarTrackVariants = cva('w-full overflow-hidden rounded-full bg-surface-hover', {
   variants: {
-    height: {
+    size: {
       sm: 'h-1',
       md: 'h-1.5',
+      lg: 'h-2',
     },
   },
   defaultVariants: {
-    height: 'md',
+    size: 'md',
   },
 });
 
-export const fillVariants = cva('h-full rounded-full transition-all duration-700', {
+export const progressBarFillVariants = cva('h-full rounded-full', {
   variants: {
-    variant: {
-      default: 'bg-clay-500',
-      blue: 'bg-[#0ea5e9]',
-      emerald: 'bg-emerald-500',
+    tone: {
+      accent: 'bg-accent',
+      warning: 'bg-warning',
+      danger: 'bg-danger',
+      success: 'bg-success',
+      neutral: 'bg-fg-subtle',
+      codex: 'bg-platform-codex',
     },
   },
   defaultVariants: {
-    variant: 'default',
+    tone: 'accent',
   },
 });

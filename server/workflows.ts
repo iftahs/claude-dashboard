@@ -12,7 +12,7 @@
  *
  * Because the final journal only appears at completion, a *running* workflow is a
  * run dir with no (or non-"completed") final journal AND fresh file mtimes — so
- * liveness is decided by mtime windows, mirroring subagents-live.ts. 3s TTL cache.
+ * liveness is decided by mtime windows, mirroring subagents-live.ts. 5s TTL cache, served up to 30s stale while it recomputes.
  */
 
 import { createReadStream } from 'node:fs';
@@ -23,6 +23,7 @@ import { claudeDir } from './scan.ts';
 import { projectNameOf, projectPathForFile } from './project-path.ts';
 import { blendedRatePerMillion } from './pricing.ts';
 import { readScriptInfo, matchCall, commonPrefixLen, stripBoilerplate } from './workflow-script.ts';
+import { swrCache } from './swr-cache.ts';
 
 // ── Public shapes (mirror src/types.ts) ──────────────────────────────────────
 
@@ -139,6 +140,7 @@ const LIVE_WINDOW = 90_000; // run touched in last 90s → live
 const RECENT_WINDOW = 90 * 24 * 3_600_000; // completed runs surfaced for 90 days
 const MAX_RECENT = 200;
 const STATS_TTL = 30_000; // all-time stats move slowly; don't recompute on the 4s list poll
+const STATS_MAX_STALE = 120_000;
 const MAX_JOURNAL = 8 * 1024 * 1024; // skip absurd final journals (the `script` field is large)
 const MAX_AGENT_FILE = 50 * 1024 * 1024;
 const LIVE_AGENT_PARSE = 24; // parse at most N newest agent transcripts per live run
@@ -146,7 +148,9 @@ const PROMPT_CAP = 24_000; // keep enough rendered prompt to match the script's 
 const LABEL_CAP = 120; // what actually reaches the UI
 const SUMMARY_CAP = 140; // lastToolSummary on a list row — the panel shows the full result
 const RECENT_AGENT_CAP = 40; // cap agents emitted per recent run (payload hygiene)
-const TTL = 3_000;
+const TTL = 5_000; // not below the 4s list poll, or every second poll starts a walk
+const MAX_STALE = 30_000; // must outlast TTL + the 4s poll + the slowest compute, or an active poll waits
+const DISCOVER_TTL = 3_000; // below TTL, so a list rebuild never reuses the walk the previous rebuild made
 
 const ALLOWED_STATES = new Set<WorkflowAgentState>(['done', 'running', 'queued', 'error', 'stalled']);
 
@@ -264,7 +268,7 @@ async function discover(): Promise<{ dirs: DiscoveredDir[]; journals: Discovered
 export async function locateRun(
   runId: string,
 ): Promise<{ dir: string; sessionDir: string; journalPath: string | null } | null> {
-  const { dirs, journals } = await discover();
+  const { dirs, journals } = await discoverShared();
   const d = dirs.find((x) => x.runId === runId);
   if (!d) return null;
   return { dir: d.dir, sessionDir: d.sessionDir, journalPath: journals.find((j) => j.runId === runId)?.path ?? null };
@@ -644,7 +648,7 @@ async function parseFinalJournalUncached(j: DiscoveredJournal): Promise<Workflow
 
 async function computeWorkflows(): Promise<WorkflowsData> {
   const now = Date.now();
-  const { dirs, journals } = await discover();
+  const { dirs, journals } = await discoverShared();
   const journalByRunId = new Map(journals.map((j) => [j.runId, j]));
 
   const live: WorkflowRun[] = [];
@@ -745,7 +749,7 @@ function startOfDay(ts: number): number {
 }
 
 async function computeWorkflowStats(): Promise<WorkflowStats> {
-  const { journals } = await discover();
+  const { journals } = await discoverShared();
   const summaries = await Promise.all(journals.map((j) => peekSummary(j)));
 
   let completed = 0;
@@ -819,24 +823,34 @@ async function computeWorkflowStats(): Promise<WorkflowStats> {
   };
 }
 
-let statsCached: WorkflowStats | null = null;
-let statsCachedAt = 0;
+const logRefreshError = (e: unknown) => console.error('[workflows] refresh failed:', e);
 
-export async function getWorkflowStats(): Promise<WorkflowStats> {
-  const now = Date.now();
-  if (statsCached && now - statsCachedAt < STATS_TTL) return statsCached;
-  statsCached = await computeWorkflowStats();
-  statsCachedAt = now;
-  return statsCached;
+// ttl === maxStale: the list, the stats and locateRun share a walk that is running or just finished, never a stale one.
+const discoverShared = swrCache({
+  ttlMs: DISCOVER_TTL,
+  maxStaleMs: DISCOVER_TTL,
+  build: discover,
+  onError: logRefreshError,
+});
+
+const statsCache = swrCache({
+  ttlMs: STATS_TTL,
+  maxStaleMs: STATS_MAX_STALE,
+  build: computeWorkflowStats,
+  onError: logRefreshError,
+});
+
+export function getWorkflowStats(): Promise<WorkflowStats> {
+  return statsCache();
 }
 
-let cached: WorkflowsData | null = null;
-let cachedAt = 0;
+const workflowsCache = swrCache({
+  ttlMs: TTL,
+  maxStaleMs: MAX_STALE,
+  build: computeWorkflows,
+  onError: logRefreshError,
+});
 
-export async function getWorkflows(): Promise<WorkflowsData> {
-  const now = Date.now();
-  if (cached && now - cachedAt < TTL) return cached;
-  cached = await computeWorkflows();
-  cachedAt = now;
-  return cached;
+export function getWorkflows(): Promise<WorkflowsData> {
+  return workflowsCache();
 }

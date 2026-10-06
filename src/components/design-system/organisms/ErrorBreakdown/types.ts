@@ -1,14 +1,21 @@
-import type { InsightsErrors } from '@/types';
+import type { ErrorBreakdownView, ErrorTrendPointView } from '@/lib/views/insights';
 
 export interface ErrorBreakdownProps {
-  data: InsightsErrors | null;
+  view: ErrorBreakdownView;
+  className?: string;
 }
 
-export interface TooltipPayloadItem {
-  payload: { date: string; calls: number; errors: number };
+export interface ErrorTrendTooltipItem {
+  payload?: ErrorTrendPointView;
 }
 
-export interface TooltipProps {
+export interface ErrorTrendTooltipState {
   active?: boolean;
-  payload?: TooltipPayloadItem[];
+  payload?: readonly ErrorTrendTooltipItem[];
+}
+
+export interface ErrorTrendTooltipRow {
+  label: string;
+  value: string;
+  color?: string;
 }

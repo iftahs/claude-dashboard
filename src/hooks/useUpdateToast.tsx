@@ -20,15 +20,16 @@ function CodeBlock({ lines }: { lines: string[] }) {
   };
   return (
     <div className="relative mt-1.5">
-      <pre className="overflow-x-auto rounded-md bg-black/40 py-1.5 pl-2.5 pr-12 font-mono text-[11px] leading-relaxed text-zinc-200 ring-1 ring-white/10">
+      <pre className="overflow-x-auto rounded-control border border-line bg-surface-sunken py-1.5 pl-2.5 pr-16 font-mono text-mono text-fg">
         <code>{lines.join('\n')}</code>
       </pre>
       <button
+        type="button"
         onClick={copy}
         title="Copy to clipboard"
-        className="absolute right-1 top-1 rounded px-1.5 py-0.5 text-[10px] font-semibold text-zinc-400 ring-1 ring-white/10 transition-colors hover:bg-white/10 hover:text-zinc-200"
+        className="absolute right-1 top-1 rounded-tag border border-line bg-surface px-1.5 py-0.5 text-caption font-medium text-fg-muted hover:text-fg focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
       >
-        {copied ? 'Copied ✓' : 'Copy'}
+        {copied ? 'Copied' : 'Copy'}
       </button>
     </div>
   );
@@ -42,7 +43,7 @@ function ChangelogLink({ url }: { url?: string }) {
       href={url}
       target="_blank"
       rel="noopener noreferrer"
-      className="mt-2 inline-block text-blue-400 underline underline-offset-2 hover:text-blue-300"
+      className="mt-2 inline-block rounded-tag text-accent-fg underline underline-offset-2 hover:text-fg focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
     >
       View changelog →
     </a>
@@ -50,9 +51,8 @@ function ChangelogLink({ url }: { url?: string }) {
 }
 
 /**
- * Drives the "update available" toast (replaces the old inline UpdateBanner).
- * Keeps the dev-only self-update progress state and the per-version dismissal
- * that the banner used to own. Docker users get manual instructions instead of
+ * Drives the "update available" toast. Keeps the dev-only self-update progress
+ * state and the per-version dismissal. Docker users get manual instructions instead of
  * an action button (they can't git-pull from inside the container).
  */
 export function useUpdateToast(data: VersionInfo | null | undefined) {
@@ -111,7 +111,7 @@ export function useUpdateToast(data: VersionInfo | null | undefined) {
       notify({
         id: 'update',
         severity: 'info',
-        title: '✓ Pulled latest code',
+        title: 'Pulled latest code',
         message: 'Reload the page to apply the update.',
         action: { label: 'Reload page', onClick: () => location.reload() },
         onDismiss,

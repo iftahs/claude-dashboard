@@ -1,26 +1,57 @@
-import type { ReactNode } from 'react';
+import type { MouseEvent } from 'react';
+import type { BadgeTone } from '@/components/design-system/atoms/Badge/types';
+import type { IconName } from '@/components/design-system/atoms/Icon/types';
 
-export interface SidebarTab {
+export interface SidebarBadge {
+  text: string;
+  tone?: BadgeTone;
+  title?: string;
+}
+
+export interface SidebarItem {
+  id: string;
+  href: string;
+  label: string;
+  icon: IconName;
+  badge?: SidebarBadge;
+}
+
+export interface SidebarGroup {
   id: string;
   label: string;
-  /** Emoji/icon glyph, rendered in a fixed-width slot so labels stay aligned. */
-  icon?: string;
-  /** Optional trailing chip (e.g. live agent count, 5-hour utilization %). */
-  badge?: ReactNode;
+  items: readonly SidebarItem[];
 }
 
 export interface SidebarDataDir {
-  /** Platform or surface name ('Claude' / 'Cowork' / 'Codex'), shown when there is more than one. */
   label: string;
   path: string;
 }
 
+export interface SidebarVersion {
+  current?: string;
+  latest?: string | null;
+  updateAvailable?: boolean;
+  changelogUrl?: string;
+  repoUrl?: string;
+}
+
+export interface SidebarCredit {
+  name: string;
+  href: string;
+}
+
 export interface SidebarProps {
-  tabs: SidebarTab[];
-  activeTab: string;
-  onNavigate: (id: string) => void;
-  /** The folders the data on screen is read from — one per platform/surface shown. */
-  dataDirs: SidebarDataDir[];
-  /** Footer credits: app version + repo link (optional). */
-  version?: { current?: string; repoUrl?: string } | null;
+  brand: string;
+  groups: readonly SidebarGroup[];
+  pinned?: readonly SidebarItem[];
+  activeId: string;
+  collapsed?: boolean;
+  toggleIcon: IconName;
+  toggleLabel: string;
+  onToggle: () => void;
+  onNavigate?: (href: string, event: MouseEvent<HTMLAnchorElement>) => void;
+  dataDirs?: readonly SidebarDataDir[];
+  version?: SidebarVersion | null;
+  credit?: SidebarCredit;
+  navLabel?: string;
 }

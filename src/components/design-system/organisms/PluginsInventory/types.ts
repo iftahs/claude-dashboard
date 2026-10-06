@@ -1,5 +1,6 @@
-import type { InventoryData } from '@/types';
+import type { InventorySectionView } from '@/lib/views/workspace';
 
 export interface PluginsInventoryProps {
-  data: InventoryData | null;
+  view: InventorySectionView;
+  className?: string;
 }

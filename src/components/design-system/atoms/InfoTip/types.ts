@@ -1,8 +1,10 @@
 import type { ReactNode } from 'react';
 
+export type InfoTipSide = 'top' | 'right' | 'bottom' | 'left';
+
 export interface InfoTipProps {
-  /** Explanation shown on hover. */
-  text: ReactNode;
-  /** Horizontal anchor of the popover relative to the "?" badge. */
-  align?: 'left' | 'center' | 'right';
+  content: ReactNode;
+  label?: string;
+  side?: InfoTipSide;
+  className?: string;
 }

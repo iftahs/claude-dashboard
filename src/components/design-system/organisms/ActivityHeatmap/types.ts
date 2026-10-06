@@ -1,8 +1,6 @@
-import type { DailyActivity } from '@/types';
-import type { WeekStart } from '@/lib/week';
+import type { ActivityHeatmapView } from '@/lib/views/trends';
 
 export interface ActivityHeatmapProps {
-  days: DailyActivity[];
-  /** First day of the week — sets the row order and column alignment. */
-  weekStart: WeekStart;
+  view: ActivityHeatmapView;
+  className?: string;
 }

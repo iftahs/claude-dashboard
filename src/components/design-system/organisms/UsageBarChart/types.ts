@@ -1,28 +1,49 @@
+import type { RectangleProps } from 'recharts';
 import type { Bucket } from '@/types';
 
-export interface UsageBarChartProps {
-  buckets: Bucket[];
-  labelFor: (ms: number) => string;
-  /** When provided, renders projected future bars for the next 3 days */
-  projectionCostPerDay?: number;
-  /** Effective-token height of those bars; defaults to the average over all buckets. */
-  projectionTokensPerDay?: number;
-  metric?: 'tokens' | 'cost';
+export type UsageBarMetric = 'tokens' | 'cost';
+
+export type UsageBarRow = Record<string, number | string | boolean | null>;
+
+export interface UsageBarSeries {
+  key: string;
+  label: string;
+  color: string;
 }
 
-export interface CustomTooltipProps {
-  active?: boolean;
-  payload?: Array<{
-    name: string;
-    value: number;
-    color?: string;
-    payload: {
-      label: string;
-      cost: number;
-      isProjected?: boolean;
-      [key: string]: string | number | boolean | undefined;
-    };
-  }>;
-  label?: string;
-  metric?: 'tokens' | 'cost';
+export interface UsageBarModel {
+  rows: UsageBarRow[];
+  series: UsageBarSeries[];
+  todayLabel: string | null;
+}
+
+export interface UsageBarModelInput {
+  buckets: readonly Bucket[];
+  labelFor: (ms: number) => string;
+  titleFor?: (ms: number) => string;
+  metric: UsageBarMetric;
+  projectionCostPerDay?: number;
+  projectionTokensPerDay?: number;
+  now: number;
+}
+
+export type UsageBarShapeProps = RectangleProps & { payload?: UsageBarRow };
+
+export interface UsageBarFooterLine {
+  label: string;
+  value: string;
+}
+
+export interface UsageBarChartProps {
+  buckets: readonly Bucket[];
+  labelFor: (ms: number) => string;
+  titleFor?: (ms: number) => string;
+  metric?: UsageBarMetric;
+  projectionCostPerDay?: number;
+  projectionTokensPerDay?: number;
+  now?: number;
+  height?: number;
+  fill?: boolean;
+  ariaLabel?: string;
+  className?: string;
 }

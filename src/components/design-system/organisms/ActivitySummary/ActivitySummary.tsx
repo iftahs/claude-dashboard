@@ -1,48 +1,66 @@
-import { StatCard } from '@/components/design-system/atoms/StatCard/StatCard';
-import { StatCardSkeleton } from '@/components/design-system/atoms/Skeleton/Skeleton';
+import { memo } from 'react';
+import { Card } from '@/components/design-system/atoms/Card/Card';
+import { ErrorState } from '@/components/design-system/molecules/ErrorState/ErrorState';
+import { SkeletonPreset } from '@/components/design-system/molecules/SkeletonPreset/SkeletonPreset';
+import { StatTile } from '@/components/design-system/molecules/StatTile/StatTile';
 import type { ActivitySummaryProps } from './types';
-import { summaryCards } from './utils';
+import { SKELETON_TILES } from './utils';
 
-// Same four cards on Claude, Codex and Both — computed from every usage event of the platform on screen.
-export function ActivitySummary({ summary, loading, platform, codexServerLifetime, scope = '' }: ActivitySummaryProps) {
-  if (!summary) {
-    if (!loading) return null;
+export const ActivitySummary = memo(function ActivitySummary({ view }: ActivitySummaryProps) {
+  if (view.status === 'hidden') return null;
+
+  if (view.status === 'error') {
     return (
-      <div className="space-y-3">
-        <span className="text-xs uppercase tracking-wider text-zinc-500">Activity summary{scope}</span>
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          {Array.from({ length: 4 }).map((_, i) => (
-            <StatCardSkeleton key={i} />
-          ))}
-        </div>
-      </div>
+      <Card as="div" className="col-span-full">
+        <ErrorState title={view.message?.title ?? ''} description={view.message?.description} className="py-6" />
+      </Card>
     );
   }
-  if (summary.firstEventTs == null) return null;
+
+  if (view.status === 'loading') {
+    return (
+      <>
+        {SKELETON_TILES.map((index) => (
+          <Card key={index} as="div" padding="sm">
+            <SkeletonPreset variant="stat" />
+          </Card>
+        ))}
+      </>
+    );
+  }
 
   return (
-    <div className="space-y-3">
-      <span className="text-xs uppercase tracking-wider text-zinc-500">Activity summary{scope} · all history</span>
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        {summaryCards(summary, platform, codexServerLifetime).map((c) => (
-          <StatCard
-            key={c.key}
-            label={c.label}
-            value={c.value}
-            help={c.help}
-            sub={
-              <>
-                {c.sub}
-                {c.extra.map((line) => (
-                  <span key={line} className="mt-0.5 block text-xs text-zinc-500">
-                    {line}
-                  </span>
-                ))}
-              </>
-            }
-          />
-        ))}
-      </div>
-    </div>
+    <>
+      {view.tiles.map((tile) => (
+        <StatTile
+          key={tile.key}
+          label={tile.label}
+          value={tile.value}
+          tone={tile.tone}
+          help={tile.help}
+          sub={
+            tile.lines.length > 0 ? (
+              <span className="flex min-w-0 flex-col gap-0.5">
+                {tile.lines.map((line) =>
+                  typeof line === 'string' ? (
+                    <span key={line} title={line} className="truncate">
+                      {line}
+                    </span>
+                  ) : (
+                    <span key={line.join()} className="flex min-w-0 flex-wrap gap-x-2 gap-y-0.5">
+                      {line.map((part) => (
+                        <span key={part} title={part} className="truncate">
+                          {part}
+                        </span>
+                      ))}
+                    </span>
+                  ),
+                )}
+              </span>
+            ) : undefined
+          }
+        />
+      ))}
+    </>
   );
-}
+});

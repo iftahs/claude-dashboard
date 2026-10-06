@@ -10,9 +10,10 @@ import {
   type ArchivedFile,
 } from './event-store.ts';
 import {
-  archiveSig, archiveSources, archivedForMerge, classifyGone, archiveSummary, canReuseMerge, forgetArchivedHistory,
-  getEvents, getInsights, invalidateData, platformHome,
+  archiveSig, archiveSources, archivedForMerge, classifyGone, archiveSummary, canReuseMerge, dataFingerprint,
+  forgetArchivedHistory, getEvents, getInsights, invalidateData, lastScanStats, platformHome,
 } from './data.ts';
+import { memoBuilder } from './builder-cache.ts';
 import { mergeRows, reduceArchive } from './merge.ts';
 
 // Everything this file touches lives under one temp dir — never the real
@@ -414,4 +415,42 @@ test('deleted transcripts keep counting until the archive is forgotten', async (
   assert.equal(await count(), 1, 'only the live c is left');
   const summary = await archiveSummary();
   assert.deepEqual(summary, { enabled: true, files: 0, oldestTs: null, bytes: 0 });
+});
+
+test('a snapshot carries its own memo token, so a later rescan cannot relabel it', async () => {
+  const proj = join(process.env.CLAUDE_DIR!, 'projects', 'C--demo');
+  invalidateData();
+  const before = await getEvents();
+  assert.equal(before.token, dataFingerprint());
+  assert.equal((await getInsights()).token, before.token);
+
+  writeFileSync(join(proj, 'd.jsonl'), transcript('sd', 4));
+  invalidateData();
+  const after = await getEvents(); // the rescan a slow route would have straddled
+  assert.equal(after.events.length, before.events.length + 1);
+  assert.notEqual(after.token, before.token);
+  assert.equal(dataFingerprint(), after.token, 'module state has moved on from the first snapshot');
+
+  const size = (snap: typeof before) => memoBuilder('test-snapshot', ['all'], snap.token, () => snap.events.length);
+  assert.equal(size(before), before.events.length);
+  assert.equal(size(after), after.events.length, 'the older snapshot was not memoised under the newer token');
+});
+
+test('forgetting the archive outlasts a scan that starts while the store deletes it', async () => {
+  const proj = join(process.env.CLAUDE_DIR!, 'projects', 'C--demo');
+  unlinkSync(join(proj, 'c.jsonl'));
+  invalidateData();
+  assert.equal((await getEvents()).events.length, 2, 'c is archived next to the live d');
+  assert.equal((await archiveSummary()).files, 1);
+
+  invalidateData();
+  const forgetting = forgetArchivedHistory();
+  const racing = getEvents(); // begins its scan before the delete has settled
+  assert.equal(await forgetting, true);
+  await racing;
+  const raced = lastScanStats();
+
+  assert.equal((await getEvents()).events.length, 1, 'only the live d is left');
+  assert.notEqual(lastScanStats(), raced, 'the next read rescans instead of trusting the overlapping scan');
+  assert.equal((await archiveSummary()).files, 0);
 });

@@ -1,153 +1,76 @@
-import { Line, LineChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
+import { memo } from 'react';
+import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
+import { GroupLabel } from '@/components/design-system/atoms/GroupLabel/GroupLabel';
 import { ChartTooltip } from '@/components/design-system/molecules/ChartTooltip/ChartTooltip';
-import { ProgressBar } from '@/components/design-system/atoms/ProgressBar/ProgressBar';
-import { Skeleton } from '@/components/design-system/atoms/Skeleton/Skeleton';
-import { compact, toolLabel } from '@/lib/format';
-import { categoryLabel, rateColor } from './utils';
-import type { ErrorBreakdownProps, TooltipProps } from './types';
+import { RankedMeterList } from '@/components/design-system/molecules/RankedMeterList/RankedMeterList';
+import { Section } from '@/components/design-system/organisms/Section/Section';
+import { CHART_AXIS, CHART_GRID } from '@/lib/chart-theme';
+import type { ErrorBreakdownProps, ErrorTrendTooltipState } from './types';
+import {
+  CATEGORY_LIST_LABEL,
+  TOOL_LIST_LABEL,
+  TREND_ACTIVE_DOT,
+  TREND_AXIS_WIDTH,
+  TREND_CHART_LABEL,
+  TREND_CURSOR,
+  TREND_HEIGHT,
+  TREND_LINE_COLOR,
+  TREND_MARGIN,
+  TREND_SERIES,
+  trendRows,
+} from './utils';
 
-function TrendTooltip({ active, payload }: TooltipProps) {
-  if (!active || !payload?.length) return null;
-  const d = payload[0].payload;
-  return (
-    <ChartTooltip label={d.date} minWidth={140}>
-      <div className="space-y-1">
-        <div className="flex justify-between gap-4">
-          <span className="text-zinc-400">Calls</span>
-          <span className="font-semibold text-zinc-200">{compact(d.calls)}</span>
-        </div>
-        <div className="flex justify-between gap-4">
-          <span className="text-zinc-400">Failed</span>
-          <span className="font-semibold text-red-400">{compact(d.errors)}</span>
-        </div>
-      </div>
-    </ChartTooltip>
-  );
+function trendTooltip({ active, payload }: ErrorTrendTooltipState) {
+  const point = payload?.[0]?.payload;
+  if (!active || !point) return null;
+  return <ChartTooltip title={point.label} rows={trendRows(point)} />;
 }
 
-// Failure rate is the Insights KPI row's to show — no rate hero here.
-export function ErrorBreakdown({ data }: ErrorBreakdownProps) {
-  if (!data) {
-    return (
-      <div className="space-y-4">
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-          <div className="space-y-3">
-            {Array.from({ length: 4 }).map((_, i) => (
-              <Skeleton key={i} className="h-6 w-full rounded" />
-            ))}
-          </div>
-          <div className="space-y-3">
-            {Array.from({ length: 5 }).map((_, i) => (
-              <Skeleton key={i} className="h-5 w-full rounded" />
-            ))}
-          </div>
-        </div>
-        <Skeleton className="h-[120px] w-full rounded" />
-      </div>
-    );
-  }
-
-  const { errors, categories, perTool, perToolTotal, trend } = data;
-  if (errors === 0) {
-    return <div className="text-sm text-zinc-500">No failed tool calls in this window.</div>;
-  }
-  const maxCatCount = Math.max(1, ...Object.values(categories));
-  const maxToolErrors = Math.max(1, ...perTool.map((t) => t.errors));
-
+export const ErrorBreakdown = memo(function ErrorBreakdown({ view, className }: ErrorBreakdownProps) {
   return (
-    <div className="space-y-5">
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-        <div>
-          <div className="mb-2 text-xs font-semibold uppercase tracking-wider text-zinc-500">
-            By category
+    <Section title={view.title} description={view.description} help={view.help} state={view.state} ai={view.ai} className={className}>
+      <div className="flex flex-col gap-5">
+        <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
+          <div className="flex min-w-0 flex-col gap-3">
+            <GroupLabel as="span">By category</GroupLabel>
+            <RankedMeterList ariaLabel={CATEGORY_LIST_LABEL} rows={view.categories} />
           </div>
-          <div className="space-y-2.5">
-            {Object.entries(categories)
-              .sort((a, b) => b[1] - a[1])
-              .map(([cat, count]) => (
-                <div key={cat} className="flex items-center gap-3">
-                  <span className="w-28 shrink-0 truncate text-xs text-zinc-400" title={cat}>
-                    {categoryLabel(cat)}
-                  </span>
-                  <ProgressBar pct={(count / maxCatCount) * 100} variant="default" />
-                  <span className="w-10 shrink-0 text-right text-xs tabular-nums text-zinc-300">
-                    {count}
-                  </span>
-                </div>
-              ))}
+          <div className="flex min-w-0 flex-col gap-3">
+            <GroupLabel as="span" note={view.toolsNote ?? undefined}>
+              By tool
+            </GroupLabel>
+            <RankedMeterList ariaLabel={TOOL_LIST_LABEL} rows={view.tools} tone="danger" mono labelWidth="lg" />
           </div>
         </div>
 
-        <div>
-          <div className="mb-2 flex items-baseline justify-between text-xs font-semibold uppercase tracking-wider text-zinc-500">
-            <span>By tool</span>
-            {perToolTotal > perTool.length && (
-              <span className="font-normal normal-case tracking-normal text-zinc-600">
-                top {perTool.length} of {perToolTotal}
-              </span>
-            )}
+        {view.trend.length > 0 ? (
+          <div className="flex min-w-0 flex-col gap-3 border-t border-line pt-5">
+            <GroupLabel as="span">Failures per day</GroupLabel>
+            <div role="img" aria-label={TREND_CHART_LABEL} className="w-full min-w-0" style={{ height: TREND_HEIGHT }}>
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={view.trend} margin={TREND_MARGIN}>
+                  <CartesianGrid {...CHART_GRID} />
+                  <XAxis dataKey="label" {...CHART_AXIS} />
+                  <YAxis width={TREND_AXIS_WIDTH} allowDecimals={false} {...CHART_AXIS} />
+                  <Tooltip cursor={TREND_CURSOR} content={trendTooltip} />
+                  <Line
+                    type="monotone"
+                    dataKey="errors"
+                    name={TREND_SERIES}
+                    stroke={TREND_LINE_COLOR}
+                    strokeWidth={2}
+                    dot={false}
+                    activeDot={TREND_ACTIVE_DOT}
+                    isAnimationActive={false}
+                  />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
           </div>
-          <div className="space-y-2">
-            {perTool.map((t) => (
-              <div key={t.name} className="flex items-center gap-2 text-xs">
-                <span className="w-36 shrink-0 truncate text-zinc-400" title={t.name}>
-                  {toolLabel(t.name)}
-                </span>
-                <ProgressBar pct={(t.errors / maxToolErrors) * 100} color="#f87171" className="flex-1" />
-                <span className="w-16 shrink-0 text-right tabular-nums text-zinc-400">
-                  {compact(t.errors)}
-                  <span className="text-zinc-600">/{compact(t.calls)}</span>
-                </span>
-                <span className={`w-10 shrink-0 text-right tabular-nums font-semibold ${rateColor(t.errorRate)}`}>
-                  {(t.errorRate * 100).toFixed(0)}%
-                </span>
-              </div>
-            ))}
-          </div>
-        </div>
+        ) : null}
+
+        <p className="text-caption text-fg-subtle">{view.footnote}</p>
       </div>
-
-      {/* Trend line chart */}
-      {trend.length > 0 && (
-        <div>
-          <div className="mb-1 text-xs font-semibold uppercase tracking-wider text-zinc-500">
-            Failures per day
-          </div>
-          <div className="h-[120px] w-full">
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={trend} margin={{ top: 4, right: 8, bottom: 0, left: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#26262f" vertical={false} />
-                <XAxis
-                  dataKey="date"
-                  tick={{ fill: '#71717a', fontSize: 10 }}
-                  axisLine={false}
-                  tickLine={false}
-                  tickFormatter={(v: string) => v.slice(5)}
-                />
-                <YAxis
-                  tick={{ fill: '#71717a', fontSize: 10 }}
-                  axisLine={false}
-                  tickLine={false}
-                  width={28}
-                />
-                <Tooltip cursor={{ stroke: 'rgba(255,255,255,0.05)' }} content={<TrendTooltip />} />
-                <Line
-                  type="monotone"
-                  dataKey="errors"
-                  stroke="#f87171"
-                  strokeWidth={2}
-                  dot={false}
-                  activeDot={{ r: 4, fill: '#f87171', stroke: '#131318', strokeWidth: 2 }}
-                />
-              </LineChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-      )}
-
-      <div className="text-[10px] text-zinc-600">
-        Failed calls only — declined or denied calls never ran, and are counted under Rejections.
-      </div>
-    </div>
+    </Section>
   );
-}
+});

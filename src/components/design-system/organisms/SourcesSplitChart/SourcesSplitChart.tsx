@@ -1,29 +1,35 @@
-import { Section } from '@/components/design-system/molecules/Section/Section';
-import { LegendDot } from '@/components/design-system/atoms/LegendDot/LegendDot';
-import { compact, usd } from '@/lib/format';
+import { memo } from 'react';
+import { Section } from '@/components/design-system/organisms/Section/Section';
 import type { SourcesSplitChartProps } from './types';
+import { NO_COST, barLabel } from './utils';
 
-// One component, one slot for every platform; a $0 segment (the unpriced guardian model) shows tokens only.
-export function SourcesSplitChart({ segments, weekDays, help, scope = '' }: SourcesSplitChartProps) {
+export const SourcesSplitChart = memo(function SourcesSplitChart({ view, className }: SourcesSplitChartProps) {
   return (
-    <Section title={`Sources${scope} · effective tokens · ${weekDays}d`} help={help}>
-      <div className="flex flex-wrap items-center gap-4">
-        {/* 2px surface gap between fills (gap-0.5 on the track colour). */}
-        <div className="flex h-3 min-w-[8rem] flex-1 gap-0.5 overflow-hidden rounded-full bg-ink-800 ring-1 ring-white/10">
-          {segments.map((s) => (
-            <div key={s.key} style={{ width: `${s.pct}%`, backgroundColor: s.color }} title={`${s.label} · ${s.pct.toFixed(0)}%`} />
-          ))}
-        </div>
-        <div className="flex flex-wrap items-center gap-4">
-          {segments.map((s) => (
-            <LegendDot
-              key={s.key}
-              color={s.color}
-              label={`${s.label} · ${compact(s.effectiveTokens)}${s.cost > 0 ? ` · ${usd(s.cost)}` : ''} · ${s.pct.toFixed(0)}%`}
-            />
-          ))}
-        </div>
+    <Section title={view.title} description={view.description} help={view.help} state={view.state} className={className}>
+      <div role="img" aria-label={barLabel(view.rows)} className="flex h-3 w-full gap-0.5 overflow-hidden rounded-full">
+        {view.rows.map((row) => (
+          <span key={row.key} style={{ width: `${row.width}%`, backgroundColor: row.color }} />
+        ))}
       </div>
+      <ul className="mt-3 flex min-w-0 flex-col">
+        {view.rows.map((row) => (
+          <li key={row.key} className="flex h-11 min-w-0 items-center gap-3 border-t border-line first:border-t-0">
+            <span aria-hidden="true" className="size-2 flex-none rounded-[2px]" style={{ backgroundColor: row.color }} />
+            <span title={row.label} className="min-w-0 flex-1 truncate text-body text-fg">
+              {row.label}
+            </span>
+            <span className="w-14 flex-none whitespace-nowrap text-right font-mono text-mono tabular-nums text-fg-muted">
+              {row.tokens}
+            </span>
+            <span className="w-10 flex-none whitespace-nowrap text-right font-mono text-mono tabular-nums text-fg-muted">
+              {row.percent}
+            </span>
+            <span className="w-16 flex-none whitespace-nowrap text-right font-mono text-mono tabular-nums text-fg">
+              {row.cost ?? NO_COST}
+            </span>
+          </li>
+        ))}
+      </ul>
     </Section>
   );
-}
+});

@@ -1,3 +1,13 @@
+export type ExportFormat = 'csv' | 'json';
+
+export interface ExportPayload {
+  filename: string;
+  csv: Record<string, unknown>[];
+  json: unknown;
+}
+
+export type ExportSource = () => ExportPayload | null;
+
 /** Convert an array of flat objects to a CSV string. */
 export function toCsv(rows: Record<string, unknown>[]): string {
   if (rows.length === 0) return '';

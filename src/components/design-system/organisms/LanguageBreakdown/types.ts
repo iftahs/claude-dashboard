@@ -1,5 +1,6 @@
-import type { InsightsLanguages } from '@/types';
+import type { LanguageBreakdownView } from '@/lib/views/insights';
 
 export interface LanguageBreakdownProps {
-  data: InsightsLanguages[] | null;
+  view: LanguageBreakdownView;
+  className?: string;
 }

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { parseDollar, fmt } from '@/components/design-system/molecules/LimitsPanel/utils';
+import { parseDollar, fmt } from '../lib/money';
 import { PROVIDER_LABELS, PROVIDER_MODELS } from './useAiConfig';
 import { NO_LIMITS, type CapPlatform, type Limits, type PlatformLimits } from './useLimits';
 import type { AiConfig, AiProvider } from '../types';
@@ -50,7 +50,7 @@ function useCapDraft(limits: Limits | null, onSave: (l: Limits | null) => void):
   };
 }
 
-// Draft state + save/clear handlers for the Settings panel's per-platform spending-limit forms and the AI-key form; keeps parsing/persistence out of the presentational SettingsView.
+// Draft state + save/clear handlers for the Settings panel's per-platform spending-limit forms and the AI-key form; keeps parsing/persistence out of the presentational settings cards.
 export function useSettingsForm({ limits, onChangeLimits, aiConfig, onChangeAiConfig }: Params) {
   const caps: Record<CapPlatform, CapDraft> = {
     claude: useCapDraft(limits.claude, (l) => onChangeLimits('claude', l)),

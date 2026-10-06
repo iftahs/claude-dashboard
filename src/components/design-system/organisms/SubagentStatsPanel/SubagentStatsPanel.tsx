@@ -1,82 +1,51 @@
 import { Badge } from '@/components/design-system/atoms/Badge/Badge';
-import { LegendDot } from '@/components/design-system/atoms/LegendDot/LegendDot';
-import { Skeleton } from '@/components/design-system/atoms/Skeleton/Skeleton';
-import { modelColor } from '@/lib/palette';
-import { statTiles, typeLabel } from './utils';
+import { GroupLabel } from '@/components/design-system/atoms/GroupLabel/GroupLabel';
+import { KeyValueRow } from '@/components/design-system/molecules/KeyValueRow/KeyValueRow';
+import { ModelChip } from '@/components/design-system/molecules/ModelChip/ModelChip';
+import { Section } from '@/components/design-system/organisms/Section/Section';
 import type { SubagentStatsPanelProps } from './types';
+import { MODELS_LABEL, TYPES_LABEL } from './utils';
 
-export function SubagentStatsPanel({ data, platform }: SubagentStatsPanelProps) {
-  if (!data) {
-    return (
-      <div className="space-y-4">
-        <div className="grid grid-cols-2 gap-3">
-          <Skeleton className="h-16 w-full rounded" />
-          <Skeleton className="h-16 w-full rounded" />
-        </div>
-        <div className="space-y-2">
-          {Array.from({ length: 4 }).map((_, i) => (
-            <Skeleton key={i} className="h-4 w-full rounded" />
+export function SubagentStatsPanel({ view, className }: SubagentStatsPanelProps) {
+  return (
+    <Section title={view.title} description={view.description} help={view.help} state={view.state} ai={view.ai} className={className}>
+      <div className="flex flex-col gap-4">
+        <div className="flex flex-col gap-2">
+          {view.facts.map((fact) => (
+            <KeyValueRow key={fact.key} label={fact.label} value={fact.value} tone={fact.tone} />
           ))}
         </div>
+
+        {view.emptyNote ? <p className="text-small text-fg-muted">{view.emptyNote}</p> : null}
+
+        {view.types.length > 0 ? (
+          <div className="flex flex-col gap-2 border-t border-line pt-4">
+            <GroupLabel as="span">{TYPES_LABEL}</GroupLabel>
+            <ul aria-label={TYPES_LABEL} className="flex flex-wrap gap-x-4 gap-y-2">
+              {view.types.map((type) => (
+                <li key={type.key} className="flex items-center gap-1.5">
+                  <Badge>{type.label}</Badge>
+                  <span className="font-mono text-mono text-fg">{type.count}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
+
+        {view.models.length > 0 ? (
+          <div className="flex flex-col gap-2 border-t border-line pt-4">
+            <GroupLabel as="span">{MODELS_LABEL}</GroupLabel>
+            <ul aria-label={MODELS_LABEL} className="flex flex-col gap-2">
+              {view.models.map((model) => (
+                <li key={model.key} className="flex items-center justify-between gap-3">
+                  <ModelChip model={model.model} />
+                  <span className="font-mono text-mono text-fg">{model.count}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
       </div>
-    );
-  }
-
-  const tiles = statTiles(data, platform);
-  const byTypeEntries = Object.entries(data.byType).sort((a, b) => b[1] - a[1]);
-  const byModelEntries = Object.entries(data.byModel).sort((a, b) => b[1] - a[1]);
-
-  return (
-    <div className="space-y-5">
-      {/* Stat tiles — counts; the rate lives in the KPI row */}
-      <div className="grid grid-cols-2 gap-3">
-        {tiles.map((t) => (
-          <div key={t.label} className="rounded-xl bg-ink-800/50 p-3 ring-1 ring-white/10">
-            <div className="text-xs text-zinc-500">{t.label}</div>
-            <div className={`mt-1 text-xl font-bold tabular-nums ${t.tone ?? 'text-zinc-200'}`}>{t.value}</div>
-          </div>
-        ))}
-      </div>
-
-      {byTypeEntries.length === 0 && (
-        <div className="text-sm text-zinc-500">
-          {platform === 'codex' ? 'No guardian reviews or subagents in this window.' : 'No subagents spawned in this window.'}
-        </div>
-      )}
-
-      {/* By type */}
-      {byTypeEntries.length > 0 && (
-        <div>
-          <div className="mb-2 text-xs font-semibold uppercase tracking-wider text-zinc-500">
-            By type
-          </div>
-          <div className="flex flex-wrap gap-2">
-            {byTypeEntries.map(([type, count]) => (
-              <span key={type} className="flex items-center gap-1.5">
-                <Badge variant="info">{typeLabel(type)}</Badge>
-                <span className="text-xs tabular-nums text-zinc-400">{count}</span>
-              </span>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* By model */}
-      {byModelEntries.length > 0 && (
-        <div>
-          <div className="mb-2 text-xs font-semibold uppercase tracking-wider text-zinc-500">
-            By model
-          </div>
-          <div className="space-y-1.5">
-            {byModelEntries.map(([model, count]) => (
-              <div key={model} className="flex items-center justify-between gap-2">
-                <LegendDot color={modelColor(model)} label={model} />
-                <span className="text-xs tabular-nums text-zinc-300">{count}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-    </div>
+    </Section>
   );
 }

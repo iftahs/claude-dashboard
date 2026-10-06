@@ -1,6 +1,13 @@
-import type { AppNotification } from '@/hooks/useNotifications';
+import type { ReactNode } from 'react';
+
+export type ToastTone = 'info' | 'success' | 'warning' | 'danger';
 
 export interface ToastProps {
-  notification: AppNotification;
-  onDismiss: (id: string) => void;
+  tone: ToastTone;
+  title: string;
+  description?: ReactNode;
+  onDismiss?: () => void;
+  action?: ReactNode;
+  dismissLabel?: string;
+  className?: string;
 }

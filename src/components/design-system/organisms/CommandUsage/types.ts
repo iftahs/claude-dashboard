@@ -1,7 +1,6 @@
-import type { CommandUsageData } from '@/types';
+import type { CommandUsageView } from '@/lib/views/insights';
 
 export interface CommandUsageProps {
-  data: CommandUsageData | null;
-  /** Empty-state copy — platform-specific (Codex records neither slash commands nor skills). */
-  emptyText?: string;
+  view: CommandUsageView;
+  className?: string;
 }

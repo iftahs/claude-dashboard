@@ -1,4 +1,4 @@
-import { createContext, useContext, useMemo } from 'react';
+import { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
 import { usePolling } from './usePolling';
 import { useSettings } from './useSettings';
@@ -12,6 +12,8 @@ type AuthMode = 'api' | 'subscription';
 interface ConfigModeCtx {
   configData: ClaudeConfig | null;
   configLoading: boolean;
+  /** The auth mode is known: /api/config answered, or an earlier session remembered it. */
+  modeKnown: boolean;
   /** Backend-detected auth mode (presence of a Claude.ai OAuth token). */
   detectedMode: AuthMode;
   /** Detected mode, unless the user forced one in Settings. */
@@ -27,6 +29,17 @@ interface ConfigModeCtx {
 
 const ConfigModeContext = createContext<ConfigModeCtx | null>(null);
 
+const MODE_HINT_KEY = 'claude-dashboard-auth-mode-hint';
+
+function loadModeHint(): AuthMode | null {
+  try {
+    const v = localStorage.getItem(MODE_HINT_KEY);
+    return v === 'api' || v === 'subscription' ? v : null;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Auth-mode resolution + LiteLLM gateway detection. API / pay-as-you-go mode
  * swaps the subscription-rate-limit framing for a cost view. Defaults to
@@ -35,13 +48,22 @@ const ConfigModeContext = createContext<ConfigModeCtx | null>(null);
 export function ConfigModeProvider({ children }: { children: ReactNode }) {
   const config = usePolling<ClaudeConfig>('/api/config', 60000);
   const [settings, setSettings] = useSettings();
+  // The last detected mode, so mode-gated sections are laid out on the first paint instead of popping in.
+  const [modeHint] = useState(loadModeHint);
+  const liveMode = config.data?.authMode;
+
+  useEffect(() => {
+    if (!liveMode) return;
+    try { localStorage.setItem(MODE_HINT_KEY, liveMode); } catch { /* private mode */ }
+  }, [liveMode]);
 
   const value = useMemo<ConfigModeCtx>(() => {
-    const detectedMode: AuthMode = config.data?.authMode ?? 'subscription';
+    const detectedMode: AuthMode = config.data?.authMode ?? modeHint ?? 'subscription';
     const effectiveMode = settings.modeOverride === 'auto' ? detectedMode : settings.modeOverride;
     return {
       configData: config.data,
       configLoading: config.loading,
+      modeKnown: !!config.data || modeHint !== null,
       detectedMode,
       effectiveMode,
       isApi: effectiveMode === 'api',
@@ -51,7 +73,7 @@ export function ConfigModeProvider({ children }: { children: ReactNode }) {
       settings,
       setSettings,
     };
-  }, [config.data, config.loading, settings, setSettings]);
+  }, [config.data, config.loading, modeHint, settings, setSettings]);
 
   return <ConfigModeContext.Provider value={value}>{children}</ConfigModeContext.Provider>;
 }

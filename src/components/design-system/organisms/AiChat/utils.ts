@@ -1,29 +1,4 @@
-import type { Platform } from '@/hooks/useSource';
+export const LINK_CLASS =
+  'rounded-tag text-accent-fg underline underline-offset-2 hover:text-fg focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus';
 
-// Each question must be answerable on its platform — no workflow question under Codex (Claude Code only).
-export const SUGGESTIONS: Record<Platform, string[]> = {
-  claude: [
-    'Which workflow cost me the most?',
-    "What's my error-rate trend?",
-    'Which project costs the most?',
-    'Am I close to my weekly limit?',
-  ],
-  codex: [
-    'Which thread was the heaviest?',
-    "What's my error-rate trend?",
-    'Which project costs the most?',
-    'Am I close to my Codex weekly limit?',
-  ],
-  both: [
-    'How does Claude compare to Codex on cost?',
-    "What's my error-rate trend?",
-    'Which project costs the most?',
-    'Am I close to any rate limit?',
-  ],
-};
-
-export const INTRO: Record<Platform, string> = {
-  claude: 'Ask anything about your Claude Code usage. Answers are based on your local usage aggregates.',
-  codex: 'Ask anything about your Codex usage. Answers are based on your local usage aggregates.',
-  both: 'Ask anything about your Claude Code and Codex usage. Answers are based on your local usage aggregates.',
-};
+export const COMPOSER_LABEL = 'Ask about your usage';

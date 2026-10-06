@@ -1,12 +1,20 @@
-import type { Platform } from '@/hooks/useSource';
+import type { McpBreakdownView, McpSideView } from '@/lib/views/insights';
+import type { McpSplitSegment } from './types';
 
-/** Whose native tools "built-in" means, and what they are, per platform. */
-export function builtInCopy(platform: Platform): { agentNoun: string; examples: string } {
-  if (platform === 'codex') {
-    return { agentNoun: "Codex's", examples: 'shell commands, file patches, web search…' };
-  }
-  if (platform === 'both') {
-    return { agentNoun: "each agent's", examples: "Claude's Read, Bash, Edit; Codex's shell commands and patches…" };
-  }
-  return { agentNoun: "Claude's", examples: 'Read, Bash, Edit…' };
+export const LEGEND_LABEL = 'Tool call split';
+export const TABLE_CAPTION = 'Calls and errors per MCP server';
+
+const BUILTIN_COLOR = 'rgb(var(--fg-subtle))';
+const MCP_COLOR = 'rgb(var(--info))';
+
+function segment(key: string, side: McpSideView, color: string): McpSplitSegment {
+  return { key, label: side.label, color, percent: side.percent, value: `${side.count} · ${side.share}` };
+}
+
+export function splitSegments(view: McpBreakdownView): McpSplitSegment[] {
+  return [segment('builtin', view.builtin, BUILTIN_COLOR), segment('mcp', view.mcp, MCP_COLOR)];
+}
+
+export function splitLabel(view: McpBreakdownView): string {
+  return `${view.builtin.label} ${view.builtin.share}, ${view.mcp.label} ${view.mcp.share}`;
 }

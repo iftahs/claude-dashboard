@@ -1,7 +1,6 @@
-import type { WeekStart } from '@/lib/week';
+import type { PeakHoursView } from '@/lib/views/trends';
 
 export interface PeakHoursHeatmapProps {
-  grid: number[][];
-  /** First day of the week — sets the row order. */
-  weekStart: WeekStart;
+  view: PeakHoursView;
+  className?: string;
 }

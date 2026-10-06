@@ -1,83 +1,28 @@
-import { Skeleton } from '@/components/design-system/atoms/Skeleton/Skeleton';
-import { compact, usd } from '@/lib/format';
+import { GroupLabel } from '@/components/design-system/atoms/GroupLabel/GroupLabel';
+import { KeyValueRow } from '@/components/design-system/molecules/KeyValueRow/KeyValueRow';
+import { Section } from '@/components/design-system/organisms/Section/Section';
+import { cn } from '@/lib/cn';
 import type { RetryPanelProps } from './types';
+import { RATE_LABEL } from './utils';
 
-export function RetryPanel({ data, naText, note }: RetryPanelProps) {
-  if (naText) {
-    return (
-      <div className="space-y-5">
-        <div>
-          <div className="text-xs uppercase tracking-wider text-zinc-500">One-shot rate</div>
-          <div className="mt-1 text-4xl font-bold tabular-nums text-zinc-600">n/a</div>
-          <div className="mt-1 text-sm text-zinc-500">{naText}</div>
-        </div>
-        {data && data.codexEdits > 0 && (
-          <div className="text-[10px] text-zinc-600">
-            {compact(data.codexEdits)} edits in this window, none of them retryable.
-          </div>
-        )}
-      </div>
-    );
-  }
-
-  if (!data) {
-    return (
-      <div className="space-y-4">
-        <Skeleton className="h-16 w-full rounded" />
-        <Skeleton className="h-4 w-3/4 rounded" />
-        <Skeleton className="h-4 w-1/2 rounded" />
-      </div>
-    );
-  }
-
-  const { oneShotRate, totalEdits, retried, wastedTokens, wastedCost } = data;
-
-  if (totalEdits === 0 || oneShotRate === null) {
-    return (
-      <div className="text-sm text-zinc-500">
-        No Edit/Write calls ran in this window.{note && <span className="text-zinc-600"> {note}</span>}
-      </div>
-    );
-  }
-
+export function RetryPanel({ view, className }: RetryPanelProps) {
   return (
-    <div className="space-y-5">
-      {/* Big one-shot rate number */}
-      <div>
-        <div className="text-xs uppercase tracking-wider text-zinc-500">One-shot rate</div>
-        <div className="mt-1 text-4xl font-bold tabular-nums text-clay-400">
-          {(oneShotRate * 100).toFixed(1)}%
+    <Section title={view.title} description={view.description} help={view.help} state={view.state} ai={view.ai} className={className}>
+      <div className="flex flex-col gap-4">
+        <div className="flex flex-col gap-1">
+          <GroupLabel as="span">{RATE_LABEL}</GroupLabel>
+          <span className={cn('text-metric-lg tabular-nums', view.applies ? 'text-fg' : 'text-fg-subtle')}>{view.rate}</span>
+          <p className="text-small text-fg-muted">{view.rateNote}</p>
         </div>
-        <div className="mt-1 text-sm text-zinc-500">
-          of {compact(totalEdits)} Edit/Write calls succeeded first try
-        </div>
-      </div>
-
-      {/* Stats grid */}
-      <div className="grid grid-cols-2 gap-3">
-        <div className="rounded-xl bg-ink-800/50 p-3 ring-1 ring-white/10">
-          <div className="text-xs text-zinc-500">Retried edits</div>
-          <div className="mt-1 text-xl font-bold tabular-nums text-amber-400">{retried}</div>
-        </div>
-        <div className="rounded-xl bg-ink-800/50 p-3 ring-1 ring-white/10">
-          <div className="text-xs text-zinc-500">Wasted tokens</div>
-          <div className="mt-1 text-xl font-bold tabular-nums text-zinc-400">
-            {compact(wastedTokens)}
+        {view.facts.length > 0 ? (
+          <div className="flex flex-col gap-2 border-t border-line pt-4">
+            {view.facts.map((fact) => (
+              <KeyValueRow key={fact.key} label={fact.label} value={fact.value} tone={fact.tone} />
+            ))}
           </div>
-        </div>
+        ) : null}
+        {view.footnote ? <p className="text-caption text-fg-subtle">{view.footnote}</p> : null}
       </div>
-
-      {wastedCost > 0 && (
-        <div className="text-sm text-zinc-400">
-          Estimated wasted cost:{' '}
-          <span className="font-semibold text-amber-400">{usd(wastedCost)}</span>
-        </div>
-      )}
-
-      <div className="text-[10px] text-zinc-600">
-        Wasted tokens are approximated from avg tokens/turn &times; errored edit calls.
-        {note && <> {note}</>}
-      </div>
-    </div>
+    </Section>
   );
 }

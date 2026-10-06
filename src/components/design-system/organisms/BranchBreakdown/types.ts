@@ -1,7 +1,6 @@
-import type { InsightsBranches } from '@/types';
+import type { BranchBreakdownView } from '@/lib/views/insights';
 
 export interface BranchBreakdownProps {
-  data: InsightsBranches[] | null;
-  /** Empty-state copy — platform-specific (a Codex chat thread usually runs outside a repo). */
-  emptyText?: string;
+  view: BranchBreakdownView;
+  className?: string;
 }

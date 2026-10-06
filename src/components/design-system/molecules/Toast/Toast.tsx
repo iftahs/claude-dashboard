@@ -1,50 +1,33 @@
-import type { Severity } from '@/hooks/useNotifications';
+import { Icon } from '@/components/design-system/atoms/Icon/Icon';
+import { IconButton } from '@/components/design-system/atoms/IconButton/IconButton';
+import { Tooltip } from '@/components/design-system/atoms/Tooltip/Tooltip';
+import { cn } from '@/lib/cn';
+import { toastIconVariants } from './Toast.variants';
 import type { ToastProps } from './types';
+import { TOAST_ICONS } from './utils';
 
-const STYLES: Record<Severity, { accent: string; icon: string; iconColor: string }> = {
-  info: { accent: 'border-l-blue-400', icon: 'ⓘ', iconColor: 'text-blue-400' },
-  warning: { accent: 'border-l-amber-400', icon: '⚠', iconColor: 'text-amber-400' },
-  error: { accent: 'border-l-red-400', icon: '⛔', iconColor: 'text-red-400' },
-};
-
-/** VSCode-style notification card — bottom-right toast, severity-accented. */
-export function Toast({ notification, onDismiss }: ToastProps) {
-  const s = STYLES[notification.severity] ?? STYLES.info;
+export function Toast({ tone, title, description, onDismiss, action, dismissLabel = 'Dismiss', className }: ToastProps) {
   return (
     <div
-      className={`pointer-events-auto w-80 rounded-lg border border-white/10 border-l-2 ${s.accent} bg-ink-700/95 px-3.5 py-3 text-sm shadow-xl shadow-black/40 backdrop-blur`}
-      style={{ animation: 'toast-in 0.18s ease-out' }}
+      role={tone === 'danger' ? 'alert' : 'status'}
+      className={cn(
+        'flex w-[340px] max-w-full items-start gap-3 rounded-card border border-line bg-surface-raised px-4 py-3 shadow-pop',
+        className,
+      )}
     >
-      <div className="flex items-start gap-2.5">
-        <span className={`mt-0.5 shrink-0 ${s.iconColor}`}>{s.icon}</span>
-        <div className="min-w-0 flex-1">
-          <p className="font-semibold text-zinc-100">{notification.title}</p>
-          {notification.content ? (
-            <div className="mt-1 text-xs leading-relaxed text-zinc-400">{notification.content}</div>
-          ) : notification.message ? (
-            <p className="mt-0.5 whitespace-pre-line text-xs leading-relaxed text-zinc-400">
-              {notification.message}
-            </p>
-          ) : null}
-          {notification.action && (
-            <button
-              onClick={notification.action.onClick}
-              className="mt-2 rounded-lg bg-clay-500/20 px-3 py-1 text-xs font-semibold text-clay-300 transition-colors hover:bg-clay-500/30"
-            >
-              {notification.action.label}
-            </button>
-          )}
-        </div>
-        {notification.dismissible && (
-          <button
-            onClick={() => onDismiss(notification.id)}
-            className="shrink-0 text-lg leading-none text-zinc-500 transition-colors hover:text-zinc-200"
-            title="Dismiss"
-          >
-            ×
-          </button>
-        )}
+      <Icon name={TOAST_ICONS[tone]} className={toastIconVariants({ tone })} />
+      <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+        <span className="text-body font-medium text-fg">{title}</span>
+        {description ? <span className="text-small text-fg-muted">{description}</span> : null}
+        {action ? <div className="mt-1.5 flex flex-wrap items-center gap-2">{action}</div> : null}
       </div>
+      {onDismiss ? (
+        <Tooltip content={dismissLabel}>
+          <IconButton label={dismissLabel} onClick={onDismiss}>
+            <Icon name="x" />
+          </IconButton>
+        </Tooltip>
+      ) : null}
     </div>
   );
 }

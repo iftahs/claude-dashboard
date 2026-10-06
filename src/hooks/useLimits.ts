@@ -1,20 +1,8 @@
 import { useMemo, useSyncExternalStore } from 'react';
 import { useSource, type Platform } from './useSource';
+import type { CapPlatform, Limits, PlatformLimits } from '../lib/limits';
 
-export interface Limits {
-  dailyLimit: number | null;   // USD cost cap per day (null = not configured)
-  weeklyLimit: number | null;  // USD cost cap per week (null = not configured)
-  monthlyLimit: number | null; // USD cost cap per month (null = not configured)
-}
-
-/** A platform that has its own spending caps. */
-export type CapPlatform = 'claude' | 'codex';
-
-// Codex is null until the user sets Codex caps; the one-time migration gives Claude the old global caps and Codex none.
-export interface PlatformLimits {
-  claude: Limits;
-  codex: Limits | null;
-}
+export type { CapPlatform, Limits, PlatformLimits };
 
 export const NO_LIMITS: Limits = { dailyLimit: null, weeklyLimit: null, monthlyLimit: null };
 
@@ -58,7 +46,7 @@ function read(key: string): string | null {
   }
 }
 
-// One store for every hook instance, so a cap saved in Settings reaches the Live tab and alerts without a reload.
+// One store for every hook instance, so a cap saved in Settings reaches the Live page and alerts without a reload.
 let current: PlatformLimits | null = null;
 const listeners = new Set<() => void>();
 

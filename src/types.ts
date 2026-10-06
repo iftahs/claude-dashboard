@@ -485,7 +485,7 @@ export interface ProjectStat {
   legacyPaths?: string[];
 }
 
-/** One platform's slice of the Sessions StatCard row (/api/sessions/summary). */
+/** One platform's slice of the Sessions stat tiles (/api/sessions/summary). */
 export interface SessionSummaryPart {
   sessions: number;
   since: number | null;
@@ -845,11 +845,6 @@ export interface AiStatus {
   reason?: string;
 }
 
-export interface AiChatResponse {
-  answer: string;
-  backend: AiBackend;
-}
-
 export interface AiInsightResponse {
   insight: string;
   backend: AiBackend;
@@ -888,7 +883,7 @@ export interface TaskItem {
   blocked: boolean;
 }
 
-/** A platform whose home folder the Workspace tab reads (~/.claude or ~/.codex). */
+/** A platform whose home folder the Workspace page reads (~/.claude or ~/.codex). */
 export type WorkspacePlatform = 'claude' | 'codex';
 
 export interface PlanItem {

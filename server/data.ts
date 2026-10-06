@@ -26,6 +26,7 @@ import {
 } from './event-store.ts';
 
 const TTL_MS = 5000;
+const MAX_STALE_MS = 30_000;
 
 /** Memo-token resolution (see dataFingerprint) — memoised output never trails the scan clock by more than this. */
 const MEMO_BUCKET_MS = 60_000;
@@ -425,29 +426,37 @@ async function rescan(): Promise<void> {
   );
 }
 
-/** Refresh if the TTL elapsed; concurrent callers share one in-flight scan. */
+export type Freshness = 'fresh' | 'stale' | 'block';
+
+export function freshness(now: number, computedAt: number): Freshness {
+  if (computedAt === 0) return 'block';
+  const age = now - computedAt;
+  if (age < TTL_MS) return 'fresh';
+  return age < MAX_STALE_MS ? 'stale' : 'block';
+}
+
+/** Refresh if the TTL elapsed; concurrent callers share one in-flight scan and wait for it only on 'block'. */
 async function ensureFresh(): Promise<void> {
-  if (computedAt !== 0 && Date.now() - computedAt < TTL_MS) return;
-  if (inflight) {
-    await inflight;
-    return;
-  }
-  inflight = rescan().catch((e) => {
-    console.error('[store] scan failed:', e);
-  });
-  try {
-    await inflight;
-  } finally {
-    inflight = null;
-  }
+  const state = freshness(Date.now(), computedAt);
+  if (state === 'fresh') return;
+  // Cleared by the scan itself: on the stale path no caller awaits it.
+  inflight ??= rescan()
+    .catch((e) => {
+      console.error('[store] scan failed:', e);
+    })
+    .finally(() => {
+      inflight = null;
+    });
+  if (state === 'block') await inflight;
 }
 
-export async function getEvents(): Promise<{ events: UsageEvent[]; computedAt: number }> {
+// `token` is dataFingerprint() read with the snapshot: memoise under it, not under module state read after a later await.
+export async function getEvents(): Promise<{ events: UsageEvent[]; computedAt: number; token: number }> {
   await ensureFresh();
-  return { events, computedAt };
+  return { events, computedAt, token: dataFingerprint() };
 }
 
-export async function getInsights(): Promise<{ insights: InsightsData; computedAt: number }> {
+export async function getInsights(): Promise<{ insights: InsightsData; computedAt: number; token: number }> {
   await ensureFresh();
   return {
     insights: insights ?? {
@@ -456,6 +465,7 @@ export async function getInsights(): Promise<{ insights: InsightsData; computedA
       limitHits: [], rateLimitSnaps: [], lineChanges: [], prLinks: [], turns: [],
     },
     computedAt,
+    token: dataFingerprint(),
   };
 }
 
@@ -509,6 +519,8 @@ export async function forgetArchivedHistory(): Promise<boolean> {
   archive.clear();
   archiveMerge = null;
   archiveGen++;
+  // A scan that began during the delete may already hold the old archive, and its computedAt would undo the invalidation.
+  while (inflight) await inflight;
   invalidateData();
   return true;
 }

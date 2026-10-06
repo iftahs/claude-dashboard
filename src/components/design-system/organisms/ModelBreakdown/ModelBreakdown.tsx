@@ -1,104 +1,86 @@
+import { memo } from 'react';
 import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from 'recharts';
-import { compact, shortModel, usd } from '@/lib/format';
-import { modelColor } from '@/lib/palette';
+import { GroupLabel } from '@/components/design-system/atoms/GroupLabel/GroupLabel';
 import { LegendDot } from '@/components/design-system/atoms/LegendDot/LegendDot';
-import { ProgressBar } from '@/components/design-system/atoms/ProgressBar/ProgressBar';
-import type { ModelBreakdownProps } from './types';
+import { ChartTooltip } from '@/components/design-system/molecules/ChartTooltip/ChartTooltip';
+import { RankedMeterList } from '@/components/design-system/molecules/RankedMeterList/RankedMeterList';
+import { Section } from '@/components/design-system/organisms/Section/Section';
+import type { ModelBreakdownProps, ModelSliceTooltipState } from './types';
+import {
+  DONUT_INNER_RADIUS,
+  DONUT_OUTER_RADIUS,
+  DONUT_STROKE,
+  EFFICIENCY_LABEL,
+  LEGEND_LABEL,
+  TOOLTIP_ESCAPE,
+  TOOLTIP_WRAPPER,
+  chartLabel,
+  sliceRows,
+} from './utils';
 
-// Donut is EFFECTIVE tokens — total tokens are cache-read dominated and would mislead; shown only in the tooltip.
-export function ModelBreakdown({ models }: ModelBreakdownProps) {
-  const data = models
-    .filter((m) => m.effectiveTokens > 0)
-    .map((m) => ({ name: m.model, value: m.effectiveTokens, total: m.totalTokens }))
-    .sort((a, b) => b.value - a.value);
-  const total = data.reduce((s, d) => s + d.value, 0);
-  const totalByName = new Map(data.map((d) => [d.name, d.total]));
-
-  // Cost efficiency: cost per 1M effective tokens per model
-  const efficiencyData = models
-    .filter((m) => m.effectiveTokens > 0 && m.cost > 0)
-    .map((m) => ({
-      name: m.model,
-      costPer1M: (m.cost / m.effectiveTokens) * 1_000_000,
-    }))
-    .sort((a, b) => a.costPer1M - b.costPer1M); // cheapest first
-
-  const maxCostPer1M = Math.max(...efficiencyData.map((d) => d.costPer1M), 1);
-
-  if (data.length === 0) {
-    return <div className="flex h-[220px] items-center justify-center text-sm text-zinc-500">No usage yet</div>;
-  }
-
-  return (
-    <div className="space-y-5">
-      {/* Donut + legend */}
-      <div className="flex items-center gap-4">
-        <div className="h-[200px] w-[200px] shrink-0">
-          <ResponsiveContainer width="100%" height="100%">
-            <PieChart style={{ background: 'transparent' }}>
-              <Pie data={data} dataKey="value" nameKey="name" innerRadius={58} outerRadius={88} stroke="#131318" strokeWidth={2}>
-                {data.map((d) => (
-                  <Cell key={d.name} fill={modelColor(d.name)} />
-                ))}
-              </Pie>
-              <Tooltip
-                contentStyle={{
-                  background: '#1b1b22',
-                  border: '1px solid rgba(255,255,255,0.08)',
-                  borderRadius: 12,
-                  fontSize: 12,
-                }}
-                itemStyle={{ color: '#e4e4e7' }}
-                labelStyle={{ color: '#e4e4e7' }}
-                formatter={(value: number, name: string) => [
-                  `${compact(value)} effective · ${compact(totalByName.get(name) ?? value)} incl. cache reads`,
-                  shortModel(name),
-                ]}
-              />
-            </PieChart>
-          </ResponsiveContainer>
-        </div>
-        <ul className="flex-1 space-y-2">
-          {data.map((d) => (
-            <li key={d.name} className="flex items-center justify-between text-sm">
-              <LegendDot
-                color={modelColor(d.name)}
-                label={shortModel(d.name)}
-                size="md"
-                labelClassName="text-zinc-300"
-              />
-              <span className="tabular-nums text-zinc-400">
-                {compact(d.value)} · {((d.value / total) * 100).toFixed(0)}%
-              </span>
-            </li>
-          ))}
-        </ul>
-      </div>
-
-      {/* Cost efficiency bars */}
-      {efficiencyData.length > 0 && (
-        <div className="space-y-2 pt-3 border-t border-white/10">
-          <div className="text-xs font-semibold uppercase tracking-wider text-zinc-500 mb-3">
-            Cost per 1M effective tokens
-          </div>
-          {efficiencyData.map((d) => {
-            const pct = (d.costPer1M / maxCostPer1M) * 100;
-            return (
-              <div key={d.name} className="space-y-1">
-                <div className="flex justify-between text-xs">
-                  <span className="flex items-center gap-1.5">
-                    {/* h-1.5 w-1.5 dot has no matching LegendDot size — keep inline */}
-                    <span className="h-1.5 w-1.5 rounded-full flex-shrink-0" style={{ backgroundColor: modelColor(d.name) }} />
-                    <span className="text-zinc-300">{shortModel(d.name)}</span>
-                  </span>
-                  <span className="font-mono text-zinc-400">{usd(d.costPer1M)} / 1M</span>
-                </div>
-                <ProgressBar pct={pct} color={modelColor(d.name)} height="sm" />
-              </div>
-            );
-          })}
-        </div>
-      )}
-    </div>
-  );
+function sliceTooltip({ active, payload }: ModelSliceTooltipState) {
+  const slice = payload?.[0]?.payload;
+  if (!active || !slice) return null;
+  return <ChartTooltip title={slice.label} rows={sliceRows(slice)} />;
 }
+
+export const ModelBreakdown = memo(function ModelBreakdown({ view, className }: ModelBreakdownProps) {
+  return (
+    <Section
+      title={view.title}
+      description={view.description}
+      help={view.help}
+      as="h3"
+      state={view.state}
+      ai={view.ai}
+      className={className}
+    >
+      <div className="flex flex-col gap-5">
+        <div className="flex flex-wrap items-center justify-center gap-5">
+          <div role="img" aria-label={chartLabel(view)} className="size-[180px] flex-none">
+            <ResponsiveContainer width="100%" height="100%">
+              <PieChart>
+                <Pie
+                  data={view.slices}
+                  dataKey="value"
+                  nameKey="label"
+                  innerRadius={DONUT_INNER_RADIUS}
+                  outerRadius={DONUT_OUTER_RADIUS}
+                  stroke={DONUT_STROKE}
+                  strokeWidth={2}
+                  isAnimationActive={false}
+                >
+                  {view.slices.map((slice) => (
+                    <Cell key={slice.id} fill={slice.color} />
+                  ))}
+                </Pie>
+                <Tooltip content={sliceTooltip} allowEscapeViewBox={TOOLTIP_ESCAPE} wrapperStyle={TOOLTIP_WRAPPER} />
+              </PieChart>
+            </ResponsiveContainer>
+          </div>
+          <ul aria-label={LEGEND_LABEL} className="flex min-w-48 flex-1 flex-col gap-2">
+            {view.slices.map((slice) => (
+              <li key={slice.id} className="flex min-w-0 items-center justify-between gap-3">
+                <LegendDot color={slice.color} className="min-w-0 text-small text-fg">
+                  <span title={slice.label} className="min-w-0 truncate">
+                    {slice.label}
+                  </span>
+                </LegendDot>
+                <span className="flex-none whitespace-nowrap font-mono text-mono tabular-nums text-fg-muted">
+                  {slice.tokens} · {slice.share}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+
+        {view.efficiency.length > 0 ? (
+          <div className="flex flex-col gap-3 border-t border-line pt-4">
+            <GroupLabel as="span">{EFFICIENCY_LABEL}</GroupLabel>
+            <RankedMeterList ariaLabel={EFFICIENCY_LABEL} rows={view.efficiency} />
+          </div>
+        ) : null}
+      </div>
+    </Section>
+  );
+});

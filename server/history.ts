@@ -13,7 +13,7 @@ import { readFile, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import { claudeDir, type UsageEvent, type UsageSource } from './scan.ts';
 import { sourceMatches, type SourceFilter } from './aggregate.ts';
-import { getEvents, eventsFingerprint } from './cache.ts';
+import { getEvents } from './cache.ts';
 
 export type CommandKind = 'slash' | 'skill';
 
@@ -142,11 +142,11 @@ export async function getCommandUsage(
   now?: number,
   source: SourceFilter = 'all',
 ): Promise<CommandUsageData> {
-  const { events, computedAt } = await getEvents();
+  const { events, computedAt, token: dataToken } = await getEvents();
   const at = now ?? computedAt;
   const history = await readSlashHistory();
   const key = `${days}|${source}`;
-  const token = `${eventsFingerprint()}|${history.sig}|${Math.floor(at / 60_000)}`;
+  const token = `${dataToken}|${history.sig}|${Math.floor(at / 60_000)}`;
   const hit = usageMemo.get(key);
   if (hit && hit.token === token) return hit.data;
   const data = buildCommandUsage({ slash: history.entries, events, source, days, now: at });

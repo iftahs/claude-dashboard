@@ -1,5 +1,21 @@
-import type { ModelShare } from '@/types';
+import type { ModelBreakdownView, ModelSliceView } from '@/lib/views/models';
 
 export interface ModelBreakdownProps {
-  models: ModelShare[];
+  view: ModelBreakdownView;
+  className?: string;
+}
+
+export interface ModelSliceTooltipItem {
+  payload?: ModelSliceView;
+}
+
+export interface ModelSliceTooltipState {
+  active?: boolean;
+  payload?: readonly ModelSliceTooltipItem[];
+}
+
+export interface ModelSliceTooltipRow {
+  label: string;
+  value: string;
+  color?: string;
 }

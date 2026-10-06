@@ -1,128 +1,117 @@
+import { memo } from 'react';
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
-import { ChartTooltip } from '@/components/design-system/molecules/ChartTooltip/ChartTooltip';
+import { GroupLabel } from '@/components/design-system/atoms/GroupLabel/GroupLabel';
 import { LegendDot } from '@/components/design-system/atoms/LegendDot/LegendDot';
-import { InfoTip } from '@/components/design-system/atoms/InfoTip/InfoTip';
-import { Skeleton } from '@/components/design-system/atoms/Skeleton/Skeleton';
-import { compact } from '@/lib/format';
-import { LATENCY_COLOR, formatActive, formatDuration, latencyTiles } from './utils';
-import type { HistogramTooltipProps, TurnLatencyProps } from './types';
+import { Table } from '@/components/design-system/atoms/Table/Table';
+import { TableCell } from '@/components/design-system/atoms/TableCell/TableCell';
+import { TableRow } from '@/components/design-system/atoms/TableRow/TableRow';
+import { ChartTooltip } from '@/components/design-system/molecules/ChartTooltip/ChartTooltip';
+import { KeyValueRow } from '@/components/design-system/molecules/KeyValueRow/KeyValueRow';
+import { Legend } from '@/components/design-system/molecules/Legend/Legend';
+import { Section } from '@/components/design-system/organisms/Section/Section';
+import { CHART_AXIS, CHART_BAR_RADIUS, CHART_CURSOR, CHART_GRID } from '@/lib/chart-theme';
+import { cn } from '@/lib/cn';
+import type { LatencyTooltipState, TurnLatencyProps } from './types';
+import {
+  AXIS_WIDTH,
+  CHART_HEIGHT,
+  CHART_LABEL,
+  CHART_MARGIN,
+  HISTOGRAM_LABEL,
+  LEGEND_LABEL,
+  STACK_ID,
+  TABLE_CAPTION,
+  histogramRows,
+} from './utils';
 
-function HistogramTooltip({ active, payload, split }: HistogramTooltipProps) {
-  if (!active || !payload?.length) return null;
-  const d = payload[0].payload;
-  const rows: [string, number, string][] = split
-    ? [['Claude', d.claude, LATENCY_COLOR.claude], ['Codex', d.codex, LATENCY_COLOR.codex]]
-    : [['Turns', d.total, LATENCY_COLOR.claude]];
-  return (
-    <ChartTooltip label={d.label} minWidth={130}>
-      <div className="space-y-1">
-        {rows.map(([k, v, color]) => (
-          <div key={k} className="flex items-center justify-between gap-4">
-            {split ? <LegendDot color={color} label={k} /> : <span className="text-zinc-400">{k}</span>}
-            <span className="font-semibold text-zinc-200">{compact(v)}</span>
-          </div>
-        ))}
-      </div>
-    </ChartTooltip>
-  );
+function histogramTooltip({ active, payload, label }: LatencyTooltipState) {
+  if (!active || !payload || payload.length === 0) return null;
+  return <ChartTooltip title={label} rows={histogramRows(payload)} />;
 }
 
-// Under Both, stats split per platform and the histogram stacks Claude over Codex.
-export function TurnLatency({ data, platform }: TurnLatencyProps) {
-  if (!data) {
-    return (
-      <div className="space-y-4">
-        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-          {Array.from({ length: 4 }).map((_, i) => (
-            <Skeleton key={i} className="h-16 w-full rounded" />
-          ))}
-        </div>
-        <Skeleton className="h-[160px] w-full rounded" />
-      </div>
-    );
-  }
-
-  if (data.turns === 0) {
-    return <div className="text-sm text-zinc-500">No completed turns in this window.</div>;
-  }
-
-  const split = platform === 'both';
-  const platforms = (['claude', 'codex'] as const).filter((p) => data.byPlatform[p]);
+export const TurnLatency = memo(function TurnLatency({ view, className }: TurnLatencyProps) {
+  const split = view.platforms.length > 0;
+  const top = view.series.length - 1;
 
   return (
-    <div className="grid grid-cols-1 gap-6 lg:grid-cols-5">
-      <div className="space-y-3 lg:col-span-2">
-        {split ? (
-          <div className="overflow-hidden rounded-xl ring-1 ring-white/10">
-            <div className="grid grid-cols-5 gap-2 bg-ink-800/60 px-3 py-2 text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
-              <span className="col-span-2">Platform</span>
-              <span className="text-right">Median</span>
-              <span className="text-right">p90</span>
-              <span className="text-right">1st token</span>
+    <Section title={view.title} description={view.description} help={view.help} state={view.state} ai={view.ai} className={className}>
+      <div className={cn('grid grid-cols-1 gap-6', !split && 'xl:grid-cols-5')}>
+        <div className={cn('flex min-w-0 flex-col gap-3', !split && 'xl:col-span-2')}>
+          {split ? (
+            <div className="overflow-x-auto rounded-control border border-line">
+              <Table caption={TABLE_CAPTION}>
+                <thead>
+                  <TableRow>
+                    <TableCell header>Platform</TableCell>
+                    <TableCell header numeric>
+                      Turns
+                    </TableCell>
+                    <TableCell header numeric>
+                      Median
+                    </TableCell>
+                    <TableCell header numeric>
+                      p90
+                    </TableCell>
+                    <TableCell header numeric>
+                      First token
+                    </TableCell>
+                  </TableRow>
+                </thead>
+                <tbody>
+                  {view.platforms.map((row) => (
+                    <TableRow key={row.key}>
+                      <TableCell>
+                        <LegendDot color={row.color}>{row.label}</LegendDot>
+                      </TableCell>
+                      <TableCell numeric>{row.turns}</TableCell>
+                      <TableCell numeric className="text-fg">
+                        {row.median}
+                      </TableCell>
+                      <TableCell numeric>{row.p90}</TableCell>
+                      <TableCell numeric>{row.firstToken}</TableCell>
+                    </TableRow>
+                  ))}
+                </tbody>
+              </Table>
             </div>
-            {platforms.map((p) => {
-              const s = data.byPlatform[p]!;
-              return (
-                <div key={p} className="grid grid-cols-5 gap-2 border-t border-white/5 px-3 py-2 text-xs tabular-nums">
-                  <span className="col-span-2 flex items-center gap-2">
-                    <LegendDot color={LATENCY_COLOR[p]} label={p === 'claude' ? 'Claude' : 'Codex'} />
-                    <span className="text-zinc-600">{compact(s.turns)}</span>
-                  </span>
-                  <span className="text-right text-zinc-200">{formatDuration(s.medianMs)}</span>
-                  <span className="text-right text-zinc-300">{formatDuration(s.p90Ms)}</span>
-                  <span className="text-right text-zinc-300">{formatDuration(s.medianTtftMs)}</span>
-                </div>
-              );
-            })}
-          </div>
-        ) : (
-          <div className="grid grid-cols-2 gap-3">
-            {latencyTiles(data).map((t) => (
-              <div key={t.label} className="rounded-xl bg-ink-800/50 p-3 ring-1 ring-white/10">
-                <div className="flex items-center gap-1.5 text-xs text-zinc-500">
-                  {t.label}
-                  <InfoTip text={t.help} />
-                </div>
-                <div className="mt-1 text-xl font-bold tabular-nums text-zinc-200">{t.value}</div>
-              </div>
-            ))}
-          </div>
-        )}
-        <div className="text-xs text-zinc-500">
-          <span className="font-semibold text-zinc-300">{compact(data.turns)}</span> turns ·{' '}
-          <span className="font-semibold text-zinc-300">{formatActive(data.activeMs)}</span> active
-        </div>
-      </div>
-
-      <div className="lg:col-span-3">
-        <div className="mb-1 flex items-center justify-between text-xs font-semibold uppercase tracking-wider text-zinc-500">
-          <span>Turns by duration</span>
-          {split && (
-            <span className="flex gap-3 font-normal normal-case tracking-normal">
-              <LegendDot color={LATENCY_COLOR.claude} label="Claude" />
-              <LegendDot color={LATENCY_COLOR.codex} label="Codex" />
-            </span>
+          ) : (
+            <div className="flex flex-col gap-2">
+              {view.facts.map((fact) => (
+                <KeyValueRow key={fact.key} label={fact.label} value={fact.value} tone={fact.tone} help={fact.help ?? undefined} />
+              ))}
+            </div>
           )}
+          <p className="text-caption text-fg-subtle">{view.totals}</p>
         </div>
-        <div className="h-[160px] w-full">
-          <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={data.histogram} margin={{ top: 4, right: 8, bottom: 0, left: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#26262f" vertical={false} />
-              <XAxis dataKey="label" tick={{ fill: '#71717a', fontSize: 10 }} axisLine={false} tickLine={false} interval={0} />
-              <YAxis tick={{ fill: '#71717a', fontSize: 10 }} axisLine={false} tickLine={false} width={32} allowDecimals={false} />
-              <Tooltip cursor={{ fill: 'rgba(255,255,255,0.04)' }} content={<HistogramTooltip split={split} />} />
-              {split ? (
-                <>
-                  <Bar dataKey="claude" stackId="t" fill={LATENCY_COLOR.claude} />
-                  <Bar dataKey="codex" stackId="t" fill={LATENCY_COLOR.codex} radius={[3, 3, 0, 0]} />
-                </>
-              ) : (
-                <Bar dataKey="total" fill={LATENCY_COLOR.claude} radius={[3, 3, 0, 0]} />
-              )}
-            </BarChart>
-          </ResponsiveContainer>
+
+        <div className={cn('flex min-w-0 flex-col gap-3', !split && 'xl:col-span-3')}>
+          <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
+            <GroupLabel as="span">{HISTOGRAM_LABEL}</GroupLabel>
+            {view.series.length > 1 ? <Legend ariaLabel={LEGEND_LABEL} items={view.series} /> : null}
+          </div>
+          <div role="img" aria-label={CHART_LABEL} className="w-full min-w-0" style={{ height: CHART_HEIGHT }}>
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={view.histogram} margin={CHART_MARGIN}>
+                <CartesianGrid {...CHART_GRID} />
+                <XAxis dataKey="label" interval={0} {...CHART_AXIS} />
+                <YAxis width={AXIS_WIDTH} allowDecimals={false} {...CHART_AXIS} />
+                <Tooltip cursor={CHART_CURSOR} content={histogramTooltip} />
+                {view.series.map((series, index) => (
+                  <Bar
+                    key={series.key}
+                    dataKey={series.key}
+                    name={series.label}
+                    stackId={STACK_ID}
+                    fill={series.color}
+                    radius={index === top ? CHART_BAR_RADIUS : undefined}
+                    isAnimationActive={false}
+                  />
+                ))}
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
         </div>
       </div>
-    </div>
+    </Section>
   );
-}
+});

@@ -1,26 +1,21 @@
-// Matches server/insights.ts classifyError; unknown keys fall back to the key with dashes as spaces.
-const CATEGORY_LABELS: Record<string, string> = {
-  'exit-code': 'Command failed',
-  'patch-failed': 'Patch failed',
-  'mcp-error': 'MCP error',
-  'edit-mismatch': 'Edit mismatch',
-  'not-read': 'Not read / stale',
-  'file-not-found': 'File not found',
-  'too-large': 'Too large',
-  'usage-limit': 'Usage limit',
-  blocked: 'Blocked',
-  'invalid-input': 'Invalid input',
-  'api-error': 'API error',
-  network: 'Network',
-  timeout: 'Timeout',
-  other: 'Other',
-};
+import { compact } from '@/lib/format';
+import type { ErrorTrendPointView } from '@/lib/views/insights';
+import type { ErrorTrendTooltipRow } from './types';
 
-export function categoryLabel(key: string): string {
-  return CATEGORY_LABELS[key] ?? key.replace(/-/g, ' ');
-}
+export const CATEGORY_LIST_LABEL = 'Failures by category';
+export const TOOL_LIST_LABEL = 'Failures by tool';
+export const TREND_CHART_LABEL = 'Failed tool calls per day';
+export const TREND_SERIES = 'Failed';
+export const TREND_HEIGHT = 140;
+export const TREND_AXIS_WIDTH = 36;
+export const TREND_MARGIN = { top: 8, right: 8, bottom: 0, left: 0 } as const;
+export const TREND_LINE_COLOR = 'rgb(var(--danger))';
+export const TREND_CURSOR = { stroke: 'rgb(var(--border-strong))' } as const;
+export const TREND_ACTIVE_DOT = { r: 4, fill: TREND_LINE_COLOR, stroke: 'rgb(var(--surface))', strokeWidth: 2 } as const;
 
-/** Error-rate text colour: red above 10%, amber above 5%. */
-export function rateColor(rate: number): string {
-  return rate > 0.1 ? 'text-red-400' : rate > 0.05 ? 'text-amber-400' : 'text-zinc-400';
+export function trendRows(point: ErrorTrendPointView): ErrorTrendTooltipRow[] {
+  return [
+    { label: TREND_SERIES, value: compact(point.errors), color: TREND_LINE_COLOR },
+    { label: 'Calls', value: compact(point.calls) },
+  ];
 }

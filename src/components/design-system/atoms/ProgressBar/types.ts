@@ -1,12 +1,11 @@
-import type { VariantProps } from 'class-variance-authority';
-import type { trackVariants, fillVariants } from './ProgressBar.variants';
+export type ProgressBarTone = 'accent' | 'warning' | 'danger' | 'success' | 'neutral' | 'codex';
 
-export interface ProgressBarProps
-  extends VariantProps<typeof trackVariants>,
-    VariantProps<typeof fillVariants> {
-  /** 0–100 percentage; clamped internally */
-  pct: number;
-  /** Hex color; overrides variant-based fill class when set */
-  color?: string;
+export type ProgressBarSize = 'sm' | 'md' | 'lg';
+
+export interface ProgressBarProps {
+  value: number;
+  tone?: ProgressBarTone;
+  size?: ProgressBarSize;
+  label?: string;
   className?: string;
 }

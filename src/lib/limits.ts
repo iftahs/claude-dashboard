@@ -1,26 +1,29 @@
 import type { CodexLiveData, LiveUsageData } from '@/types';
 
+export interface Limits {
+  dailyLimit: number | null;   // USD cost cap per day (null = not configured)
+  weeklyLimit: number | null;  // USD cost cap per week (null = not configured)
+  monthlyLimit: number | null; // USD cost cap per month (null = not configured)
+}
+
+/** A platform that has its own spending caps. */
+export type CapPlatform = 'claude' | 'codex';
+
+// Codex is null until the user sets Codex caps; the one-time migration gives Claude the old global caps and Codex none.
+export interface PlatformLimits {
+  claude: Limits;
+  codex: Limits | null;
+}
+
 export const LIMIT_WARN_PCT = 70;
 export const LIMIT_DANGER_PCT = 90;
 
-/** Named like the SidebarBadge tones, so the badge can use it as-is. */
 export type LimitTone = 'success' | 'warning' | 'danger';
 
 export function limitTone(pct: number): LimitTone {
   if (pct >= LIMIT_DANGER_PCT) return 'danger';
   if (pct >= LIMIT_WARN_PCT) return 'warning';
   return 'success';
-}
-
-/** Fill colour per tone. `success` is the clay accent, not green: a limit bar is usage, not health. */
-export const LIMIT_TONE_COLOR: Record<LimitTone, string> = {
-  success: '#d97757',
-  warning: '#f59e0b',
-  danger: '#ef4444',
-};
-
-export function limitColor(pct: number): string {
-  return LIMIT_TONE_COLOR[limitTone(pct)];
 }
 
 const MIN = 60_000;

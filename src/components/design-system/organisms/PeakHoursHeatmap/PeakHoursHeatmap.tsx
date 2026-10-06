@@ -1,100 +1,50 @@
-import { useState } from 'react';
-import { HoverTooltip } from '@/components/design-system/molecules/HoverTooltip/HoverTooltip';
-import { compact } from '@/lib/format';
+import { Fragment, memo } from 'react';
+import { Tooltip } from '@/components/design-system/atoms/Tooltip/Tooltip';
+import { Section } from '@/components/design-system/organisms/Section/Section';
+import { cn } from '@/lib/cn';
 import type { PeakHoursHeatmapProps } from './types';
-import { DAYS, FULL_DAYS, HOURS, dayOrder, formatHour, peakCell } from './utils';
+import { GRID_CLASS, GRID_LABEL, HEAT_CLASS, HEAT_LEVELS, LEGEND_INSET, TOOLTIP_DELAY_MS } from './utils';
 
-export function PeakHoursHeatmap({ grid, weekStart }: PeakHoursHeatmapProps) {
-  const [tooltip, setTooltip] = useState<{ day: number; hour: number; value: number } | null>(null);
-  const rows = dayOrder(weekStart);
-  const peak = peakCell(grid);
-
-  // Find global max for intensity scaling
-  const allValues = grid.flat();
-  const maxVal = Math.max(...allValues, 1);
-
-  function cellColor(value: number): string {
-    if (value === 0) return 'rgba(38,38,47,0.5)';
-    const intensity = value / maxVal;
-    // Interpolate from dark clay to bright clay
-    const alpha = 0.15 + intensity * 0.85;
-    return `rgba(217,119,87,${alpha.toFixed(2)})`;
-  }
-
+export const PeakHoursHeatmap = memo(function PeakHoursHeatmap({ view, className }: PeakHoursHeatmapProps) {
   return (
-    <div className="relative select-none">
-      {peak && (
-        <p className="mb-3 text-xs text-zinc-500">
-          Your busiest time is{' '}
-          <span className="font-semibold text-zinc-300">
-            {FULL_DAYS[peak.day]} at {formatHour(peak.hour)}
-          </span>{' '}
-          — <span className="font-mono text-clay-400">{compact(peak.value)}</span> effective tokens.
-        </p>
-      )}
-
-      {/* Hour labels */}
-      <div className="flex mb-1 ml-10">
-        {HOURS.map((h) => (
-          <div
-            key={h}
-            className="flex-1 text-center text-[9px] text-zinc-600 font-mono"
-            style={{ minWidth: 0 }}
-          >
-            {h % 3 === 0 ? formatHour(h) : ''}
-          </div>
-        ))}
-      </div>
-
-      {/* Grid rows — ordered by the week-start preference (dayIdx stays canonical Mon=0..Sun=6) */}
-      {rows.map((dayIdx) => (
-        <div key={dayIdx} className="flex items-center mb-0.5">
-          <div className="w-10 text-[10px] text-zinc-500 font-medium shrink-0">{DAYS[dayIdx]}</div>
-          {grid[dayIdx].map((value, hourIdx) => (
-            <div
-              key={hourIdx}
-              className="relative flex-1 rounded-sm cursor-default transition-opacity"
-              style={{
-                height: 20,
-                minWidth: 0,
-                backgroundColor: cellColor(value),
-                margin: '0 1px',
-                outline: tooltip?.day === dayIdx && tooltip?.hour === hourIdx
-                  ? '1px solid rgba(217,119,87,0.7)'
-                  : undefined,
-              }}
-              onMouseEnter={() => setTooltip({ day: dayIdx, hour: hourIdx, value })}
-              onMouseLeave={() => setTooltip(null)}
-            >
-              {tooltip?.day === dayIdx && tooltip?.hour === hourIdx && value > 0 && (
-                <HoverTooltip
-                  position="above"
-                  align={hourIdx >= HOURS.length - 3 ? 'right' : hourIdx <= 2 ? 'left' : 'center'}
-                >
-                  <span className="text-zinc-300 font-semibold">{DAYS[dayIdx]}</span>
-                  <span className="text-zinc-500 mx-1">·</span>
-                  <span className="text-zinc-400">{formatHour(hourIdx)}</span>
-                  <span className="text-zinc-500 mx-1">·</span>
-                  <span className="text-clay-400 font-mono">{compact(value)}</span>
-                </HoverTooltip>
-              )}
-            </div>
+    <Section title={view.title} description={view.description} help={view.help} state={view.state} className={className}>
+      <div className="flex min-w-0 flex-col gap-3">
+        {view.peak ? (
+          <p className="text-small text-fg-muted">
+            Your busiest time is <span className="font-medium text-fg">{view.peak.when}</span>, with{' '}
+            <span className="font-mono text-fg">{view.peak.tokens}</span> effective tokens.
+          </p>
+        ) : null}
+        <div role="group" aria-label={GRID_LABEL} className={GRID_CLASS}>
+          <span aria-hidden="true" />
+          {view.hours.map((hour, index) => (
+            <span key={`hour-${index}`} aria-hidden="true" className="h-4 whitespace-nowrap text-caption text-fg-subtle">
+              {hour}
+            </span>
+          ))}
+          {view.rows.map((row) => (
+            <Fragment key={row.key}>
+              <span className="flex items-center text-caption text-fg-muted">{row.label}</span>
+              {row.cells.map((cell) => (
+                <Tooltip key={cell.key} content={cell.label} delay={TOOLTIP_DELAY_MS}>
+                  <span
+                    role="img"
+                    aria-label={cell.label}
+                    className={cn('h-5 rounded-[2px] hover:outline hover:outline-1 hover:outline-fg-muted', HEAT_CLASS[cell.level])}
+                  />
+                </Tooltip>
+              ))}
+            </Fragment>
           ))}
         </div>
-      ))}
-
-      {/* Legend */}
-      <div className="mt-3 ml-10 flex items-center gap-2">
-        <span className="text-[10px] text-zinc-600">Less</span>
-        {[0.1, 0.3, 0.5, 0.7, 0.9].map((intensity) => (
-          <div
-            key={intensity}
-            className="h-3 w-4 rounded-sm"
-            style={{ backgroundColor: `rgba(217,119,87,${0.15 + intensity * 0.85})` }}
-          />
-        ))}
-        <span className="text-[10px] text-zinc-600">More</span>
+        <div aria-hidden="true" className={cn('flex items-center gap-1.5 text-caption text-fg-subtle', LEGEND_INSET)}>
+          Less
+          {HEAT_LEVELS.map((level) => (
+            <span key={level} className={cn('h-3 w-4 rounded-[2px]', HEAT_CLASS[level])} />
+          ))}
+          More
+        </div>
       </div>
-    </div>
+    </Section>
   );
-}
+});

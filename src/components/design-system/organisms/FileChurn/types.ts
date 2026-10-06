@@ -1,5 +1,6 @@
-import type { FileChurnData } from '@/types';
+import type { FileChurnView } from '@/lib/views/insights';
 
 export interface FileChurnProps {
-  data: FileChurnData | null;
+  view: FileChurnView;
+  className?: string;
 }

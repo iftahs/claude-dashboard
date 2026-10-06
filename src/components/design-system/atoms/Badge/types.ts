@@ -1,7 +1,7 @@
-import type { ReactNode } from 'react';
-import type { VariantProps } from 'class-variance-authority';
-import type { badgeVariants } from './Badge.variants';
+import type { HTMLAttributes } from 'react';
 
-export interface BadgeProps extends VariantProps<typeof badgeVariants> {
-  children: ReactNode;
+export type BadgeTone = 'neutral' | 'accent' | 'success' | 'warning' | 'danger' | 'info';
+
+export interface BadgeProps extends HTMLAttributes<HTMLSpanElement> {
+  tone?: BadgeTone;
 }

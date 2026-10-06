@@ -1,86 +1,72 @@
-import type { SidebarProps } from './types';
-import { BRAND } from './utils';
+import { Badge } from '@/components/design-system/atoms/Badge/Badge';
+import { GroupLabel } from '@/components/design-system/atoms/GroupLabel/GroupLabel';
+import { Icon } from '@/components/design-system/atoms/Icon/Icon';
+import { IconButton } from '@/components/design-system/atoms/IconButton/IconButton';
+import { Tooltip } from '@/components/design-system/atoms/Tooltip/Tooltip';
+import { NavItem } from '@/components/design-system/molecules/NavItem/NavItem';
+import { cn } from '@/lib/cn';
+import { SidebarFooter } from './SidebarFooter/SidebarFooter';
+import type { SidebarItem, SidebarProps } from './types';
 
-const faviconUrl = '/favicon.svg';
+export function Sidebar({
+  brand,
+  groups,
+  pinned = [],
+  activeId,
+  collapsed = false,
+  toggleIcon,
+  toggleLabel,
+  onToggle,
+  onNavigate,
+  dataDirs = [],
+  version,
+  credit,
+  navLabel = 'Main',
+}: SidebarProps) {
+  const renderItem = (item: SidebarItem) => (
+    <NavItem
+      key={item.id}
+      href={item.href}
+      label={item.label}
+      icon={item.icon}
+      active={item.id === activeId}
+      collapsed={collapsed}
+      badge={
+        item.badge ? (
+          <Badge tone={item.badge.tone} title={item.badge.title}>
+            {item.badge.text}
+          </Badge>
+        ) : undefined
+      }
+      onClick={onNavigate ? (event) => onNavigate(item.href, event) : undefined}
+    />
+  );
 
-/** Left navigation rail: brand + the scanned dir(s) + vertical tab nav + footer credits. */
-export function Sidebar({ tabs, activeTab, onNavigate, dataDirs, version }: SidebarProps) {
-  // One folder reads as before (just the path); several get their platform name.
-  const labelled = dataDirs.length > 1;
   return (
-    <aside className="flex w-60 shrink-0 flex-col border-r border-white/10 bg-ink-900/60">
-      <div className="px-4 pb-4 pt-5">
-        <div className="flex items-center gap-2.5">
-          <img src={faviconUrl} alt="" className="h-7 w-7" />
-          <h1 className="text-lg font-extrabold text-zinc-100">{BRAND}</h1>
-        </div>
-        {dataDirs.length > 0 && (
-          <div className="mt-1.5 space-y-0.5">
-            {dataDirs.map((d) => (
-              <p
-                key={`${d.label}:${d.path}`}
-                className="truncate font-mono text-[10px] text-zinc-600"
-                title={`${d.label} data: ${d.path}`}
-              >
-                {labelled && <span className="text-zinc-500">{d.label} </span>}
-                {d.path}
-              </p>
-            ))}
-          </div>
-        )}
+    // The rail is 55px wide inside its hairline: 12px + 11px of padding keeps the 32px items on whole pixels.
+    <div className={cn('flex flex-1 flex-col gap-5 py-4', collapsed ? 'pl-3 pr-[11px]' : 'px-3')}>
+      <div className={cn('flex h-8 flex-none items-center', collapsed ? 'justify-center' : 'justify-between pl-2')}>
+        {collapsed ? null : <span className="min-w-0 truncate text-heading text-fg">{brand}</span>}
+        <Tooltip content={toggleLabel} side="right">
+          <IconButton label={toggleLabel} onClick={onToggle}>
+            <Icon name={toggleIcon} />
+          </IconButton>
+        </Tooltip>
       </div>
-
-      <nav className="flex-1 space-y-1 overflow-y-auto px-2.5 pb-4">
-        {tabs.map((t) => (
-          <button
-            key={t.id}
-            onClick={() => onNavigate(t.id)}
-            className={`flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm font-medium transition-all duration-200 ${
-              activeTab === t.id
-                ? 'bg-ink-700 text-zinc-100 shadow-sm ring-1 ring-white/10'
-                : 'text-zinc-500 hover:bg-ink-700/40 hover:text-zinc-300'
-            }`}
-          >
-            {t.icon && (
-              <span className="w-5 flex-none text-center text-base leading-none" aria-hidden>
-                {t.icon}
-              </span>
+      <nav aria-label={navLabel} className="flex flex-1 flex-col gap-5">
+        {groups.map((group) => (
+          <div key={group.id} role="group" aria-label={group.label} className="flex flex-col gap-0.5">
+            {collapsed ? null : (
+              <GroupLabel as="span" className="px-2 pb-1.5">
+                {group.label}
+              </GroupLabel>
             )}
-            <span className="flex-1 truncate">{t.label}</span>
-            {t.badge}
-          </button>
+            {group.items.map(renderItem)}
+          </div>
         ))}
+        {pinned.length > 0 ? <div className="mt-auto flex flex-col gap-0.5">{pinned.map(renderItem)}</div> : null}
       </nav>
-
-      <footer className="border-t border-white/10 px-4 py-3 text-[11px] text-zinc-600">
-        <p>
-          Built by{' '}
-          <a
-            href="https://iftah.dev"
-            target="_blank"
-            rel="noreferrer"
-            className="font-medium text-zinc-400 transition-colors hover:text-clay-400"
-          >
-            Iftah Saar
-          </a>
-          {version?.current && (
-            <span className="text-zinc-700"> · v{version.current}</span>
-          )}
-          {version?.repoUrl && (
-            <>
-              {' · '}
-              <a
-                href={version.repoUrl}
-                target="_blank"
-                rel="noreferrer"
-                className="transition-colors hover:text-zinc-400"
-              >
-                GitHub
-              </a>
-            </>
-          )}
-        </p>
-      </footer>
-    </aside>
+      {collapsed ? null : <SidebarFooter dataDirs={dataDirs} version={version} credit={credit} />}
+    </div>
   );
 }

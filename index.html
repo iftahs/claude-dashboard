@@ -3,9 +3,23 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="A local dashboard for Claude Code, Claude Cowork and OpenAI Codex usage, read from the logs on this machine." />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="apple-touch-icon" href="/favicon.svg" />
-    <meta name="theme-color" content="#18181b" />
+    <meta name="theme-color" content="#0c0c0f" />
+    <script>
+      (function () {
+        var theme = 'dark';
+        try {
+          if (localStorage.getItem('claude-dashboard-theme') === 'light') theme = 'light';
+        } catch (e) {}
+        var root = document.documentElement;
+        root.classList.remove('dark', 'light');
+        root.classList.add(theme);
+        var meta = document.querySelector('meta[name="theme-color"]');
+        if (meta) meta.setAttribute('content', theme === 'light' ? '#f7f7f5' : '#0c0c0f');
+      })();
+    </script>
     <title>AI Usage</title>
   </head>
   <body>

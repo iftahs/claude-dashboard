@@ -1,4 +1,3 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -10,130 +9,21 @@ body,
 }
 
 body {
-  @apply bg-ink-900 text-zinc-200 font-sans antialiased;
-  background-image: radial-gradient(circle at 20% -10%, rgba(217, 119, 87, 0.12), transparent 40%),
-    radial-gradient(circle at 90% 0%, rgba(99, 102, 241, 0.08), transparent 35%);
-  background-attachment: fixed;
+  @apply bg-canvas text-fg font-sans antialiased;
 }
 
-@layer components {
-  .card {
-    @apply rounded-2xl bg-ink-800/90 border border-white/10 shadow-xl shadow-black/30 backdrop-blur;
-  }
-  .pulse-dot {
-    @apply inline-block h-2 w-2 rounded-full bg-emerald-400;
-    box-shadow: 0 0 0 0 rgba(52, 211, 153, 0.6);
-    animation: pulse 2s infinite;
-  }
-  .skeleton {
-    @apply relative overflow-hidden bg-white/10;
-  }
-  .skeleton::after {
-    content: '';
-    @apply absolute inset-0;
-    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.06), transparent);
-    transform: translateX(-100%);
-    animation: shimmer 1.5s infinite;
-  }
-  /* One-shot highlight when an agent card makes progress (tokens/activity rise). */
-  .agent-flash {
-    animation: agent-flash 0.8s ease-out both;
-  }
-}
-
-@keyframes shimmer {
-  100% {
-    transform: translateX(100%);
-  }
-}
-
-@keyframes pulse {
-  0% {
-    box-shadow: 0 0 0 0 rgba(52, 211, 153, 0.5);
-  }
-  70% {
-    box-shadow: 0 0 0 8px rgba(52, 211, 153, 0);
-  }
-  100% {
-    box-shadow: 0 0 0 0 rgba(52, 211, 153, 0);
-  }
-}
-
-@keyframes agent-sweep {
-  0% {
-    transform: translateX(-100%);
-  }
-  100% {
-    transform: translateX(200%);
-  }
-}
-
-@keyframes agent-enter {
-  0% {
-    opacity: 0;
-    transform: translateY(8px);
-  }
-  100% {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-@keyframes agent-fade-out {
-  0% {
-    opacity: 1;
-  }
-  100% {
-    opacity: 0.3;
-  }
-}
-
-@keyframes agent-flash {
-  0% {
-    box-shadow: 0 0 0 1px rgba(217, 119, 87, 0);
-    background-color: rgba(217, 119, 87, 0);
-  }
-  15% {
-    box-shadow: 0 0 0 1px rgba(217, 119, 87, 0.35);
-    background-color: rgba(217, 119, 87, 0.1);
-  }
-  100% {
-    box-shadow: 0 0 0 1px rgba(217, 119, 87, 0);
-    background-color: rgba(217, 119, 87, 0);
-  }
-}
-
-/* Respect reduced-motion: drop the flash highlight (keep live pulse/sweep). */
-@media (prefers-reduced-motion: reduce) {
-  .agent-flash {
-    animation: none;
-  }
-}
-
-@keyframes toast-in {
-  0% {
-    opacity: 0;
-    transform: translateX(16px) translateY(4px);
-  }
-  100% {
-    opacity: 1;
-    transform: translateX(0) translateY(0);
-  }
-}
-
-/* Custom scrollbar styling */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
 }
 ::-webkit-scrollbar-track {
-  background: #0a0a0d; /* bg-ink-900 */
+  background: transparent;
   border-radius: 8px;
 }
 ::-webkit-scrollbar-thumb {
-  background: #353541; /* bg-ink-600 */
+  background: rgb(var(--border-strong));
   border-radius: 8px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #d97757; /* bg-clay-500 */
+  background: rgb(var(--border-control));
 }

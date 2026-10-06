@@ -1,10 +1,10 @@
+export type TagEditorMode = { kind: 'idle' } | { kind: 'add' } | { kind: 'rename'; tag: string };
+
 export interface TagEditorProps {
-  /** Current tags. */
-  value: string[];
-  /** Called with the next full tag list on add/remove. */
+  value: readonly string[];
   onChange: (tags: string[]) => void;
-  /** Existing tags elsewhere, offered as one-click quick-adds while editing. */
-  suggestions?: string[];
-  /** Label for the add affordance. */
-  placeholder?: string;
+  label: string;
+  suggestions?: readonly string[];
+  addLabel?: string;
+  className?: string;
 }

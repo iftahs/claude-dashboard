@@ -1,18 +1,5 @@
-import type { CSSProperties } from 'react';
-
 export interface SkeletonProps {
+  width?: number | string;
+  height?: number | string;
   className?: string;
-  style?: CSSProperties;
-}
-
-export interface ChartSkeletonProps {
-  heightClass?: string;
-}
-
-export interface BarsSkeletonProps {
-  rows?: number;
-}
-
-export interface HeatmapSkeletonProps {
-  weeks?: number;
 }

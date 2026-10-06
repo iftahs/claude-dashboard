@@ -1,20 +1,11 @@
-import type { WeeklyData } from '@/types';
-import type { SectionAiProps } from '@/hooks/useAiInsightContext';
-
-export type DailyMetric = 'tokens' | 'cost';
+import type { ExportFormat } from '@/lib/export';
+import type { SectionAi } from '@/lib/section';
+import type { DailyMetric, DailyTrendView } from '@/lib/views/trends';
 
 export interface DailyTrendChartProps {
-  data: WeeklyData | null;
-  loading: boolean;
-  weekDays: number;
-  metric: DailyMetric;
-  onMetricChange: (m: DailyMetric) => void;
-  /** Drives the dotted projection past today. */
-  costPerDay: number;
-  /** Average effective tokens per day of history (the bars' unit) — drives the token projection. */
-  tokensPerDay?: number;
-  /** AI-insight props for the wrapping Section (from useAiInsightCtx().aiProps). */
-  ai: SectionAiProps;
-  /** Platform suffix for the title (`titleScope(platform)`); '' under Claude. */
-  scope?: string;
+  view: DailyTrendView;
+  onMetricChange: (metric: DailyMetric) => void;
+  onExport: (format: ExportFormat) => void;
+  ai?: SectionAi | null;
+  className?: string;
 }

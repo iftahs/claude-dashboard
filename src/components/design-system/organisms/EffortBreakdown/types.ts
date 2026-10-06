@@ -1,12 +1,13 @@
-import type { EffortData, EffortSlice } from '@/types';
+import type { EffortBreakdownView } from '@/lib/views/models';
 
 export interface EffortBreakdownProps {
-  /** GET /api/usage/effort?days=&source= for the platform on screen. */
-  data: EffortData;
+  view: EffortBreakdownView;
+  className?: string;
 }
 
-export interface EffortBarProps {
-  slices: EffortSlice[];
-  /** Taller bar for the all-models row. */
-  size?: 'sm' | 'md';
+export interface EffortLegendItem {
+  key: string;
+  label: string;
+  color: string;
+  value: string;
 }

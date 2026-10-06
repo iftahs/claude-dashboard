@@ -1,190 +1,97 @@
-import { memo } from 'react';
-import { Bar, BarChart, CartesianGrid, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
-import { ChartTooltip } from '@/components/design-system/molecules/ChartTooltip/ChartTooltip';
-import { LegendDot } from '@/components/design-system/atoms/LegendDot/LegendDot';
-import { compact, shortModel, usd } from '@/lib/format';
-import { modelColor } from '@/lib/palette';
-import type { CustomTooltipProps, UsageBarChartProps } from './types';
+import { memo, useMemo } from 'react';
+import { Bar, BarChart, CartesianGrid, Rectangle, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
+import { Legend } from '@/components/design-system/molecules/Legend/Legend';
+import {
+  CHART_AXIS,
+  CHART_BAR_RADIUS,
+  CHART_CURSOR,
+  CHART_GRID,
+  CHART_TODAY_LABEL,
+  CHART_TODAY_LINE,
+} from '@/lib/chart-theme';
+import { cn } from '@/lib/cn';
+import { UsageBarChartTooltip } from './UsageBarChartTooltip/UsageBarChartTooltip';
+import type { UsageBarChartProps, UsageBarShapeProps } from './types';
+import {
+  ANIMATION_MAX_ROWS,
+  CHART_MARGIN,
+  DEFAULT_HEIGHT,
+  LEGEND_LABEL,
+  ROW_LABEL,
+  STACK_ID,
+  TODAY_TEXT,
+  axisWidth,
+  buildUsageBars,
+  formatValue,
+  legendInset,
+  topSeries,
+} from './utils';
 
-function CustomTooltip({ active, payload, label, metric = 'tokens' }: CustomTooltipProps) {
-  if (active && payload && payload.length) {
-    const bucketCost = payload[0].payload.cost;
-    const bucketTotal = payload[0].payload.total;
-    const isProjected = payload[0].payload.isProjected;
-    const sortedPayload = [...payload]
-      .filter((item) => item.value > 0)
-      .sort((a, b) => b.value - a.value);
-
-    const displayPayload = sortedPayload.length > 0 ? sortedPayload : payload;
-
-    const labelContent = (
-      <div className="flex items-center gap-1.5">
-        {label}
-        {isProjected && (
-          <span className="text-[10px] text-zinc-600 font-normal rounded-full bg-ink-600 px-1.5 py-0.5">projected</span>
-        )}
-      </div>
-    );
-
-    return (
-      <ChartTooltip label={undefined} minWidth={150}>
-        <div className="mb-2 font-semibold text-zinc-400">{labelContent}</div>
-        <div className="space-y-1.5">
-          {displayPayload.map((item) => (
-            <div key={item.name} className="flex items-center justify-between gap-4">
-              <span className="flex items-center gap-1.5" style={{ color: item.color }}>
-                <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: item.color }} />
-                <span className="text-zinc-300">{shortModel(item.name)}</span>
-              </span>
-              <span className="font-semibold text-zinc-100">
-                {metric === 'cost' ? usd(item.value) : compact(item.value)}
-              </span>
-            </div>
-          ))}
-        </div>
-        {metric !== 'cost' && (bucketCost !== undefined || typeof bucketTotal === 'number') && (
-          <div className="mt-2 space-y-1 border-t border-white/10 pt-2 text-xs">
-            {/* Bars are effective tokens; the all-tokens (cache reads included) figure lives only here. */}
-            {typeof bucketTotal === 'number' && !isProjected && (
-              <div className="flex items-center justify-between gap-4">
-                <span className="text-zinc-500 font-medium">All tokens incl. cache reads</span>
-                <span className="font-semibold text-zinc-300">{compact(bucketTotal)}</span>
-              </div>
-            )}
-            {bucketCost !== undefined && (
-              <div className="flex items-center justify-between gap-4">
-                <span className="text-zinc-500 font-medium">Est. Cost</span>
-                <span className="font-bold text-clay-400">{usd(bucketCost)}</span>
-              </div>
-            )}
-          </div>
-        )}
-      </ChartTooltip>
-    );
-  }
-  return null;
-}
-
-function UsageBarChartImpl({
+export const UsageBarChart = memo(function UsageBarChart({
   buckets,
   labelFor,
+  titleFor,
+  metric = 'tokens',
   projectionCostPerDay,
   projectionTokensPerDay,
-  metric = 'tokens',
+  now,
+  height = DEFAULT_HEIGHT,
+  fill = false,
+  ariaLabel,
+  className,
 }: UsageBarChartProps) {
-  const models = new Set<string>();
-  for (const b of buckets)
-    for (const m of Object.keys(b.byModel)) if (m !== '<synthetic>') models.add(m);
-  const modelList = [...models];
-
-  const now = Date.now();
-  const DAY = 86_400_000;
-
-  // `byModel` is the fallback for a payload from an older server without byModelEffective.
-  const data = buckets.map((b) => {
-    const row: Record<string, number | string | boolean> = {
-      label: labelFor(b.start),
-      cost: b.cost,
-      total: b.totalTokens,
-    };
-    const perModel = b.byModelEffective ?? b.byModel;
-    for (const m of modelList) {
-      row[m] = metric === 'cost' ? (b.byModelCost?.[m] ?? 0) : (perModel[m] ?? 0);
-    }
-    // Mark future buckets for the tooltip
-    if (b.start > now) row.isProjected = true;
-    return row;
-  });
-
-  // Add projected bars for the next 3 days
-  if (projectionCostPerDay && projectionCostPerDay > 0 && buckets.length > 0) {
-    const lastBucket = buckets[buckets.length - 1];
-    const endOfMonth = new Date();
-    endOfMonth.setMonth(endOfMonth.getMonth() + 1, 1);
-    endOfMonth.setHours(0, 0, 0, 0);
-    const endOfMonthMs = endOfMonth.getTime();
-
-    // Only add if the last bucket is the current day
-    if (Math.abs(lastBucket.start - now) < 2 * DAY) {
-      let t = lastBucket.start + DAY;
-
-      const avgTokensPerDay =
-        projectionTokensPerDay ?? buckets.reduce((acc, curr) => acc + curr.effectiveTokens, 0) / buckets.length;
-
-      while (t <= lastBucket.start + 3 * DAY && t < endOfMonthMs) {
-        const projRow: Record<string, number | string | boolean> = {
-          label: labelFor(t),
-          cost: projectionCostPerDay,
-          isProjected: true,
-        };
-        // No model breakdown for projections — show as a single "projected" bar
-        projRow['__projected__'] = metric === 'cost' ? projectionCostPerDay : avgTokensPerDay;
-        data.push(projRow);
-        t += DAY;
-      }
-    }
-  }
-
-  const hasProjection = data.some((d) => d.isProjected);
-  const allModelList = hasProjection ? [...modelList, '__projected__'] : modelList;
-
-  // Today reference line label
-  const todayLabel = labelFor(now);
+  const model = useMemo(
+    () =>
+      buildUsageBars({
+        buckets,
+        labelFor,
+        titleFor,
+        metric,
+        projectionCostPerDay,
+        projectionTokensPerDay,
+        now: now ?? Date.now(),
+      }),
+    [buckets, labelFor, titleFor, metric, projectionCostPerDay, projectionTokensPerDay, now],
+  );
+  const animate = model.rows.length <= ANIMATION_MAX_ROWS;
 
   return (
-    <div className="w-full">
-      <div className="h-[260px] w-full">
-        <ResponsiveContainer width="100%" height="100%">
-          <BarChart data={data} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#26262f" vertical={false} />
-            <XAxis dataKey="label" tick={{ fill: '#71717a', fontSize: 11 }} axisLine={false} tickLine={false} />
-            <YAxis
-              tickFormatter={(v) => metric === 'cost' ? usd(Number(v)) : compact(Number(v))}
-              tick={{ fill: '#71717a', fontSize: 11 }}
-              axisLine={false}
-              tickLine={false}
-              width={metric === 'cost' ? 56 : 44}
-            />
-            <Tooltip
-              cursor={{ fill: 'rgba(255,255,255,0.05)' }}
-              content={<CustomTooltip metric={metric} />}
-            />
-            {hasProjection && (
-              <ReferenceLine
-                x={todayLabel}
-                stroke="#d97757"
-                strokeDasharray="4 3"
-                strokeOpacity={0.5}
-                label={{ value: 'today', fill: '#d97757', fontSize: 10, position: 'insideTopRight' }}
-              />
-            )}
-            {allModelList.map((m, i) => (
-              <Bar
-                key={m}
-                dataKey={m}
-                stackId="t"
-                fill={m === '__projected__' ? 'rgba(113,113,122,0.25)' : modelColor(m)}
-                radius={i === allModelList.length - 1 ? [4, 4, 0, 0] : [0, 0, 0, 0]}
-                // Long windows re-animate hundreds of bars on every poll.
-                isAnimationActive={data.length <= 60}
-              />
-            ))}
-          </BarChart>
-        </ResponsiveContainer>
-      </div>
-      {modelList.length > 0 && (
-        <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1.5 pl-[44px]">
-          {modelList.map((m) => (
-            <LegendDot key={m} color={modelColor(m)} label={shortModel(m)} size="sm" />
-          ))}
-          {hasProjection && (
-            <LegendDot color="rgba(113,113,122,0.5)" label="projected" size="sm" labelClassName="text-[11px] text-zinc-500" />
-          )}
+    <div className={cn('flex w-full min-w-0 flex-col gap-3', fill && 'min-h-0 flex-1', className)}>
+      <div
+        role="img"
+        aria-label={ariaLabel}
+        className={cn('relative w-full min-w-0', fill && 'flex-1')}
+        style={fill ? { minHeight: height } : { height }}
+      >
+        <div className="absolute inset-0">
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart data={model.rows} margin={CHART_MARGIN}>
+              <CartesianGrid {...CHART_GRID} />
+              <XAxis dataKey={ROW_LABEL} {...CHART_AXIS} />
+              <YAxis tickFormatter={(value) => formatValue(Number(value), metric)} width={axisWidth(metric)} {...CHART_AXIS} />
+              <Tooltip cursor={CHART_CURSOR} content={<UsageBarChartTooltip metric={metric} />} />
+              {model.todayLabel ? (
+                <ReferenceLine x={model.todayLabel} {...CHART_TODAY_LINE} label={{ value: TODAY_TEXT, ...CHART_TODAY_LABEL }} />
+              ) : null}
+              {model.series.map((series) => (
+                <Bar
+                  key={series.key}
+                  dataKey={series.key}
+                  name={series.label}
+                  stackId={STACK_ID}
+                  fill={series.color}
+                  isAnimationActive={animate}
+                  shape={(shape: unknown) => {
+                    const rect = shape as UsageBarShapeProps;
+                    return <Rectangle {...rect} radius={topSeries(rect.payload, model.series) === series.key ? CHART_BAR_RADIUS : 0} />;
+                  }}
+                />
+              ))}
+            </BarChart>
+          </ResponsiveContainer>
         </div>
-      )}
+      </div>
+      <Legend items={model.series} ariaLabel={LEGEND_LABEL} className={legendInset(metric)} />
     </div>
   );
-}
-
-// Memoised — parent re-renders ~1/s from the live context; a long window can have hundreds of categories x every model series.
-export const UsageBarChart = memo(UsageBarChartImpl);
+});

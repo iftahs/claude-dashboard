@@ -1,198 +1,122 @@
 import { useEffect, useRef, useState } from 'react';
-import { useAiChat } from '@/hooks/useAiChat';
-import { PROVIDER_MODELS } from '@/hooks/useAiConfig';
-import { Markdown } from '@/components/design-system/atoms/Markdown/Markdown';
-import { ToggleGroup } from '@/components/design-system/atoms/ToggleGroup/ToggleGroup';
+import { Button } from '@/components/design-system/atoms/Button/Button';
+import { Card } from '@/components/design-system/atoms/Card/Card';
+import { Icon } from '@/components/design-system/atoms/Icon/Icon';
+import { Input } from '@/components/design-system/atoms/Input/Input';
+import { EmptyState } from '@/components/design-system/molecules/EmptyState/EmptyState';
+import { cn } from '@/lib/cn';
+import { AiChatMessage } from './AiChatMessage/AiChatMessage';
 import type { AiChatProps } from './types';
-import { INTRO, SUGGESTIONS } from './utils';
+import { COMPOSER_LABEL, LINK_CLASS } from './utils';
 
-type DayOption = '7' | '30' | '90';
-const DAY_OPTIONS: { value: DayOption; label: string }[] = [
-  { value: '7', label: '7d' },
-  { value: '30', label: '30d' },
-  { value: '90', label: '90d' },
-];
-
-const BACKEND_NOTE: Record<string, string> = {
-  cli: 'Answers come from your local Claude CLI (claude -p).',
-  api: 'Answers come from the Claude.ai API using your local token.',
-  apikey: 'Answers come from the Anthropic Messages API (ANTHROPIC_AUTH_TOKEN/ANTHROPIC_BASE_URL or ANTHROPIC_API_KEY).',
-  none: '',
-};
-
-export function AiChat({ status, config, source, platform, onChangeConfig, onAsked, onOpenSettings }: AiChatProps) {
-  const { messages, loading, suggestions, send, reset } = useAiChat();
-  const starters = SUGGESTIONS[platform];
-  const modelOptions = (() => {
-    const list = PROVIDER_MODELS[config.provider] ?? [];
-    return list.includes(config.model) ? list : [config.model, ...list];
-  })();
-  const [input, setInput] = useState('');
-  const [days, setDays] = useState<DayOption>('30');
-  const scrollRef = useRef<HTMLDivElement>(null);
+export function AiChat({ view, onAsk, onNavigate, className }: AiChatProps) {
+  const [draft, setDraft] = useState('');
+  const logRef = useRef<HTMLDivElement>(null);
+  const { setup, messages, loading, starters, followUps, contextHref } = view;
 
   useEffect(() => {
-    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
-  }, [messages, loading]);
+    const log = logRef.current;
+    if (log) log.scrollTop = log.scrollHeight;
+  }, [messages, loading, followUps]);
 
-  // A user-supplied key always counts as available, even if the server has no fallback.
-  const unavailable = !config.apiKey && status?.available === 'none';
-
-  function ask(q: string) {
-    if (!q.trim() || loading) return;
-    onAsked();
-    send(q, config, { source, days: Number(days) });
-    setInput('');
-  }
-
-  if (unavailable) {
+  if (setup) {
     return (
-      <div className="card p-6">
-        <h2 className="mb-2 flex items-center gap-2 text-sm font-semibold text-zinc-300">✨ AI Insights</h2>
-        <p className="text-sm text-zinc-400">
-          AI insights aren't configured yet.
-          {status?.reason ? ` ${status.reason}` : ''}
-        </p>
-        <p className="mt-2 text-xs text-zinc-600">
-          Open <button onClick={onOpenSettings} className="font-medium text-clay-400 hover:text-clay-300">⚙ Settings → AI Insights</button>{' '}
-          to pick a provider and paste an API key — or run with the <code className="font-mono text-zinc-400">claude</code> CLI on your PATH.
-        </p>
-      </div>
+      <Card aria-label={setup.title} className={className}>
+        <EmptyState
+          icon="sparkles"
+          title={setup.title}
+          description={setup.description}
+          action={
+            <a href={setup.href} onClick={(event) => onNavigate?.(event, setup.href)} className={cn(LINK_CLASS, 'text-small font-medium')}>
+              {setup.linkLabel}
+            </a>
+          }
+        />
+      </Card>
     );
   }
 
+  const ask = (question: string) => {
+    if (!question.trim() || loading) return;
+    onAsk(question);
+    setDraft('');
+  };
+  const started = messages.length > 0;
+  const chips = followUps.length > 0 ? followUps : starters;
+
   return (
-    <div className="card flex h-[calc(100vh-12rem)] flex-col p-5">
-      <div className="mb-3 flex items-center justify-between">
-        <h2 className="flex items-center gap-2 text-sm font-semibold text-zinc-300">✨ AI Insights</h2>
-        <div className="flex items-center gap-3">
-          <ToggleGroup<DayOption> options={DAY_OPTIONS} value={days} onChange={setDays} />
-          <a
-            href={`/api/ai/context?days=${days}&source=${source}`}
-            target="_blank"
-            rel="noreferrer"
-            title="The exact JSON the chat sends to the model"
-            className="text-[11px] text-zinc-600 transition-colors hover:text-zinc-400"
-          >
-            What the AI can see
-          </a>
-          {config.apiKey ? (
-            <select
-              value={config.model}
-              onChange={(e) => onChangeConfig({ ...config, model: e.target.value })}
-              title="Model — synced with ⚙ Settings"
-              className="rounded-lg bg-ink-800/60 px-2 py-1 text-[11px] text-zinc-300 outline-none ring-1 ring-white/10 hover:ring-white/20 focus:ring-clay-500"
-            >
-              {modelOptions.map((m) => (
-                <option key={m} value={m}>
-                  {m}
-                </option>
-              ))}
-            </select>
-          ) : (
-            status && BACKEND_NOTE[status.available] && (
-              <span className="text-[11px] text-zinc-600">{status.model}</span>
-            )
-          )}
-          {messages.length > 0 && (
-            <button
-              onClick={reset}
-              className="rounded-lg px-2.5 py-1 text-xs text-zinc-400 ring-1 ring-white/10 transition-colors hover:text-zinc-200 hover:ring-white/20"
-              title="Start a new conversation"
-            >
-              + New chat
-            </button>
-          )}
-        </div>
-      </div>
-
-      <div ref={scrollRef} className="flex-1 space-y-3 overflow-y-auto pr-1">
-        {messages.length === 0 ? (
-          <div className="flex h-full flex-col items-center justify-center gap-4 text-center">
-            <p className="max-w-md text-sm text-zinc-500">{INTRO[platform]}</p>
-            <div className="flex flex-wrap justify-center gap-2">
-              {starters.map((s) => (
-                <button
-                  key={s}
-                  onClick={() => ask(s)}
-                  className="rounded-full bg-ink-800/60 px-3 py-1.5 text-xs text-zinc-400 ring-1 ring-white/10 transition-colors hover:bg-ink-700/60 hover:text-zinc-200"
-                >
-                  {s}
-                </button>
-              ))}
-            </div>
-          </div>
-        ) : (
-          messages.map((m) => (
-            <div key={m.id} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-              <div
-                className={`max-w-[80%] rounded-2xl px-3.5 py-2 text-sm leading-relaxed ${
-                  m.role === 'user'
-                    ? 'whitespace-pre-line bg-clay-500/20 text-zinc-100'
-                    : m.error
-                      ? 'whitespace-pre-line bg-red-500/10 text-red-300 ring-1 ring-red-500/20'
-                      : 'bg-ink-800/70 text-zinc-300 ring-1 ring-white/10'
-                }`}
-              >
-                {m.role === 'assistant' && !m.error ? (
-                  m.content ? (
-                    <>
-                      <Markdown text={m.content} />
-                      {m.datasets && m.datasets.length > 0 && (
-                        <p className="mt-2 text-[10px] text-zinc-600">Answered from: overview + {m.datasets.join(', ')}</p>
-                      )}
-                    </>
-                  ) : (
-                    <span className="text-zinc-500">
-                      <span className="pulse-dot mr-1.5" />
-                      thinking…
-                    </span>
-                  )
-                ) : (
-                  m.content
-                )}
-              </div>
-            </div>
-          ))
-        )}
-      </div>
-
-      {messages.length > 0 && (
-        <div className="mt-3 flex flex-wrap gap-1.5">
-          {(suggestions.length > 0 ? suggestions : starters).map((s) => (
-            <button
-              key={s}
-              onClick={() => ask(s)}
-              disabled={loading}
-              className="rounded-full bg-ink-800/60 px-2.5 py-1 text-[11px] text-zinc-400 ring-1 ring-white/10 transition-colors hover:bg-ink-700/60 hover:text-zinc-200 disabled:opacity-50"
-            >
-              {s}
-            </button>
-          ))}
-        </div>
-      )}
-
-      <form
-        className="mt-3 flex items-center gap-2"
-        onSubmit={(e) => {
-          e.preventDefault();
-          ask(input);
-        }}
-      >
-        <input
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          placeholder="Ask about your usage…"
-          className="flex-1 rounded-xl bg-ink-800/60 px-3.5 py-2.5 text-sm text-zinc-200 outline-none ring-1 ring-white/10 placeholder:text-zinc-600 focus:ring-clay-500/40"
-        />
-        <button
-          type="submit"
-          disabled={loading || !input.trim()}
-          className="rounded-xl bg-clay-500/20 px-4 py-2.5 text-sm font-semibold text-clay-300 transition-colors hover:bg-clay-500/30 disabled:opacity-50"
+    <Card aria-label="Conversation" padding="none" className={cn('relative min-h-96 flex-1 overflow-hidden', className)}>
+      <div className="absolute inset-0 flex flex-col">
+        <div
+          ref={logRef}
+          role="log"
+          aria-label="Messages"
+          tabIndex={started ? 0 : undefined}
+          className="min-h-0 flex-1 overflow-y-auto p-5 focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus"
         >
-          Send
-        </button>
-      </form>
-    </div>
+          {started ? (
+            <div className="flex flex-col gap-3">
+              {messages.map((message) => (
+                <AiChatMessage key={message.id} message={message} />
+              ))}
+            </div>
+          ) : (
+            <div className="flex min-h-full items-center justify-center">
+              <EmptyState
+                icon="sparkles"
+                title="Start with a question"
+                description="Pick one of these or type your own."
+                className="py-6"
+                action={
+                  <div className="flex min-w-0 flex-wrap justify-center gap-2">
+                    {starters.map((question) => (
+                      <Button key={question} size="sm" onClick={() => ask(question)}>
+                        {question}
+                      </Button>
+                    ))}
+                  </div>
+                }
+              />
+            </div>
+          )}
+        </div>
+        <div className="flex flex-none flex-col gap-3 border-t border-line p-4">
+          {started ? (
+            <div className="flex min-w-0 flex-wrap gap-2">
+              {chips.map((question) => (
+                <Button key={question} size="sm" title={question} disabled={loading} className="max-w-full" onClick={() => ask(question)}>
+                  <span className="min-w-0 truncate">{question}</span>
+                </Button>
+              ))}
+            </div>
+          ) : null}
+          <form
+            className="flex items-center gap-2"
+            onSubmit={(event) => {
+              event.preventDefault();
+              ask(draft);
+            }}
+          >
+            <Input
+              aria-label={COMPOSER_LABEL}
+              placeholder={COMPOSER_LABEL}
+              autoComplete="off"
+              value={draft}
+              onChange={(event) => setDraft(event.target.value)}
+            />
+            <Button type="submit" variant="primary" disabled={loading || !draft.trim()}>
+              Send
+            </Button>
+          </form>
+          <p className="text-caption text-fg-subtle">
+            <a href={contextHref} target="_blank" rel="noreferrer" className={cn(LINK_CLASS, 'inline-flex items-center gap-1')}>
+              What the AI can see
+              <Icon name="externalLink" size={12} />
+            </a>{' '}
+            opens the exact JSON the chat sends to the model.
+          </p>
+        </div>
+      </div>
+    </Card>
   );
 }

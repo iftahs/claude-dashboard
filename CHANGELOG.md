@@ -5,6 +5,54 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.0] - 2026-10-07
+
+### Added
+- **Redesigned interface.** The whole frontend is rebuilt: a calm, flat look with a single
+  accent, a 12 px minimum text size, and Inter / JetBrains Mono bundled with the app.
+- **Light theme** alongside dark (dark stays the default). Switch it from the top bar,
+  Settings or the command palette; the choice is remembered per browser.
+- **Overview**, a new landing page: limits at a glance (5-hour and weekly per platform),
+  what is running now, and today's estimated spend and effective tokens against the
+  7-day average.
+- **Grouped, collapsible sidebar** (Monitor / Analyze / Tools, Settings pinned below) and a
+  sticky top bar with the platform and surface switchers, a running-agents chip and the
+  limit status. Below 1024 px the sidebar becomes a drawer; the layout holds down to about
+  768 px.
+- **Command palette** on Ctrl+K / ⌘K: jump to any page, switch platform, surface or
+  theme, jump to a Settings section, and export the current view.
+- A reusable **atomic design system** (atoms, molecules, organisms, templates) with a doc
+  per component, a generated component index, and `npm run lint`, a check that fails the
+  build on tier or token violations. `npm run verify` runs typecheck, tests and lint.
+- Page-level and app-level **error boundaries**: a crash in one page no longer blanks the
+  whole app.
+
+### Changed
+- Pages are regrouped with sub-tabs (Trends: Spend / Efficiency / Activity; Insights:
+  Reliability / Tools / Code / Pace; Sessions: Sessions / Projects and tags) and share one
+  header layout. Nothing was removed. Insights now loads only the active sub-tab's data
+  instead of every panel at once.
+- The Sessions table shows 20 rows per page, the Models cost calculator takes numeric
+  inputs, the page name is part of the browser tab title, and moving between pages adds
+  browser history entries.
+- **Much faster page loads in Docker.** The server answers from the previous scan (at most
+  30 s old) while a rescan runs in the background instead of making every request wait for
+  it, and the workflows list is cached the same way. On a Windows bind mount this took
+  typical API responses from seconds to tens of milliseconds.
+- Static assets are served precompressed with long-lived caching, and the entry bundle is
+  about half its previous size.
+- `/api/insights/mcp` moved to `/api/insights/mcp-servers`: some antivirus web shields
+  corrupt responses on URLs ending in `mcp`.
+- Fonts are bundled, so the app no longer requests Google Fonts.
+
+### Fixed
+- The dashboard no longer reports "API · pay-as-you-go" for a subscriber while Claude Code
+  is mid sign-in and the access token on disk is briefly blank.
+- Estimated limit bars, shown when live limits are unavailable, are no longer presented as
+  a reached limit.
+- The layout no longer jumps while the page loads.
+- The reasoning-effort levels on Models are visually distinguishable.
+
 ## [0.1.27] - 2026-09-23
 
 ### Added
@@ -402,6 +450,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Live-API fallback to the local logs when there is no active block
   (`resets_at = null`).
 
+[1.0.0]: https://github.com/iftahs/claude-dashboard/releases/tag/v1.0.0
 [0.1.23]: https://github.com/iftahs/claude-dashboard/releases/tag/v0.1.23
 [0.1.22]: https://github.com/iftahs/claude-dashboard/releases/tag/v0.1.22
 [0.1.21]: https://github.com/iftahs/claude-dashboard/releases/tag/v0.1.21

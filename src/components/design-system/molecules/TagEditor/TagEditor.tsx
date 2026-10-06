@@ -1,88 +1,134 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import type { KeyboardEvent } from 'react';
+import { Button } from '@/components/design-system/atoms/Button/Button';
+import { Icon } from '@/components/design-system/atoms/Icon/Icon';
+import { Input } from '@/components/design-system/atoms/Input/Input';
+import { cn } from '@/lib/cn';
 import { tagColor } from '@/lib/palette';
-import type { TagEditorProps } from './types';
+import type { TagEditorMode, TagEditorProps } from './types';
+import { ADDING, FOCUS_RING_INSET, IDLE, TAG_MAX_LENGTH, nextTags, unusedSuggestions } from './utils';
 
-/**
- * Inline chip editor for a project's custom tags. Stateless w.r.t. persistence —
- * the parent owns the tag list (via useTags) and passes value/onChange, so the
- * ProjectBreakdown rows and the TagBreakdown rollup stay in sync.
- */
-export function TagEditor({ value, onChange, suggestions = [], placeholder = '+ tag' }: TagEditorProps) {
-  const [adding, setAdding] = useState(false);
+export function TagEditor({ value, onChange, label, suggestions = [], addLabel = 'Tag', className }: TagEditorProps) {
+  const [mode, setMode] = useState<TagEditorMode>(IDLE);
   const [draft, setDraft] = useState('');
+  const skipCommit = useRef(false);
+  const refocus = useRef(false);
+  const addRef = useRef<HTMLButtonElement>(null);
 
-  const add = (raw: string) => {
-    const t = raw.trim();
-    if (t) onChange([...value, t]);
-    setDraft('');
-    setAdding(false);
+  useEffect(() => {
+    if (mode.kind !== 'idle' || !refocus.current) return;
+    refocus.current = false;
+    addRef.current?.focus();
+  }, [mode]);
+
+  const open = (next: TagEditorMode, text: string) => {
+    skipCommit.current = false;
+    setDraft(text);
+    setMode(next);
   };
-  const remove = (tag: string) => onChange(value.filter((t) => t !== tag));
+  const close = () => {
+    setDraft('');
+    setMode(IDLE);
+  };
+  const commit = () => {
+    const next = skipCommit.current ? null : nextTags(value, mode, draft);
+    skipCommit.current = false;
+    if (next) onChange(next);
+    close();
+  };
+  const remove = (tag: string) => {
+    onChange(value.filter((item) => item !== tag));
+    addRef.current?.focus();
+  };
+  const pick = (tag: string) => {
+    skipCommit.current = true;
+    onChange([...value, tag]);
+    close();
+  };
+  const onKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+    if (event.key !== 'Enter' && event.key !== 'Escape') return;
+    event.preventDefault();
+    if (event.key === 'Escape') skipCommit.current = true;
+    refocus.current = true;
+    event.currentTarget.blur();
+  };
 
-  const unused = suggestions.filter((s) => !value.some((v) => v.toLowerCase() === s.toLowerCase()));
+  const field = (name: string) => (
+    <Input
+      size="sm"
+      autoFocus
+      aria-label={name}
+      placeholder="Tag name"
+      maxLength={TAG_MAX_LENGTH}
+      value={draft}
+      onChange={(event) => setDraft(event.target.value)}
+      onFocus={(event) => event.currentTarget.select()}
+      onKeyDown={onKeyDown}
+      onBlur={commit}
+      className="w-28 font-mono"
+    />
+  );
 
   return (
-    <div className="flex flex-wrap items-center gap-1">
-      {value.map((tag) => (
-        <span
-          key={tag}
-          className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium"
-          style={{ backgroundColor: `${tagColor(tag)}22`, color: tagColor(tag) }}
-        >
-          {tag}
-          <button
-            type="button"
-            onClick={() => remove(tag)}
-            className="leading-none opacity-60 transition-opacity hover:opacity-100"
-            aria-label={`Remove tag ${tag}`}
+    <div role="group" aria-label={label} className={cn('flex min-h-control-sm min-w-0 flex-wrap items-center gap-1.5', className)}>
+      {value.map((tag) =>
+        mode.kind === 'rename' && mode.tag === tag ? (
+          <span key={tag} className="flex">
+            {field(`Rename tag ${tag}`)}
+          </span>
+        ) : (
+          <span
+            key={tag}
+            className="inline-flex h-[22px] min-w-0 max-w-full items-center rounded-control border border-line font-mono text-mono text-fg-muted"
           >
-            ×
-          </button>
-        </span>
-      ))}
-
-      {adding ? (
-        <input
-          autoFocus
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') add(draft);
-            else if (e.key === 'Escape') {
-              setDraft('');
-              setAdding(false);
-            }
-          }}
-          onBlur={() => add(draft)}
-          maxLength={32}
-          placeholder="tag name"
-          className="w-24 rounded-full border border-white/10 bg-ink-700 px-2 py-0.5 text-[11px] text-zinc-200 outline-none focus:border-clay-500"
-        />
-      ) : (
-        <button
-          type="button"
-          onClick={() => setAdding(true)}
-          className="rounded-full border border-dashed border-white/15 px-2 py-0.5 text-[11px] text-zinc-500 transition-colors hover:border-clay-500 hover:text-clay-400"
-        >
-          {placeholder}
-        </button>
+            <button
+              type="button"
+              aria-label={`Rename tag ${tag}`}
+              title={`Rename tag ${tag}`}
+              onClick={() => open({ kind: 'rename', tag }, tag)}
+              className={cn('flex h-full min-w-0 items-center gap-1.5 rounded-l-control pl-2 pr-1 hover:text-fg', FOCUS_RING_INSET)}
+            >
+              <span aria-hidden="true" className="size-1.5 flex-none rounded-full" style={{ backgroundColor: tagColor(tag) }} />
+              <span className="min-w-0 truncate">{tag}</span>
+            </button>
+            <button
+              type="button"
+              aria-label={`Remove tag ${tag}`}
+              onClick={() => remove(tag)}
+              className={cn('flex h-full flex-none items-center rounded-r-control pl-0.5 pr-1.5 text-fg-subtle hover:text-fg', FOCUS_RING_INSET)}
+            >
+              <Icon name="x" size={12} />
+            </button>
+          </span>
+        ),
       )}
 
-      {adding &&
-        unused.map((s) => (
-          <button
-            key={s}
-            type="button"
-            // mousedown fires before the input's blur, so the quick-add isn't lost
-            onMouseDown={(e) => {
-              e.preventDefault();
-              add(s);
-            }}
-            className="rounded-full border border-white/10 px-2 py-0.5 text-[11px] text-zinc-500 transition-colors hover:text-zinc-300"
-          >
-            {s}
-          </button>
-        ))}
+      {mode.kind === 'add' ? (
+        field('New tag')
+      ) : (
+        <Button ref={addRef} variant="ghost" size="sm" onClick={() => open(ADDING, '')} className="px-1.5 text-caption">
+          <Icon name="plus" size={12} />
+          {addLabel}
+        </Button>
+      )}
+
+      {mode.kind === 'add'
+        ? unusedSuggestions(value, suggestions).map((tag) => (
+            <button
+              key={tag}
+              type="button"
+              tabIndex={-1}
+              title={`Add tag ${tag}`}
+              onMouseDown={(event) => {
+                event.preventDefault();
+                pick(tag);
+              }}
+              className="inline-flex h-[22px] flex-none items-center rounded-control border border-dashed border-line-strong px-2 font-mono text-mono text-fg-subtle hover:text-fg"
+            >
+              {tag}
+            </button>
+          ))
+        : null}
     </div>
   );
 }

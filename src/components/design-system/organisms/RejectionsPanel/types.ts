@@ -1,8 +1,6 @@
-import type { InsightsRejections } from '@/types';
-import type { Platform } from '@/hooks/useSource';
+import type { RejectionsPanelView } from '@/lib/views/insights';
 
 export interface RejectionsPanelProps {
-  data: InsightsRejections | null;
-  /** Decides the wording: Claude permission prompts vs Codex guardian denials / declines. */
-  platform: Platform;
+  view: RejectionsPanelView;
+  className?: string;
 }

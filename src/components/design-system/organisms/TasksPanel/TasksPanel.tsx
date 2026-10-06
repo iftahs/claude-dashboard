@@ -1,74 +1,78 @@
-import { PLATFORM_NOUN } from '@/lib/platform';
+import { Badge } from '@/components/design-system/atoms/Badge/Badge';
+import { GroupLabel } from '@/components/design-system/atoms/GroupLabel/GroupLabel';
+import { Section } from '@/components/design-system/organisms/Section/Section';
 import type { TasksPanelProps } from './types';
-import { statusClass } from './utils';
 
-export function TasksPanel({ data, emptyTasks = 'No tasks tracked.' }: TasksPanelProps) {
-  if (!data) return <div className="text-sm text-zinc-500">Loading…</div>;
-  const { tasks, plans } = data;
-  const hasTasks = tasks.total > 0;
-
+export function TasksPanel({ view, className }: TasksPanelProps) {
   return (
-    <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-      {/* Tasks */}
-      <div>
-        <div className="mb-3 flex items-center justify-between">
-          <span className="text-sm font-semibold text-zinc-300">Tasks</span>
-          {hasTasks && (
-            <span className="text-xs text-zinc-500 tabular-nums">
-              {(tasks.completionRate * 100).toFixed(0)}% complete · {tasks.total} total
-            </span>
+    <Section
+      as="h3"
+      title={view.title}
+      description={view.description}
+      help={view.help}
+      state={view.state}
+      ai={view.ai}
+      className={className}
+    >
+      <div className="grid gap-6 lg:grid-cols-2">
+        <div className="flex min-w-0 flex-col gap-3">
+          <GroupLabel as="span" note={view.tasksSummary}>
+            Tasks
+          </GroupLabel>
+          {view.hasTasks ? (
+            <>
+              <div className="flex flex-wrap gap-1.5">
+                {view.statuses.map((status) => (
+                  <Badge key={status.key} tone={status.tone}>
+                    {status.label}
+                  </Badge>
+                ))}
+              </div>
+              {view.tasks.length > 0 ? (
+                <ul aria-label="Tasks" className="divide-y divide-line rounded-control border border-line">
+                  {view.tasks.map((task) => (
+                    <li key={task.key} className="flex min-w-0 items-center gap-2 px-3 py-2">
+                      <Badge tone={task.tone} className="min-w-20 justify-center">
+                        {task.status}
+                      </Badge>
+                      <span title={task.subject} className="min-w-0 flex-1 truncate text-small text-fg">
+                        {task.subject}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+              {view.tasksMore ? <p className="text-caption text-fg-subtle">{view.tasksMore}</p> : null}
+            </>
+          ) : (
+            <p className="text-small text-fg-muted">{view.tasksEmpty}</p>
           )}
         </div>
-        {hasTasks ? (
-          <>
-            <div className="mb-3 flex flex-wrap gap-1.5">
-              {Object.entries(tasks.byStatus).map(([status, n]) => (
-                <span key={status} className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${statusClass(status)}`}>
-                  {status}: {n}
-                </span>
-              ))}
-            </div>
-            <div className="space-y-1.5">
-              {tasks.items.slice(0, 12).map((t) => (
-                <div key={t.id} className="flex items-center gap-2 rounded-lg bg-ink-800/50 px-2.5 py-1.5 text-xs ring-1 ring-white/10">
-                  <span className={`flex-none rounded-full px-1.5 py-0.5 text-[10px] ${statusClass(t.blocked ? 'blocked' : t.status)}`}>
-                    {t.blocked ? 'blocked' : t.status}
-                  </span>
-                  <span className="min-w-0 flex-1 truncate text-zinc-300" title={t.subject}>{t.subject}</span>
-                </div>
-              ))}
-            </div>
-          </>
-        ) : (
-          <p className="text-sm text-zinc-600">{emptyTasks}</p>
-        )}
-      </div>
-
-      {/* Plans */}
-      <div>
-        <div className="mb-3 flex items-center justify-between">
-          <span className="text-sm font-semibold text-zinc-300">Plans</span>
-          <span className="text-xs text-zinc-500 tabular-nums">{plans.total} total</span>
+        <div className="flex min-w-0 flex-col gap-3">
+          <GroupLabel as="span" note={view.plansSummary}>
+            Plans
+          </GroupLabel>
+          {view.plans.length > 0 ? (
+            <>
+              <ul aria-label="Plans" className="divide-y divide-line rounded-control border border-line">
+                {view.plans.map((plan) => (
+                  <li key={plan.key} className="flex min-w-0 items-center gap-2 px-3 py-2">
+                    {plan.platform ? <Badge className="w-14 justify-center">{plan.platform}</Badge> : null}
+                    <span title={plan.title} className="min-w-0 flex-1 truncate text-small text-fg">
+                      {plan.title}
+                    </span>
+                    <span className="flex-none whitespace-nowrap font-mono text-mono text-fg-subtle">{plan.size}</span>
+                    <span className="w-14 flex-none whitespace-nowrap text-right font-mono text-mono text-fg-subtle">{plan.age}</span>
+                  </li>
+                ))}
+              </ul>
+              {view.plansMore ? <p className="text-caption text-fg-subtle">{view.plansMore}</p> : null}
+            </>
+          ) : (
+            <p className="text-small text-fg-muted">{view.plansEmpty}</p>
+          )}
         </div>
-        {plans.items.length > 0 ? (
-          <div className="space-y-1.5">
-            {plans.items.slice(0, 14).map((p) => (
-              <div key={`${p.platform ?? ''}:${p.name}`} className="flex items-center gap-2 rounded-lg bg-ink-800/50 px-2.5 py-1.5 text-xs ring-1 ring-white/10">
-                {p.platform && (
-                  <span className="flex-none rounded-full bg-zinc-700/40 px-1.5 py-0.5 text-[10px] text-zinc-400">
-                    {PLATFORM_NOUN[p.platform]}
-                  </span>
-                )}
-                <span className="min-w-0 flex-1 truncate text-zinc-300" title={p.title}>{p.title}</span>
-                <span className="flex-none tabular-nums text-zinc-600">{(p.sizeBytes / 1024).toFixed(0)}kb</span>
-                <span className="flex-none tabular-nums text-zinc-600">{p.ageDays === 0 ? 'today' : `${p.ageDays}d`}</span>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <p className="text-sm text-zinc-600">No plans found.</p>
-        )}
       </div>
-    </div>
+    </Section>
   );
 }
