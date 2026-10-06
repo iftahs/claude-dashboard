@@ -37,7 +37,7 @@ export const GALLERY_SECTIONS: readonly GallerySection[] = [
     id: 'atoms',
     label: 'Atoms',
     icon: 'layers',
-    count: 25,
+    count: 27,
     description: 'The smallest parts. An atom imports no other design-system component.',
   },
   {

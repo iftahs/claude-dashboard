@@ -18,14 +18,7 @@ export function AiSettings({
   return (
     <div id={id} className="scroll-mt-6">
       <Section title="AI" description="Provider, model and key for AI insights">
-        <form
-          aria-label="AI insights"
-          className="flex flex-col gap-4"
-          onSubmit={(event) => {
-            event.preventDefault();
-            onSaveKey();
-          }}
-        >
+        <div className="flex flex-col gap-4">
           <p className="max-w-3xl text-small text-fg-muted">
             Powers the AI chat and the AI button on each card. Choose a provider and a model, and paste an API key. The key is stored only
             in this browser and sent to the local backend with each request — it never goes to analytics. Leave the key empty to fall back
@@ -45,34 +38,43 @@ export function AiSettings({
               <Select ariaLabel="Model" className="w-full" value={view.model} onValueChange={onModelChange} options={view.models} />
             </FormField>
           </div>
-          <FormField label="API key" htmlFor={`${id}-key`}>
-            <Input
-              type={view.keyShown ? 'text' : 'password'}
-              className="font-mono"
-              placeholder={view.keyPlaceholder}
-              autoComplete="off"
-              spellCheck={false}
-              value={view.key}
-              onChange={(event) => onKeyChange(event.target.value)}
-            />
-          </FormField>
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <p className="text-caption text-fg-muted">{view.keySaved ? 'Key saved in this browser' : 'No key set'}</p>
-            <div className="flex gap-2">
-              <Button variant="ghost" aria-pressed={view.keyShown} onClick={onToggleKeyShown}>
-                {view.keyShown ? 'Hide key' : 'Show key'}
-              </Button>
-              {view.keySaved ? (
-                <Button variant="ghost" onClick={onClearKey}>
-                  Clear
+          <form
+            aria-label="API key"
+            className="flex flex-col gap-4"
+            onSubmit={(event) => {
+              event.preventDefault();
+              onSaveKey();
+            }}
+          >
+            <FormField label="API key" htmlFor={`${id}-key`}>
+              <Input
+                type={view.keyShown ? 'text' : 'password'}
+                className="font-mono"
+                placeholder={view.keyPlaceholder}
+                autoComplete="off"
+                spellCheck={false}
+                value={view.key}
+                onChange={(event) => onKeyChange(event.target.value)}
+              />
+            </FormField>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <p className="text-caption text-fg-muted">{view.keySaved ? 'Key saved in this browser' : 'No key set'}</p>
+              <div className="flex gap-2">
+                <Button variant="ghost" aria-pressed={view.keyShown} onClick={onToggleKeyShown}>
+                  {view.keyShown ? 'Hide key' : 'Show key'}
                 </Button>
-              ) : null}
-              <Button type="submit" variant="primary">
-                Save key
-              </Button>
+                {view.keySaved ? (
+                  <Button variant="ghost" onClick={onClearKey}>
+                    Clear
+                  </Button>
+                ) : null}
+                <Button type="submit" variant="primary">
+                  Save key
+                </Button>
+              </div>
             </div>
-          </div>
-        </form>
+          </form>
+        </div>
       </Section>
     </div>
   );

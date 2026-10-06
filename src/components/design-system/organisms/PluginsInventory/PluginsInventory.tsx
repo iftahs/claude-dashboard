@@ -22,9 +22,11 @@ export function PluginsInventory({ view, className }: PluginsInventoryProps) {
             ))}
           </div>
         ) : null}
-        <div className="grid gap-x-8 gap-y-5 lg:grid-cols-2">
+        <div className="-mb-5 gap-x-8 lg:columns-2">
           {view.groups.map((group) => (
-            <InventoryGroup key={group.key} group={group} />
+            <div key={group.key} className="break-inside-avoid pb-5">
+              <InventoryGroup group={group} />
+            </div>
           ))}
         </div>
       </div>

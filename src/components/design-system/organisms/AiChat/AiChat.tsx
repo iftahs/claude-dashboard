@@ -17,7 +17,7 @@ export function AiChat({ view, onAsk, onNavigate, className }: AiChatProps) {
   useEffect(() => {
     const log = logRef.current;
     if (log) log.scrollTop = log.scrollHeight;
-  }, [messages, loading]);
+  }, [messages, loading, followUps]);
 
   if (setup) {
     return (
@@ -51,7 +51,7 @@ export function AiChat({ view, onAsk, onNavigate, className }: AiChatProps) {
           ref={logRef}
           role="log"
           aria-label="Messages"
-          tabIndex={0}
+          tabIndex={started ? 0 : undefined}
           className="min-h-0 flex-1 overflow-y-auto p-5 focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus"
         >
           {started ? (

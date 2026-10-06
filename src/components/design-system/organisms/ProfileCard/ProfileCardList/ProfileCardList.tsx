@@ -1,5 +1,6 @@
 import { GroupLabel } from '@/components/design-system/atoms/GroupLabel/GroupLabel';
 import type { ProfileCardListProps } from './types';
+import { MAX_VISIBLE_ITEMS } from './utils';
 
 export function ProfileCardList({ list }: ProfileCardListProps) {
   return (
@@ -10,7 +11,7 @@ export function ProfileCardList({ list }: ProfileCardListProps) {
       {list.items.length > 0 ? (
         <ul
           aria-label={list.title}
-          tabIndex={0}
+          tabIndex={list.items.length > MAX_VISIBLE_ITEMS ? 0 : undefined}
           className="max-h-48 divide-y divide-line overflow-y-auto rounded-control border border-line bg-surface-sunken focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
         >
           {list.items.map((entry, index) => (

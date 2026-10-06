@@ -35,7 +35,7 @@ Each `status` is `'loading' \| 'error' \| 'ready'`.
 ## States
 
 - Archive, folders and version each load on their own: a skeleton line while `loading`, a sentence that says what could not be read on `error`, their content when `ready`.
-- Forget is offered only when something is archived. It opens a confirmation dialog; while the request runs the button is disabled and reads "Forgetting". A failed request shows its message under the row as an alert.
+- Forget is offered only when something is archived. It opens a confirmation dialog; while the request runs the button reads "Forgetting", turns neutral and ignores clicks (`aria-disabled`, so it keeps the focus the dialog hands back). A failed request shows its message under the row as an alert.
 
 ## Usage
 
@@ -50,7 +50,7 @@ import { DataSettings } from '@/components/design-system/organisms/DataSettings/
 ## a11y
 
 - The card is a named region through `Section`; each setting is an `<h3>` through `SettingRow`.
-- The destructive action is confirmed in a `Dialog`: focus moves into it, Escape cancels, and focus returns to the Forget button.
+- The destructive action is confirmed in a `Dialog`: focus moves into it, Escape cancels, and focus returns to the Forget button. When the forget succeeds and the button goes away, focus moves to the archive line, which is a `role="status"` so its new text is announced.
 - The archive state is written in its badge ("On", "Off"); a failed forget is a `role="alert"`.
 - Folder paths truncate and keep their full text in `title`. The changelog link opens in a new tab.
 

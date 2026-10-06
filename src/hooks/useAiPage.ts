@@ -74,7 +74,12 @@ export function useAiPage(): AiPageView {
     [loading, send, aiConfig, source, days],
   );
 
-  const onModelChange = useCallback((model: string) => setAiConfig({ ...aiConfig, model }), [setAiConfig, aiConfig]);
+  const onModelChange = useCallback(
+    (model: string) => {
+      if (model) setAiConfig({ ...aiConfig, model });
+    },
+    [setAiConfig, aiConfig],
+  );
 
   const onNavigate = useCallback<AiNavigate>(
     (event, href) => {

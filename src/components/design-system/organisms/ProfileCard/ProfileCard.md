@@ -65,7 +65,7 @@ Both platforms side by side:
 
 - The card is a named region through `Section`; its title is an `<h3>`, to sit under the page's group heading.
 - A flag's state is written in its badge ("Enabled", "Off"), never carried by colour alone.
-- A list that scrolls is focusable and named by its title, so it can be scrolled from the keyboard.
+- A list with more than six items scrolls, so it is focusable and named by its title and can be scrolled from the keyboard; a shorter list is not a tab stop.
 
 ## Private parts
 

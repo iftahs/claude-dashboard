@@ -1,11 +1,13 @@
 import { useState } from 'react';
 import { Button } from '@/components/design-system/atoms/Button/Button';
+import { Checkbox } from '@/components/design-system/atoms/Checkbox/Checkbox';
 import { Icon } from '@/components/design-system/atoms/Icon/Icon';
 import { IconButton } from '@/components/design-system/atoms/IconButton/IconButton';
 import { Input } from '@/components/design-system/atoms/Input/Input';
 import { Kbd } from '@/components/design-system/atoms/Kbd/Kbd';
 import { SegmentedControl } from '@/components/design-system/atoms/SegmentedControl/SegmentedControl';
 import { Select } from '@/components/design-system/atoms/Select/Select';
+import { SettingRow } from '@/components/design-system/atoms/SettingRow/SettingRow';
 import { Tabs } from '@/components/design-system/atoms/Tabs/Tabs';
 import { Tooltip } from '@/components/design-system/atoms/Tooltip/Tooltip';
 import { SplitLayout } from '@/components/design-system/templates/SplitLayout/SplitLayout';
@@ -30,6 +32,8 @@ export function ControlAtoms() {
   const [weekStart, setWeekStart] = useState('monday');
   const [model, setModel] = useState<string | undefined>(undefined);
   const [cap, setCap] = useState('60.00');
+  const [optOut, setOptOut] = useState(false);
+  const [alertAt, setAlertAt] = useState(true);
 
   return (
     <>
@@ -166,6 +170,41 @@ export function ControlAtoms() {
             onValueChange={setWeekStart}
             options={WEEK_START_OPTIONS}
           />
+        </Specimen>
+      </SplitLayout>
+      <SplitLayout>
+        <Specimen name="Checkbox" note="Unchecked, checked and both disabled states. The label is part of the click target.">
+          <Checkbox checked={optOut} onCheckedChange={setOptOut}>
+            Disable anonymous analytics
+          </Checkbox>
+          <Checkbox checked={alertAt} onCheckedChange={setAlertAt}>
+            70%
+          </Checkbox>
+          <Checkbox checked={false} disabled onCheckedChange={() => undefined}>
+            Unavailable
+          </Checkbox>
+          <Checkbox checked disabled onCheckedChange={() => undefined}>
+            Locked on
+          </Checkbox>
+        </Specimen>
+        <Specimen name="SettingRow" note="Inline with its control, with content underneath, and stacked" layout="stack">
+          <div className="flex flex-col divide-y divide-line">
+            <SettingRow title="Range" description="The window the charts on this page cover.">
+              <SegmentedControl ariaLabel="Range" size="sm" options={RANGE_OPTIONS} value={range} onChange={setRange} />
+            </SettingRow>
+            <SettingRow
+              title="Telemetry"
+              description="Anonymous product analytics. No paths, tokens or session contents."
+              below={<p className="text-caption text-fg-subtle">Content under the row takes the full width.</p>}
+            >
+              <Checkbox checked={optOut} onCheckedChange={setOptOut}>
+                Disable anonymous analytics
+              </Checkbox>
+            </SettingRow>
+            <SettingRow layout="stacked" title="Daily cap" description="Stacked: the control sits under the text at full width.">
+              <Input aria-label="Daily cap, stacked" placeholder="60.00" value={cap} onChange={(event) => setCap(event.target.value)} />
+            </SettingRow>
+          </div>
         </Specimen>
       </SplitLayout>
     </>

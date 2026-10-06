@@ -22,6 +22,7 @@ import { Specimen } from '../Specimen/Specimen';
 import type { AskState } from '../types';
 import { AI_ANSWER_DELAY_MS, AI_ERROR_SAMPLE, AI_INSIGHT_SAMPLE, GALLERY_EXPORT, METERS, ROW, SESSIONS, WINDOW_FACTS } from '../utils';
 import { AgentWorkflowSpecimens } from './AgentWorkflowSpecimens/AgentWorkflowSpecimens';
+import { WorkspaceAiSettingsSpecimens } from './WorkspaceAiSettingsSpecimens/WorkspaceAiSettingsSpecimens';
 
 export function OrganismSpecimens() {
   const [ask, setAsk] = useState<AskState>('idle');
@@ -208,6 +209,7 @@ export function OrganismSpecimens() {
         </Specimen>
       </SplitLayout>
       <AgentWorkflowSpecimens />
+      <WorkspaceAiSettingsSpecimens />
       <CommandPalette
         open={palette.open}
         onOpenChange={palette.setOpen}

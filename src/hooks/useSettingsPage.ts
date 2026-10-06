@@ -111,12 +111,12 @@ export function useSettingsPage(): SettingsPageView {
     onChangeAiConfig: setAiConfig,
   });
 
-  // Next frame: the shell resets its scroll column in an effect that runs after this one when the route changes.
+  // Deferred a task: the shell resets its scroll column in an effect that runs after this one on a route change. A timer, not rAF, which never fires in a background tab.
   useEffect(() => {
     const id = hash.slice(1);
     if (!SETTINGS_SECTIONS.some((section) => section.id === id)) return undefined;
-    const frame = requestAnimationFrame(() => document.getElementById(id)?.scrollIntoView({ block: 'start' }));
-    return () => cancelAnimationFrame(frame);
+    const timer = setTimeout(() => document.getElementById(id)?.scrollIntoView({ block: 'start' }), 0);
+    return () => clearTimeout(timer);
   }, [hash, locationKey]);
 
   const general = useMemo<GeneralSettingsView>(
@@ -217,8 +217,12 @@ export function useSettingsPage(): SettingsPageView {
     },
     ai: {
       view: ai,
-      onProviderChange: (provider) => changeProvider(provider as AiProvider),
-      onModelChange: (model) => setAiConfig({ ...aiConfig, model }),
+      onProviderChange: (provider) => {
+        if (provider in PROVIDER_LABELS && provider !== aiConfig.provider) changeProvider(provider as AiProvider);
+      },
+      onModelChange: (model) => {
+        if (model) setAiConfig({ ...aiConfig, model });
+      },
       onKeyChange: setAiKey,
       onToggleKeyShown: () => setShowKey((shown) => !shown),
       onSaveKey: saveAiKey,

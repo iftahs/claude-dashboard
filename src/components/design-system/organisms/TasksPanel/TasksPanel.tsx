@@ -32,7 +32,9 @@ export function TasksPanel({ view, className }: TasksPanelProps) {
                 <ul aria-label="Tasks" className="divide-y divide-line rounded-control border border-line">
                   {view.tasks.map((task) => (
                     <li key={task.key} className="flex min-w-0 items-center gap-2 px-3 py-2">
-                      <Badge tone={task.tone}>{task.status}</Badge>
+                      <Badge tone={task.tone} className="min-w-20 justify-center">
+                        {task.status}
+                      </Badge>
                       <span title={task.subject} className="min-w-0 flex-1 truncate text-small text-fg">
                         {task.subject}
                       </span>
@@ -55,7 +57,7 @@ export function TasksPanel({ view, className }: TasksPanelProps) {
               <ul aria-label="Plans" className="divide-y divide-line rounded-control border border-line">
                 {view.plans.map((plan) => (
                   <li key={plan.key} className="flex min-w-0 items-center gap-2 px-3 py-2">
-                    {plan.platform ? <Badge>{plan.platform}</Badge> : null}
+                    {plan.platform ? <Badge className="w-14 justify-center">{plan.platform}</Badge> : null}
                     <span title={plan.title} className="min-w-0 flex-1 truncate text-small text-fg">
                       {plan.title}
                     </span>

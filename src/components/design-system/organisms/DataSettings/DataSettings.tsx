@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Badge } from '@/components/design-system/atoms/Badge/Badge';
 import { Button } from '@/components/design-system/atoms/Button/Button';
 import { Checkbox } from '@/components/design-system/atoms/Checkbox/Checkbox';
@@ -13,7 +13,15 @@ import { FORGET_DESCRIPTION, FORGET_TITLE, LINK_CLASS, RETRY_NOTE } from './util
 
 export function DataSettings({ id, view, onForget, onTelemetryChange }: DataSettingsProps) {
   const [confirming, setConfirming] = useState(false);
+  const archiveLineRef = useRef<HTMLParagraphElement>(null);
+  const forgetPending = useRef(false);
   const { archive, folders, version } = view;
+
+  useEffect(() => {
+    if (archive.busy || !forgetPending.current) return;
+    forgetPending.current = false;
+    if (!archive.canForget && document.activeElement === document.body) archiveLineRef.current?.focus({ preventScroll: true });
+  }, [archive.busy, archive.canForget]);
 
   return (
     <div id={id} className="scroll-mt-6">
@@ -38,9 +46,22 @@ export function DataSettings({ id, view, onForget, onTelemetryChange }: DataSett
                 ) : null}
                 {archive.status === 'ready' ? (
                   <div className="flex flex-wrap items-center justify-between gap-3">
-                    <p className="min-w-0 text-small text-fg-muted">{archive.line}</p>
+                    <p
+                      ref={archiveLineRef}
+                      role="status"
+                      tabIndex={-1}
+                      className="min-w-0 rounded-tag text-small text-fg-muted focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+                    >
+                      {archive.line}
+                    </p>
                     {archive.canForget ? (
-                      <Button variant="danger" size="sm" disabled={archive.busy} onClick={() => setConfirming(true)}>
+                      <Button
+                        variant={archive.busy ? 'secondary' : 'danger'}
+                        size="sm"
+                        aria-disabled={archive.busy || undefined}
+                        className={archive.busy ? 'cursor-progress text-fg-muted' : undefined}
+                        onClick={archive.busy ? undefined : () => setConfirming(true)}
+                      >
                         <Icon name="trash" size={14} />
                         {archive.busy ? 'Forgetting' : FORGET_TITLE}
                       </Button>
@@ -138,6 +159,7 @@ export function DataSettings({ id, view, onForget, onTelemetryChange }: DataSett
               variant="danger"
               onClick={() => {
                 setConfirming(false);
+                forgetPending.current = true;
                 onForget();
               }}
             >

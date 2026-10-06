@@ -54,7 +54,7 @@ import { AiChat } from '@/components/design-system/organisms/AiChat/AiChat';
 
 ## a11y
 
-- The message list is a `role="log"` region, so new answers are announced politely; it is focusable so it can be scrolled from the keyboard.
+- The message list is a `role="log"` region, so new answers are announced politely; once it holds messages it is focusable, so it can be scrolled from the keyboard.
 - A failed answer is a `role="alert"`.
 - The composer is a real `<form>`: Enter sends. The field is named "Ask about your usage"; a placeholder alone is not a label.
 - Suggestions are native buttons; a truncated one keeps its full text in `title`.
@@ -66,6 +66,6 @@ import { AiChat } from '@/components/design-system/organisms/AiChat/AiChat';
 ## Notes
 
 - Layout: the card is `relative flex-1` with a 384px minimum height and its content is positioned over it, so the messages can scroll without every ancestor having to opt out of its content height. The page itself does not scroll while the viewport is taller than the header plus that minimum.
-- The list scrolls to its end whenever a message arrives or grows.
+- The list scrolls to its end whenever a message arrives or grows, and again when the follow-up suggestions change the height of the footer.
 - UI-only state: the draft in the field. The conversation, the suggestions and the request belong to the page hook.
 - Bubbles are at most 768px or 85% of the card wide, whichever is smaller.
