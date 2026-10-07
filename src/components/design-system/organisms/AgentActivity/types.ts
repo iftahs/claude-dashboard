@@ -11,5 +11,5 @@ export interface StateLook {
   label: string;
   dot: StatusDotTone;
   badge: BadgeTone;
-  pulse: boolean;
+  live: boolean;
 }

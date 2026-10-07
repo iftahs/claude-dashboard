@@ -16,10 +16,10 @@ export function CommandPalette({
   return (
     <DialogPrimitive.Root open={open} onOpenChange={onOpenChange}>
       <DialogPrimitive.Portal>
-        <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-overlay" />
+        <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-overlay data-[state=closed]:animate-fade-out data-[state=open]:animate-fade-in" />
         <DialogPrimitive.Content
           aria-describedby={undefined}
-          className="fixed inset-x-0 top-[12vh] z-50 mx-auto flex max-h-[min(480px,76vh)] w-[calc(100vw-32px)] max-w-[560px] flex-col overflow-hidden rounded-dialog border border-line bg-surface-raised text-body tabular-nums text-fg shadow-pop outline-none"
+          className="fixed inset-x-0 top-[12vh] z-50 mx-auto flex max-h-[min(480px,76vh)] w-[calc(100vw-32px)] max-w-[560px] flex-col overflow-hidden rounded-dialog border border-line bg-surface-raised text-body tabular-nums text-fg shadow-pop outline-none data-[state=closed]:animate-scale-out data-[state=open]:animate-scale-in"
         >
           <DialogPrimitive.Title className="sr-only">{title}</DialogPrimitive.Title>
           {/* cmdk's own Ctrl+K binding (previous item) would fight the shortcut that toggles the palette. */}

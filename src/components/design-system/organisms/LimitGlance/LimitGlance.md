@@ -81,6 +81,12 @@ Without a link:
 ## Notes
 
 - The tone comes from the view model: `accent` below 70%, `warning` from 70%, `danger` from 90% or when the provider says the limit is reached (`limitTone()` in `@/lib/limits`).
-- Presentational: no hooks, no routing, no fetching. The card never retries by itself.
+- Presentational: no data hooks, no routing, no fetching. The card never retries by itself.
 - The reset line wraps between its phrases and never inside one ("Resets in 2h 31m," / "at 04:10"), so nothing is cut off on a narrow card. The label truncates with an ellipsis; the percentage and the badges never wrap.
 - `binding` is set by `markBinding()` on one row across all the cards on screen: the fullest window, the same one the topbar and the sidebar report. It stays off when only one window row is shown.
+
+## Motion
+
+- Each window's percentage counts up from zero once and its meter grows and glides (see `ProgressBar`).
+- The rows fade in when they replace the skeleton. A linked card eases its border on hover.
+- Under `prefers-reduced-motion` the global rule makes this instant.

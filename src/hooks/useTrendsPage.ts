@@ -9,6 +9,8 @@ import { useLiveData, weeklyPollMs } from './useLiveData';
 import { useRegisterPageExport } from './usePageActions';
 import { usePolling } from './usePolling';
 import { useSource } from './useSource';
+import { useViewFade } from './useViewFade';
+import type { ViewFade } from './useViewFade';
 import type { ExportFormat } from '@/lib/export';
 import { buildSpendReport } from '@/lib/report';
 import type { SectionAi } from '@/lib/section';
@@ -54,6 +56,7 @@ export interface TrendsPageView {
   view: TrendsViewId;
   views: readonly TrendsOption<TrendsViewId>[];
   onViewChange: (view: TrendsViewId) => void;
+  viewFade: ViewFade;
   range: string;
   rangeOptions: readonly TrendsOption[];
   onRangeChange: (value: string) => void;
@@ -282,11 +285,13 @@ export function useTrendsPage(): TrendsPageView {
   );
 
   const onRangeChange = useCallback((value: string) => setWeekDays(Number(value)), [setWeekDays]);
+  const viewFade = useViewFade(view);
 
   return {
     view,
     views: TRENDS_VIEWS,
     onViewChange,
+    viewFade,
     range: String(weekDays),
     rangeOptions: TRENDS_RANGE_OPTIONS,
     onRangeChange,

@@ -66,3 +66,10 @@ Dense secondary number:
 
 - Tiles sit 16px apart (`gap-4`). Give the grid `min-w-0` columns (`grid-cols-*` does) so labels can truncate.
 - The value never wraps or truncates; keep it compact (`1.3M`, not `1,300,000`).
+
+## Motion
+
+- A string `value` that is one number with an optional sign, currency or unit (`42%`, `~$12.34`, `1.2M`) counts up from zero once, over 600ms, the first time the tile holds such a value.
+- Only the digits move: the unit and the decimals stay as formatted, the final value holds the width, and it stays the accessible text while the digits count.
+- Every later value is shown exactly as given, so polling never replays the count. Any other `value` (a node, a duration, a name) is never counted.
+- Reduced motion or a hidden tab: no count, the value is shown at once.

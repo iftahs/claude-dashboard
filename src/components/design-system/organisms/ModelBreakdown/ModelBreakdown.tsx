@@ -1,10 +1,11 @@
-import { memo } from 'react';
+import { memo, useState } from 'react';
 import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from 'recharts';
 import { GroupLabel } from '@/components/design-system/atoms/GroupLabel/GroupLabel';
 import { LegendDot } from '@/components/design-system/atoms/LegendDot/LegendDot';
 import { ChartTooltip } from '@/components/design-system/molecules/ChartTooltip/ChartTooltip';
 import { RankedMeterList } from '@/components/design-system/molecules/RankedMeterList/RankedMeterList';
 import { Section } from '@/components/design-system/organisms/Section/Section';
+import { CHART_ENTRANCE, chartMotionAllowed } from '@/lib/chart-theme';
 import type { ModelBreakdownProps, ModelSliceTooltipState } from './types';
 import {
   DONUT_INNER_RADIUS,
@@ -25,6 +26,8 @@ function sliceTooltip({ active, payload }: ModelSliceTooltipState) {
 }
 
 export const ModelBreakdown = memo(function ModelBreakdown({ view, className }: ModelBreakdownProps) {
+  const [played, setPlayed] = useState(false);
+
   return (
     <Section
       title={view.title}
@@ -48,7 +51,9 @@ export const ModelBreakdown = memo(function ModelBreakdown({ view, className }: 
                   outerRadius={DONUT_OUTER_RADIUS}
                   stroke={DONUT_STROKE}
                   strokeWidth={2}
-                  isAnimationActive={false}
+                  isAnimationActive={!played && chartMotionAllowed()}
+                  onAnimationEnd={() => setPlayed(true)}
+                  {...CHART_ENTRANCE}
                 >
                   {view.slices.map((slice) => (
                     <Cell key={slice.id} fill={slice.color} />

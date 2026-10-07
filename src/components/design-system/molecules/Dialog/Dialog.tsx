@@ -21,7 +21,7 @@ export function Dialog({ open, onOpenChange, title, description, children, foote
   return (
     <DialogPrimitive.Root open={open} onOpenChange={onOpenChange}>
       <DialogPrimitive.Portal>
-        <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-overlay" />
+        <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-overlay data-[state=closed]:animate-fade-out data-[state=open]:animate-fade-in" />
         <DialogPrimitive.Content {...describedBy} onCloseAutoFocus={returnFocus} className={dialogVariants({ size })}>
           <div className="flex flex-none items-start justify-between gap-4 px-5 pb-3 pt-5">
             <div className="min-w-0">

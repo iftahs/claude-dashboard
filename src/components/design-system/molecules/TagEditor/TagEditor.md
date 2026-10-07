@@ -64,3 +64,8 @@ One project's tags, stored by the page hook:
 - The row is at least 28px tall, so opening the field does not move what is under it.
 - The dot colour comes from `tagColor()` in `@/lib/palette`, the same colour the tag has in `TagBreakdown`.
 - The field's Enter and Escape are cancelled as key events before focus moves to the add button. Without that, the same Enter press would reach the newly focused button and open the field again.
+
+## Motion
+
+- Tag and suggestion buttons ease their text colour over 120ms.
+- Under `prefers-reduced-motion` the global rule makes this instant.

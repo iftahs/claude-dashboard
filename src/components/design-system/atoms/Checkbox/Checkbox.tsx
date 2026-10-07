@@ -17,7 +17,7 @@ export function Checkbox({ checked, onCheckedChange, children, disabled = false,
           checked={checked}
           disabled={disabled}
           onChange={(event) => onCheckedChange(event.target.checked)}
-          className="peer size-4 cursor-pointer appearance-none rounded-tag border border-line-control bg-surface checked:border-accent checked:bg-accent focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus disabled:cursor-not-allowed disabled:border-line disabled:bg-surface-hover"
+          className="peer size-4 cursor-pointer appearance-none rounded-tag border border-line-control bg-surface transition-colors duration-fast ease-standard checked:border-accent checked:bg-accent focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus disabled:cursor-not-allowed disabled:border-line disabled:bg-surface-hover"
           {...props}
         />
         <Check

@@ -69,3 +69,9 @@ Tight stack without a title:
 
 - A fragment passed as a child is flattened, so each of its elements becomes its own row.
 - Layout only: no state, no hooks, no data.
+
+## Motion
+
+- While the enclosing `PageLayout` is entering, each child of the stack fades in (180ms) 40ms after the one before it, up to 120ms, continuing the page's own stagger.
+- Nothing is animated after that window, and nothing outside a `PageLayout`.
+- Under `prefers-reduced-motion` the global rule makes this instant.

@@ -28,6 +28,7 @@
 | `header` | `ReactNode` | - | Header slot. Nothing is rendered when it is omitted. |
 | `children` | `ReactNode` | required | Sections slot. |
 | `width` | `'default' \| 'full'` | `'default'` | `default` caps the column at 1200px (`max-w-content`, gutters included) and centres it. `full` drops the cap. |
+| `entrance` | `boolean` | `true` | Plays the staggered entrance when the layout mounts. `false` for a placeholder that a real page is about to replace. |
 
 This template does not spread native attributes - it only accepts the slots and props above.
 
@@ -66,5 +67,13 @@ Full width, no header:
 
 ## Notes
 
-- Layout only: no state, no hooks, no data.
+- Layout only: no data. Its one piece of state is the UI-only flag that times the entrance.
 - A fragment passed as `header` or as a child is flattened, so each of its elements becomes its own row.
+
+## Motion
+
+- For 640ms after it mounts the layout carries `data-entering`, and each direct child rises in (8px, 320ms) 40ms after the one before it, up to 120ms. `SectionStackLayout`, `SplitLayout` and `StatGridLayout` inside it stagger their own children in the same window. Transform and opacity only.
+- After that window nothing is animated: polling, cards that arrive late and re-ordered lists never replay it, and no child is left with a transform.
+- A child that has an animation class of its own keeps that animation instead.
+- `entrance={false}` turns it off. The route fallback uses it, so the skeleton does not rise in just before the page does.
+- Reduced motion: no stagger, and the children appear at once.

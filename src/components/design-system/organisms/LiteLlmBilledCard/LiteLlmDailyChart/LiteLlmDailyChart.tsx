@@ -1,6 +1,6 @@
-import { memo } from 'react';
+import { memo, useState } from 'react';
 import { Bar, BarChart, CartesianGrid, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
-import { CHART_AXIS, CHART_BAR_RADIUS, CHART_CURSOR, CHART_GRID } from '@/lib/chart-theme';
+import { CHART_AXIS, CHART_BAR_RADIUS, CHART_CURSOR, CHART_ENTRANCE, CHART_GRID, chartMotionAllowed } from '@/lib/chart-theme';
 import { LiteLlmDailyTooltip } from '../LiteLlmDailyTooltip/LiteLlmDailyTooltip';
 import {
   ANIMATION_MAX_ROWS,
@@ -16,6 +16,9 @@ import {
 import type { LiteLlmDailyChartProps } from './types';
 
 export const LiteLlmDailyChart = memo(function LiteLlmDailyChart({ days, ariaLabel }: LiteLlmDailyChartProps) {
+  const [played, setPlayed] = useState(false);
+  const animate = !played && days.length <= ANIMATION_MAX_ROWS && chartMotionAllowed();
+
   return (
     <div role="img" aria-label={ariaLabel} className={PLOT_CLASS} style={{ height: CHART_HEIGHT }}>
       <div className="absolute inset-0">
@@ -25,7 +28,13 @@ export const LiteLlmDailyChart = memo(function LiteLlmDailyChart({ days, ariaLab
             <XAxis dataKey={ROW_LABEL} interval="preserveStartEnd" minTickGap={MIN_TICK_GAP} {...CHART_AXIS} />
             <YAxis tickFormatter={(value) => axisValue(Number(value))} width={AXIS_WIDTH} {...CHART_AXIS} />
             <Tooltip cursor={CHART_CURSOR} content={<LiteLlmDailyTooltip />} />
-            <Bar dataKey={ROW_COST} radius={CHART_BAR_RADIUS} isAnimationActive={days.length <= ANIMATION_MAX_ROWS}>
+            <Bar
+              dataKey={ROW_COST}
+              radius={CHART_BAR_RADIUS}
+              isAnimationActive={animate}
+              onAnimationEnd={() => setPlayed(true)}
+              {...CHART_ENTRANCE}
+            >
               {days.map((day) => (
                 <Cell key={day.key} fill={day.color} />
               ))}

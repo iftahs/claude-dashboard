@@ -55,3 +55,9 @@ Below the trigger, no delay:
 
 - The bubble sits on `surface-raised` with `border-line` and `shadow-pop`, in `text-small` with tabular numerals, at most 260px wide, in a portal at `z-50`.
 - Each tooltip carries its own Radix `Provider`, so it works with no setup. Function components used as the trigger must forward their ref.
+
+## Motion
+
+- A tooltip opened after its delay scales in (160ms), and scales out when it closes (120ms).
+- One opened instantly, because the pointer came from another tooltip, appears without motion.
+- Under `prefers-reduced-motion` the global rule makes this instant.

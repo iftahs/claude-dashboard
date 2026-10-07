@@ -59,3 +59,8 @@ Small and outlined:
 - Renders a native `<button>` with `aria-label={label}`; the icon child must be `aria-hidden`.
 - Shows the 2px focus ring on keyboard focus.
 - An icon-only button should also show a tooltip with the same text; wrap it in `Tooltip` from a molecule. The ref is forwarded so it works as a tooltip trigger.
+
+## Motion
+
+- Hover and disabled colours ease over 120ms, and an enabled button scales to 98% while it is pressed. The focus ring is not transitioned, so it appears at once.
+- Under `prefers-reduced-motion` the global rule makes this instant.

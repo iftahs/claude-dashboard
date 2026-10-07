@@ -1,4 +1,4 @@
-import { memo } from 'react';
+import { memo, useState } from 'react';
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { GroupLabel } from '@/components/design-system/atoms/GroupLabel/GroupLabel';
 import { LegendDot } from '@/components/design-system/atoms/LegendDot/LegendDot';
@@ -9,7 +9,7 @@ import { ChartTooltip } from '@/components/design-system/molecules/ChartTooltip/
 import { KeyValueRow } from '@/components/design-system/molecules/KeyValueRow/KeyValueRow';
 import { Legend } from '@/components/design-system/molecules/Legend/Legend';
 import { Section } from '@/components/design-system/organisms/Section/Section';
-import { CHART_AXIS, CHART_BAR_RADIUS, CHART_CURSOR, CHART_GRID } from '@/lib/chart-theme';
+import { CHART_AXIS, CHART_BAR_RADIUS, CHART_CURSOR, CHART_ENTRANCE, CHART_GRID, chartMotionAllowed } from '@/lib/chart-theme';
 import { cn } from '@/lib/cn';
 import type { LatencyTooltipState, TurnLatencyProps } from './types';
 import {
@@ -32,6 +32,7 @@ function histogramTooltip({ active, payload, label }: LatencyTooltipState) {
 export const TurnLatency = memo(function TurnLatency({ view, className }: TurnLatencyProps) {
   const split = view.platforms.length > 0;
   const top = view.series.length - 1;
+  const [played, setPlayed] = useState(false);
 
   return (
     <Section title={view.title} description={view.description} help={view.help} state={view.state} ai={view.ai} className={className}>
@@ -104,7 +105,9 @@ export const TurnLatency = memo(function TurnLatency({ view, className }: TurnLa
                     stackId={STACK_ID}
                     fill={series.color}
                     radius={index === top ? CHART_BAR_RADIUS : undefined}
-                    isAnimationActive={false}
+                    isAnimationActive={!played && chartMotionAllowed()}
+                    onAnimationEnd={() => setPlayed(true)}
+                    {...CHART_ENTRANCE}
                   />
                 ))}
               </BarChart>

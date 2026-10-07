@@ -42,9 +42,13 @@ export const LiteLlmBilledCard = memo(function LiteLlmBilledCard({ view, classNa
               <span className="truncate text-label uppercase text-fg-subtle">{mix.label}</span>
               <span className="whitespace-nowrap font-mono text-mono tabular-nums text-fg-muted">{mix.total}</span>
             </div>
-            <div role="img" aria-label={mixLabel(mix.segments)} className="flex h-2 w-full gap-0.5 overflow-hidden rounded-full bg-surface-hover">
+            <div role="img" aria-label={mixLabel(mix.segments)} className="flex h-2 w-full origin-left animate-grow-x gap-0.5 overflow-hidden rounded-full bg-surface-hover">
               {mix.segments.map((segment) => (
-                <span key={segment.key} style={{ width: `${segment.percent}%`, backgroundColor: segment.color }} />
+                <span
+                  key={segment.key}
+                  className="transition-[width] duration-slow ease-emphasized"
+                  style={{ width: `${segment.percent}%`, backgroundColor: segment.color }}
+                />
               ))}
             </div>
             <Legend ariaLabel={MIX_LEGEND_LABEL} items={mix.segments} />

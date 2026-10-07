@@ -1,6 +1,10 @@
 import { cva } from 'class-variance-authority';
 
-export const statGridLayoutVariants = cva('grid min-w-0 gap-4 *:min-w-0', {
+// Runs only while the enclosing PageLayout is entering; the delay continues that page's own stagger.
+const ENTRANCE =
+  '[:where(&>*)]:group-data-[entering]/page:animate-rise-in [&>*]:group-data-[entering]/page:[animation-delay:var(--enter-delay,0ms)] motion-safe:[&>*:nth-child(2)]:group-data-[entering]/page:[animation-delay:calc(var(--enter-delay,0ms)+40ms)] motion-safe:[&>*:nth-child(3)]:group-data-[entering]/page:[animation-delay:calc(var(--enter-delay,0ms)+80ms)] motion-safe:[&>*:nth-child(n+4)]:group-data-[entering]/page:[animation-delay:calc(var(--enter-delay,0ms)+120ms)]';
+
+export const statGridLayoutVariants = cva(`grid min-w-0 gap-4 *:min-w-0 ${ENTRANCE}`, {
   variants: {
     columns: {
       2: 'grid-cols-2',

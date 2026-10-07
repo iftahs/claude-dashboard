@@ -104,3 +104,8 @@ Rows that stand for chart series:
 ## Exports
 
 - `RankedMeterRow` from `types.ts`, for the organism that maps a view model onto rows.
+
+## Motion
+
+- Every bar grows from zero on mount and glides to a new value; see `ProgressBar`. Re-ordering the rows does not replay it.
+- Under `prefers-reduced-motion` the global rule makes this instant.

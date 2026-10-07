@@ -60,3 +60,8 @@ Icon and label (children sit in a flex row with a 6px gap):
 - Shows the 2px focus ring on keyboard focus.
 - Use the `disabled` attribute to disable; do not fake it with classes.
 - An icon passed as a child must be decorative (`aria-hidden`); the label carries the name.
+
+## Motion
+
+- Hover and disabled colours ease over 120ms, and an enabled button scales to 98% while it is pressed. The focus ring is not transitioned, so it appears at once.
+- Under `prefers-reduced-motion` the global rule makes this instant.

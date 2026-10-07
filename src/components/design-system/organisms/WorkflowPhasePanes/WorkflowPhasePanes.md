@@ -40,8 +40,8 @@
 
 - No phases yet - "No phases yet." on the left and "No agents yet." on the right.
 - A phase that has not started - "Not started yet." on the right.
-- A phase marker is a check when every known agent is done, a pulsing dot while one runs, and the phase number otherwise (`partial`: some agents stopped without finishing; `pending`: none seen yet).
-- An agent marker is a check (done), a cross (failed) or a dot (running pulses; queued and stalled also carry a badge with the word).
+- A phase marker is a check when every known agent is done, moving `ActivityBars` while one runs, and the phase number otherwise (`partial`: some agents stopped without finishing; `pending`: none seen yet).
+- An agent marker is a check (done), a cross (failed), moving `ActivityBars` (running) or a still dot (queued and stalled, which also carry a badge with the word). Only a running agent moves; a stalled one never does.
 - An open row shows its detail in a sunken well: a skeleton while it loads, an error with an optional retry, "No detail available" or the detail.
 
 ## Usage
@@ -69,7 +69,7 @@ With a retry for failed details:
 
 - Phases are buttons with `aria-pressed`; each also reads its state ("Done", "Running", "Not finished", "Not started").
 - Agent rows are buttons with `aria-expanded`, pointing at their detail with `aria-controls` while open.
-- A marker is never colour alone: check and cross are shapes with a hidden label, and dots carry a hidden label plus, for queued and stalled, a visible badge.
+- A marker is never colour or motion alone: check, cross and bars are shapes with a hidden label, and dots carry a hidden label plus, for queued and stalled, a visible badge.
 - The prompt and the result scroll inside the detail and are focusable, so they can be scrolled from the keyboard.
 - Each tool bar is a `role="progressbar"` named with the tool, its call count and its failures.
 
@@ -88,4 +88,5 @@ With a retry for failed details:
 - The agent type is shown inline from `xl` up, and always in the row's `title` and in the detail.
 - The left pane is 232px from `lg`, 184px from `md`, and sits above the agents below `md`.
 - Below `sm` an agent row takes two lines: the marker, the label and the chevron, then the badges, the chip and the metrics, so nothing is clipped on a phone.
+- Under `prefers-reduced-motion` the bars of a running phase or agent stand still.
 - Fully controlled: which phase is selected and which rows are open come from the view. It holds no state, fetches nothing and has no timer of its own; the ticking clock is `ElapsedTime`.

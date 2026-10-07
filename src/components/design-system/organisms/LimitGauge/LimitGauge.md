@@ -86,3 +86,9 @@ Both platforms side by side:
 - Presentational: every string, number and tone comes from the view. The countdown is refreshed by a tick in the page hook, not by a timer in the card.
 - Tones come from `limitTone()` in `@/lib/limits`: `accent` below 70%, `warning` from 70%, `danger` from 90%.
 - The headline is the provider's account-wide percentage; the rows are local usage on this machine, which is why they carry their own label.
+
+## Motion
+
+- The large number counts up from zero once, the first time it holds a value; later values are shown as given.
+- The body fades in when it replaces the loading skeleton, and the meter grows and glides (see `ProgressBar`).
+- Under `prefers-reduced-motion` the global rule makes this instant.

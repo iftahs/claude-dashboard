@@ -1,5 +1,5 @@
+import { ActivityBars } from '@/components/design-system/atoms/ActivityBars/ActivityBars';
 import { Icon } from '@/components/design-system/atoms/Icon/Icon';
-import { StatusDot } from '@/components/design-system/atoms/StatusDot/StatusDot';
 import { cn } from '@/lib/cn';
 import { FOCUS_RING, PHASE_STATE_LABEL } from '../utils';
 import type { WorkflowPhaseItemProps } from './types';
@@ -19,7 +19,7 @@ export function WorkflowPhaseItem({ phase, onSelect }: WorkflowPhaseItemProps) {
       >
         <span className="flex w-4 flex-none items-center justify-center">
           {phase.state === 'done' ? <Icon name="check" size={14} className="text-success-fg" /> : null}
-          {phase.state === 'running' ? <StatusDot tone="success" pulse /> : null}
+          {phase.state === 'running' ? <ActivityBars className="text-success" /> : null}
           {phase.state === 'pending' || phase.state === 'partial' ? <span className="font-mono text-mono">{phase.index + 1}</span> : null}
         </span>
         <span title={phase.title} className="min-w-0 flex-1 truncate">

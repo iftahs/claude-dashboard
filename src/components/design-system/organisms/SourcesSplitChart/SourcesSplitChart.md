@@ -44,3 +44,8 @@ import { SourcesSplitChart } from '@/components/design-system/organisms/SourcesS
 - Memoised on `view`: build it in a `useMemo` in the page hook.
 - Surface colours come from `SURFACE_COLOR` in `@/lib/platform`, the same mapping the weekly breakdown on Live usage draws with.
 - A part with no tokens in the range is dropped by the builder, and the card is not rendered when no part is left.
+
+## Motion
+
+- The segmented bar grows from the left once on mount (600ms), and its segments ease their width (320ms) when the split changes.
+- Under `prefers-reduced-motion` the global rule makes this instant.

@@ -1,5 +1,6 @@
 import { toDisplayAgents, type LiveAgentsData } from '@/lib/agents';
 import { buildAgentActivity, buildAgentHistory } from '@/lib/views/agents';
+import { buildRunning } from '@/lib/views/overview';
 import { agentDetailKey, buildWorkflowStats, type WorkflowAgentDetailState } from '@/lib/views/workflows';
 import type { SubagentStats, WorkflowAgentDetail, WorkflowAgentInfo, WorkflowRun, WorkflowStats, WorkflowsData } from '@/types';
 
@@ -338,6 +339,26 @@ export const SPECIMEN_DETAILS: ReadonlyMap<string, WorkflowAgentDetailState> = n
     ]),
   ),
 );
+
+const RUNNING_INPUT = {
+  claude: toDisplayAgents(LIVE_AGENTS),
+  codex: null,
+  workflows: SPECIMEN_WORKFLOWS.live,
+  showWorkflows: true,
+  tagCodex: false,
+  running: LIVE_AGENTS.counts.running,
+  waiting: LIVE_AGENTS.counts.waiting,
+  liveWorkflows: SPECIMEN_WORKFLOWS.live.length,
+  loading: false,
+  failed: false,
+};
+
+export const RUNNING_VIEWS = [
+  buildRunning(RUNNING_INPUT),
+  buildRunning({ ...RUNNING_INPUT, claude: NO_AGENTS, workflows: [], running: 0, waiting: 0, liveWorkflows: 0 }),
+  buildRunning({ ...RUNNING_INPUT, claude: null, loading: true }),
+  buildRunning({ ...RUNNING_INPUT, claude: null, failed: true }),
+];
 
 export const INITIAL_PINNED: ReadonlyMap<string, number> = new Map([['live', 0]]);
 export const INITIAL_OPEN_RUNS: ReadonlySet<string> = new Set(['completed']);

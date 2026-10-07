@@ -1,12 +1,15 @@
-import { memo } from 'react';
+import { memo, useState } from 'react';
 import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from 'recharts';
 import { LegendDot } from '@/components/design-system/atoms/LegendDot/LegendDot';
 import { Section } from '@/components/design-system/organisms/Section/Section';
+import { CHART_ENTRANCE, chartMotionAllowed } from '@/lib/chart-theme';
 import { TagBreakdownTooltip } from './TagBreakdownTooltip/TagBreakdownTooltip';
 import type { TagBreakdownProps } from './types';
 import { CHART_SIZE, INNER_RADIUS, LIST_LABEL, NO_COST, OUTER_RADIUS, SLICE_GAP_DEGREES } from './utils';
 
 export const TagBreakdown = memo(function TagBreakdown({ view, className }: TagBreakdownProps) {
+  const [played, setPlayed] = useState(false);
+
   return (
     <Section title={view.title} description={view.description} help={view.help} state={view.state} className={className}>
       <div className="flex min-w-0 flex-col items-center gap-4">
@@ -22,7 +25,9 @@ export const TagBreakdown = memo(function TagBreakdown({ view, className }: TagB
                   outerRadius={OUTER_RADIUS}
                   paddingAngle={view.slices.length > 1 ? SLICE_GAP_DEGREES : 0}
                   stroke="none"
-                  isAnimationActive={false}
+                  isAnimationActive={!played && chartMotionAllowed()}
+                  onAnimationEnd={() => setPlayed(true)}
+                  {...CHART_ENTRANCE}
                 >
                   {view.slices.map((slice) => (
                     <Cell key={slice.key} fill={slice.color} />

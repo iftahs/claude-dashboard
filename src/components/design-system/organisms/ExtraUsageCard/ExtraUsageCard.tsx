@@ -41,7 +41,7 @@ export const ExtraUsageCard = memo(function ExtraUsageCard({ view, className }: 
                 href={disclaimer.href}
                 target="_blank"
                 rel="noreferrer"
-                className="rounded-tag underline outline-none hover:text-fg focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+                className="rounded-tag underline outline-none transition-colors duration-fast ease-standard hover:text-fg focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
               >
                 {disclaimer.linkText}
               </a>

@@ -4,6 +4,8 @@ import { useAiInsightCtx } from './useAiInsightContext';
 import { usePolling } from './usePolling';
 import type { PollState } from './usePolling';
 import { useSource } from './useSource';
+import { useViewFade } from './useViewFade';
+import type { ViewFade } from './useViewFade';
 import { track } from '@/lib/analytics';
 import type { Platform } from '@/lib/platform';
 import type { SectionAi } from '@/lib/section';
@@ -69,6 +71,7 @@ export interface InsightsPageView {
   view: InsightView;
   viewTabs: readonly InsightViewTab[];
   onViewChange: (view: InsightView) => void;
+  viewFade: ViewFade;
   days: InsightDays;
   dayOptions: readonly InsightDayOption[];
   onDaysChange: (days: InsightDays) => void;
@@ -181,10 +184,13 @@ export function useInsightsPage(): InsightsPageView {
     track('insight_range_changed', { days: d });
   }, []);
 
+  const viewFade = useViewFade(view);
+
   return {
     view,
     viewTabs: INSIGHT_VIEW_TABS,
     onViewChange,
+    viewFade,
     days: insightDays,
     dayOptions: INSIGHT_DAY_OPTIONS,
     onDaysChange,

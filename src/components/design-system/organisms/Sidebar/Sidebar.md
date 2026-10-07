@@ -119,3 +119,9 @@ One group with a badge:
 - The root takes `flex-1`, as the `AppShellLayout` sidebar slot expects, and brings its own padding.
 - It holds no element ids, because `AppShellLayout` mounts the slot twice while the drawer is open.
 - It never routes by itself: links are real `<a href>` and `onNavigate` lets the consumer call `event.preventDefault()` and navigate.
+
+## Motion
+
+- Nav items ease their colours. The brand, group labels, item labels and footer fade in (180ms) when the sidebar mounts expanded, so on expand and in the drawer.
+- The width animation belongs to `AppShellLayout`.
+- Under `prefers-reduced-motion` the global rule makes this instant.

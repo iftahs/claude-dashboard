@@ -58,3 +58,8 @@ import { TurnLatency } from '@/components/design-system/organisms/TurnLatency/Tu
 - Bars take the platform colours from `PLATFORM_COLORS`; horizontal gridlines only.
 - A dash stands for a figure the platform does not record.
 - Memoised, so an unrelated page update does not redraw the chart.
+
+## Motion
+
+- The histogram bars grow in once (450ms, ease-out), when the chart first has data; later updates redraw without animation.
+- Reduced motion or a hidden tab: no entrance. Recharts animates in JavaScript, so this is checked in code rather than left to the stylesheet.

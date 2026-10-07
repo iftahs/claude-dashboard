@@ -113,3 +113,9 @@ return { state, ai: sectionAi('trends', data) };
 - Stale data stays on screen: set `state` only while there is no data to show. A failed poll with data already loaded keeps `state` unset.
 - With `padding="none"` the card clips its corners; `text`, `stat`, `chart`, `bars` and `gauge` skeletons, the empty and error states and the AI result keep 16px of side padding, and the `table` skeleton runs edge to edge like the table it stands for.
 - With `grow`, content and skeletons sit at the bottom of the card; the empty and error states are centred.
+
+## Motion
+
+- When `state` leaves `loading` for content, the body fades in once (180ms). The class comes off when the animation ends and later re-renders do not add it back, so polling never replays it.
+- `EmptyState` and `ErrorState` bring their own fade.
+- Under `prefers-reduced-motion` the global rule makes this instant.

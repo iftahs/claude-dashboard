@@ -1,4 +1,4 @@
-import { memo } from 'react';
+import { memo, useRef } from 'react';
 import { Badge } from '@/components/design-system/atoms/Badge/Badge';
 import { GroupLabel } from '@/components/design-system/atoms/GroupLabel/GroupLabel';
 import { Markdown } from '@/components/design-system/atoms/Markdown/Markdown';
@@ -9,6 +9,7 @@ import { Callout } from '@/components/design-system/molecules/Callout/Callout';
 import { KeyValueRow } from '@/components/design-system/molecules/KeyValueRow/KeyValueRow';
 import { SkeletonPreset } from '@/components/design-system/molecules/SkeletonPreset/SkeletonPreset';
 import { Section } from '@/components/design-system/organisms/Section/Section';
+import { useCountUpText } from '@/hooks/useCountUp';
 import { cn } from '@/lib/cn';
 import type { LimitGaugeProps } from './types';
 import { SKELETON_ROWS } from './utils';
@@ -16,6 +17,9 @@ import { SKELETON_ROWS } from './utils';
 export const LimitGauge = memo(function LimitGauge({ view, wideBelowXl = false, className }: LimitGaugeProps) {
   const { badge, meter, notice } = view;
   const loading = view.state?.kind === 'loading';
+  const counting = useCountUpText(loading || view.state ? null : view.value);
+  const sawLoading = useRef(false);
+  if (loading) sawLoading.current = true;
 
   return (
     <Section
@@ -50,10 +54,27 @@ export const LimitGauge = memo(function LimitGauge({ view, wideBelowXl = false, 
           <Skeleton className="my-0.5 h-3 w-48" />
         </div>
       ) : (
-        <div className={cn('grid grid-cols-1 gap-5', wideBelowXl && 'md:max-xl:grid-cols-2 md:max-xl:gap-x-8')}>
+        <div
+          className={cn(
+            'grid grid-cols-1 gap-5',
+            wideBelowXl && 'md:max-xl:grid-cols-2 md:max-xl:gap-x-8',
+            sawLoading.current && 'animate-fade-in',
+          )}
+        >
           <div className="flex min-w-0 flex-col gap-3">
             <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
-              <span className="whitespace-nowrap text-metric-lg text-fg">{view.value}</span>
+              <span className="whitespace-nowrap text-metric-lg text-fg">
+                {counting === null ? (
+                  view.value
+                ) : (
+                  <span className="relative inline-block">
+                    <span className="opacity-0">{view.value}</span>
+                    <span aria-hidden="true" className="absolute left-0 top-0">
+                      {counting}
+                    </span>
+                  </span>
+                )}
+              </span>
               <span className="text-small text-fg-muted">{view.caption}</span>
             </div>
             {meter ? <ProgressBar value={meter.percent} tone={meter.tone} size="lg" label={meter.label} /> : null}

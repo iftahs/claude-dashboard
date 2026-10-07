@@ -1,6 +1,7 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useMemo, useState, type MouseEvent } from 'react';
 import { AgentActivity } from '@/components/design-system/organisms/AgentActivity/AgentActivity';
 import { AgentHistoryStrip } from '@/components/design-system/organisms/AgentHistoryStrip/AgentHistoryStrip';
+import { RunningNow } from '@/components/design-system/organisms/RunningNow/RunningNow';
 import { WorkflowRunCard } from '@/components/design-system/organisms/WorkflowRunCard/WorkflowRunCard';
 import { WorkflowRunRow } from '@/components/design-system/organisms/WorkflowRunRow/WorkflowRunRow';
 import { WorkflowStatsGrid } from '@/components/design-system/organisms/WorkflowStatsGrid/WorkflowStatsGrid';
@@ -15,12 +16,17 @@ import {
   INITIAL_OPEN_AGENTS,
   INITIAL_OPEN_RUNS,
   INITIAL_PINNED,
+  RUNNING_VIEWS,
   SPECIMEN_DETAILS,
   SPECIMEN_WORKFLOWS,
   STATS_VIEWS,
 } from './utils';
 
 function ignoreRetry(): void {}
+
+function stayOnPage(event: MouseEvent<HTMLAnchorElement>): void {
+  event.preventDefault();
+}
 
 function toggled(set: ReadonlySet<string>, key: string): ReadonlySet<string> {
   const next = new Set(set);
@@ -55,6 +61,15 @@ export function AgentWorkflowSpecimens() {
   return (
     <>
       <Specimen
+        name="RunningNow"
+        note="A waiting row, running sessions, a workflow and a subagent, then nothing running, loading and failed"
+        layout="stack"
+      >
+        {RUNNING_VIEWS.map((view, index) => (
+          <RunningNow key={index} view={view} href="/agents" onNavigate={stayOnPage} />
+        ))}
+      </Specimen>
+      <Specimen
         name="AgentActivity"
         note="Every main-session state with nested and orphan subagents, then loading, failed and empty"
         layout="stack"
@@ -80,7 +95,7 @@ export function AgentWorkflowSpecimens() {
       </Specimen>
       <Specimen
         name="WorkflowRunCard"
-        note="A live run with WorkflowPhasePanes: pick a phase, open an agent. The open rows show a detail that is ready, loading and failed."
+        note="A live run with WorkflowPhasePanes: pick a phase, open an agent. The open rows show a detail that is ready, loading and failed. Critique holds a running, a queued and a stalled agent."
         layout="stack"
       >
         {runs.live.map((run) => (

@@ -55,3 +55,8 @@ Invalid state:
 - Renders a native `<input>` and shows the 2px focus ring on focus.
 - `invalid` sets `aria-invalid="true"`; point `aria-describedby` at the error text.
 - The consumer must supply a `<label>` or an `aria-label`. A placeholder is not a label.
+
+## Motion
+
+- Border and fill colours ease over 120ms when the invalid or disabled state changes. The focus ring appears at once.
+- Under `prefers-reduced-motion` the global rule makes this instant.

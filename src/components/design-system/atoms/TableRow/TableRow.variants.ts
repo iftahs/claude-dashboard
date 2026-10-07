@@ -7,7 +7,7 @@ export const tableRowVariants = cva('[&>*]:border-t [&>*]:border-line [thead_&>*
       selected: 'bg-accent-soft text-accent-fg',
     },
     interactive: {
-      true: 'cursor-pointer focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus',
+      true: 'cursor-pointer transition-colors duration-fast ease-standard focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus',
       false: '',
     },
   },

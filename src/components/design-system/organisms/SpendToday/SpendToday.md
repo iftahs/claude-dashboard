@@ -79,4 +79,10 @@ A single card:
 - The value never wraps; the comparison truncates with an ellipsis and keeps its full text in `title`.
 - The sparkline column is 120px wide, 96px below 640px.
 - Cost values are estimates and arrive prefixed with a tilde; the footnote says so.
-- Presentational: no hooks, no routing, no fetching.
+- Presentational: no data hooks, no routing, no fetching.
+
+## Motion
+
+- The total counts up from zero once, the sparkline bars grow once, and the content fades in when it replaces the skeleton.
+- The cap meter grows and glides (see `ProgressBar`).
+- Under `prefers-reduced-motion` the global rule makes this instant.

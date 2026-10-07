@@ -1,7 +1,7 @@
-import { memo, useMemo } from 'react';
+import { memo, useMemo, useState } from 'react';
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { Legend } from '@/components/design-system/molecules/Legend/Legend';
-import { CHART_AXIS, CHART_BAR_RADIUS, CHART_CURSOR, CHART_GRID } from '@/lib/chart-theme';
+import { CHART_AXIS, CHART_BAR_RADIUS, CHART_CURSOR, CHART_ENTRANCE, CHART_GRID, chartMotionAllowed } from '@/lib/chart-theme';
 import { cn } from '@/lib/cn';
 import { GroupedBarChartTooltip } from './GroupedBarChartTooltip/GroupedBarChartTooltip';
 import type { GroupedBarChartProps } from './types';
@@ -32,7 +32,8 @@ export const GroupedBarChart = memo(function GroupedBarChart({
   className,
 }: GroupedBarChartProps) {
   const data = useMemo(() => flattenRows(rows, series), [rows, series]);
-  const animate = data.length <= ANIMATION_MAX_ROWS;
+  const [played, setPlayed] = useState(false);
+  const animate = !played && data.length <= ANIMATION_MAX_ROWS && chartMotionAllowed();
 
   return (
     <div className={cn('flex w-full min-w-0 flex-col gap-3', className)}>
@@ -53,6 +54,8 @@ export const GroupedBarChart = memo(function GroupedBarChart({
                   radius={CHART_BAR_RADIUS}
                   maxBarSize={MAX_BAR_SIZE}
                   isAnimationActive={animate}
+                  onAnimationEnd={() => setPlayed(true)}
+                  {...CHART_ENTRANCE}
                 />
               ))}
             </BarChart>

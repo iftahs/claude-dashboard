@@ -37,7 +37,7 @@
 
 - `loading` - a `SkeletonPreset` text block under the header link.
 - `error` - an `ErrorState` inside the card.
-- `ready` with rows - the inline stats, then one 44px row per item: a `StatusDot` (danger when waiting, pulsing success when running), the project, the task, a `Badge` ("Waiting on you", "Workflow", "Codex"), the model `Chip` and a ticking `ElapsedTime`. When more items run than fit, a caption counts the rest ("3 more running").
+- `ready` with rows - the inline stats, then one 44px row per item: a status marker (a still danger `StatusDot` when waiting, moving success `ActivityBars` when running), the project, the task, a `Badge` ("Waiting on you", "Workflow", "Codex"), the model `Chip` and a ticking `ElapsedTime`. When more items run than fit, a caption counts the rest ("3 more running").
 - `ready` with no rows - the stats and the line "Nothing is running right now."
 
 ## Usage
@@ -61,7 +61,7 @@ With plain browser navigation:
 ## a11y
 
 - The card is a `<section>` labelled "Running now"; the rows are a `<ul>`.
-- A waiting row says "Waiting on you" in its badge and a running row carries a visually hidden "Running" on its dot, so the status never rests on colour alone. The waiting count pairs its danger tone with an alert icon and the words "waiting on you".
+- A waiting row says "Waiting on you" in its badge and a running row carries a visually hidden "Running" beside its bars, so the status never rests on colour or motion alone. The waiting count pairs its danger tone with an alert icon and the words "waiting on you".
 - "Open agents" is a native `<a href>` with the 2px focus ring; middle-click and "open in new tab" keep working.
 - The time is plain ticking text, not a live region, and its cell carries a `title` that says what it measures.
 
@@ -76,4 +76,6 @@ With plain browser navigation:
 - The time follows `sinceFormat`. `ago` reads "active 12s ago": the time since a session's last activity (its running subagents count), because a session has no per-turn start; on a waiting row it is how long the session has been waiting. `elapsed` reads "15m 21s": the running time of a subagent or a workflow, counted from its real start.
 - Below 640px the task, the model chip and the word "active" are hidden so the row keeps the project, the badge and the time on one line.
 - `modelColor` is a token colour string from `modelColor()`; a null value draws the chip without a dot.
+- The status marker sits in a fixed 12px slot, so the project column lines up whether a row waits or runs and nothing shifts when a row changes state.
+- Under `prefers-reduced-motion` the bars of a running row stand still.
 - Presentational: no hooks, no routing, no fetching.

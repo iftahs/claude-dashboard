@@ -94,4 +94,9 @@ The shape of the groups:
 - Controlled only: the consumer owns `open` and registers the keyboard shortcut in a hook. This component listens for no global key.
 - The search text is cleared each time the palette closes.
 - Renders in a portal at `z-50`, outside the app shell, so the panel sets its own `text-body`, `fg` and tabular numerals.
-- It does not animate.
+
+## Motion
+
+- The scrim fades and the panel scales in (160ms) and out (120ms) through Radix `data-state`.
+- The list and its highlight do not animate, so typing and the arrow keys respond at once.
+- Under `prefers-reduced-motion` the global rule makes this instant.

@@ -41,7 +41,7 @@
 ## Variants
 
 - One bar per series in each bucket, at most 12px wide, with rounded tops.
-- Bars animate only up to 60 buckets, so a long range does not replay hundreds of bars on every poll.
+- Bars grow in once, when the chart first has data, and only up to 60 buckets. Later updates, polls and resizes redraw without animation.
 
 ## Usage
 
@@ -75,3 +75,8 @@ import { GroupedBarChart } from '@/components/design-system/organisms/GroupedBar
 - The cost axis starts at `$0`, and a zero in the read-out is `~$0`.
 - The last axis label may reach a few pixels past the plot into the card's padding instead of being clipped.
 - It has no card of its own: place it inside a `Section`.
+
+## Motion
+
+- Bars grow in once (450ms, ease-out), when the chart first has data, for up to 60 buckets. Every later update, poll or resize redraws without animation.
+- Reduced motion or a hidden tab: no entrance. Recharts animates in JavaScript, so this is checked in code rather than left to the stylesheet.

@@ -31,7 +31,7 @@ export const EffortBreakdown = memo(function EffortBreakdown({ view, className }
               {REASONING_LABEL} <span className="font-mono text-fg">{view.reasoning}</span>
             </span>
           </div>
-          <EffortBar slices={view.slices} size="md" name={ALL_MODELS_LABEL} />
+          <EffortBar slices={view.slices} size="md" name={ALL_MODELS_LABEL} className="origin-left animate-grow-x" />
           <Legend ariaLabel={LEGEND_LABEL} items={legendItems(view.slices)} />
         </div>
 

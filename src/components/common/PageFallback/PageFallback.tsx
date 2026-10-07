@@ -5,7 +5,7 @@ import { PageLayout } from '@/components/design-system/templates/PageLayout/Page
 
 export function PageFallback() {
   return (
-    <PageLayout header={<Skeleton className="my-1.5 h-5 w-64 max-w-full" />}>
+    <PageLayout entrance={false} header={<Skeleton className="my-1.5 h-5 w-64 max-w-full" />}>
       <Card as="div">
         <SkeletonPreset variant="text" />
       </Card>

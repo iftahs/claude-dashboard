@@ -56,3 +56,8 @@ import { McpBreakdown } from '@/components/design-system/organisms/McpBreakdown/
 - The two segments are a neutral and the info colour: this split is not a platform comparison, so it does not use the platform colours.
 - A declined call never reached the server, so it is not an error here.
 - The table sits in a bordered well inside the card and never scrolls the page.
+
+## Motion
+
+- The split bar grows from the left once on mount (600ms), and its segments ease their width (320ms) when the split changes.
+- Under `prefers-reduced-motion` the global rule makes this instant.

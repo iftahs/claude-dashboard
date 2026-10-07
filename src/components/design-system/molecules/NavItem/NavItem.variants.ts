@@ -1,7 +1,7 @@
 import { cva } from 'class-variance-authority';
 
 export const navItemVariants = cva(
-  'flex h-8 items-center gap-2 rounded-control text-body font-medium focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus',
+  'flex h-8 items-center gap-2 rounded-control text-body font-medium transition-colors duration-fast ease-standard focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus',
   {
     variants: {
       active: {

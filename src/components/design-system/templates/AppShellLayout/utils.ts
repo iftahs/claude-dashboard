@@ -26,3 +26,5 @@ export function keepTabInside(event: KeyboardEvent<HTMLElement>) {
     first.focus();
   }
 }
+
+export const DRAWER_EXIT_FALLBACK_MS = 300;

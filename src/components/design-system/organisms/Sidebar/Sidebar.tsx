@@ -46,7 +46,7 @@ export function Sidebar({
     // The rail is 55px wide inside its hairline: 12px + 11px of padding keeps the 32px items on whole pixels.
     <div className={cn('flex flex-1 flex-col gap-5 py-4', collapsed ? 'pl-3 pr-[11px]' : 'px-3')}>
       <div className={cn('flex h-8 flex-none items-center', collapsed ? 'justify-center' : 'justify-between pl-2')}>
-        {collapsed ? null : <span className="min-w-0 truncate text-heading text-fg">{brand}</span>}
+        {collapsed ? null : <span className="min-w-0 animate-fade-in truncate text-heading text-fg">{brand}</span>}
         <Tooltip content={toggleLabel} side="right">
           <IconButton label={toggleLabel} onClick={onToggle}>
             <Icon name={toggleIcon} />
@@ -57,7 +57,7 @@ export function Sidebar({
         {groups.map((group) => (
           <div key={group.id} role="group" aria-label={group.label} className="flex flex-col gap-0.5">
             {collapsed ? null : (
-              <GroupLabel as="span" className="px-2 pb-1.5">
+              <GroupLabel as="span" className="animate-fade-in px-2 pb-1.5">
                 {group.label}
               </GroupLabel>
             )}

@@ -1,7 +1,7 @@
 # Skeleton
 
 **Level:** Atom
-**Purpose:** One pulsing placeholder block that stands in for content while it loads.
+**Purpose:** One shimmering placeholder block that stands in for content while it loads.
 
 ## When to use
 
@@ -48,8 +48,10 @@ Sized with classes:
 ## a11y
 
 - Each block is `aria-hidden`. Mark the loading region with `aria-busy="true"` in the composing component so assistive tech knows content is on its way.
-- The pulse is removed under `prefers-reduced-motion`.
+- The shimmer is removed under `prefers-reduced-motion`, leaving a still block.
 
 ## Notes
 
 - `surface-hover` fill, 4px radius. A block with no width fills its container; a block with no height is invisible, so always give one.
+- A soft band of `fg` at 6% crosses the block every 1.6s on `animate-shimmer` (transform only, clipped by the block), so it reads on the canvas, on a card and on a sunken well in both themes, and over a fill passed in `className`.
+- The block is `relative` and clips its overflow to hold the band.

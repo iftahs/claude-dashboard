@@ -82,3 +82,8 @@ Export formats from a button:
 ## Exports
 
 - `DropdownMenuItem`, `DropdownMenuAlign` and `DropdownMenuItemTone` from `types.ts`, for consumers that build the `items` array.
+
+## Motion
+
+- The menu scales in from its trigger (160ms) and out (120ms). Item highlights change at once.
+- Under `prefers-reduced-motion` the global rule makes this instant.

@@ -59,3 +59,8 @@ import { DataSettings } from '@/components/design-system/organisms/DataSettings/
 - The root is a plain `<div>` with the `id` and a 24px scroll margin, because `Section` takes no `id`.
 - UI-only state: whether the confirmation dialog is open. The archive request, the opt-out and the version check belong to hooks.
 - The archive itself is switched on in the server's environment, so the card shows its state and has no control for it.
+
+## Motion
+
+- Links ease their colour over 120ms; the confirmation opens and closes with the `Dialog` animation.
+- Under `prefers-reduced-motion` the global rule makes this instant.

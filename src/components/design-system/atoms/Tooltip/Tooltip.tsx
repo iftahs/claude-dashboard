@@ -13,7 +13,7 @@ export function Tooltip({ content, children, side = 'top', delay = 300 }: Toolti
             side={side}
             sideOffset={6}
             collisionPadding={8}
-            className="z-50 max-w-[260px] rounded-control border border-line bg-surface-raised px-3 py-2 text-small tabular-nums text-fg shadow-pop"
+            className="z-50 max-w-[260px] origin-[var(--radix-tooltip-content-transform-origin)] rounded-control border border-line bg-surface-raised px-3 py-2 text-small tabular-nums text-fg shadow-pop data-[state=closed]:animate-scale-out data-[state=delayed-open]:animate-scale-in"
           >
             {content}
           </TooltipPrimitive.Content>

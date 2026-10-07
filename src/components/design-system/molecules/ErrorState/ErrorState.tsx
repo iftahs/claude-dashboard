@@ -5,7 +5,7 @@ import type { ErrorStateProps } from './types';
 
 export function ErrorState({ title, description, detail, onRetry, retryLabel = 'Try again', className }: ErrorStateProps) {
   return (
-    <div role="alert" className={cn('flex flex-col items-center justify-center gap-2 py-12 text-center', className)}>
+    <div role="alert" className={cn('flex animate-fade-in flex-col items-center justify-center gap-2 py-12 text-center', className)}>
       <Icon name="alert" size={20} className="text-danger-fg" />
       <p className="text-body font-medium text-fg">{title}</p>
       {description ? <p className="max-w-sm text-small text-fg-muted">{description}</p> : null}
@@ -17,7 +17,7 @@ export function ErrorState({ title, description, detail, onRetry, retryLabel = '
       ) : null}
       {detail ? (
         <details className="w-full max-w-md">
-          <summary className="mx-auto w-fit cursor-pointer rounded-control px-1 text-small text-fg-muted hover:text-fg focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus">
+          <summary className="mx-auto w-fit cursor-pointer rounded-control px-1 text-small text-fg-muted transition-colors duration-fast ease-standard hover:text-fg focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus">
             Technical details
           </summary>
           <pre
