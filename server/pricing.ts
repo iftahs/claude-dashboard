@@ -1,10 +1,16 @@
 // Approximate per-million-token USD prices, used only for an "equivalent API cost"
 // estimate. Subscription usage has no real per-token bill. Keyed by model substring.
-interface Price {
+interface Rates {
   input: number;
   output: number;
   cacheWrite: number;
   cacheRead: number;
+}
+
+// A model priced by prompt length bills the whole request at `rates` once its prompt
+// (input + cache writes + cache reads) is over `above` tokens.
+interface Price extends Rates {
+  longPrompt?: { above: number; rates: Rates };
 }
 
 const TABLE: Array<[RegExp, Price]> = [
@@ -31,6 +37,15 @@ const TABLE: Array<[RegExp, Price]> = [
   [/sonnet-5/i, { input: 2, output: 10, cacheWrite: 2.50, cacheRead: 0.2 }],
   // Older Claude Sonnet (3.0, 3.5, 4.0, 4.5, 4.6) priced at 3 / 15
   [/sonnet/i, { input: 3, output: 15, cacheWrite: 3.75, cacheRead: 0.3 }],
+  // Claude Haiku 5.5 — 0.10 / 0.50 for prompts up to 100K tokens, 0.50 / 2.50 over that.
+  // Must stay above the generic /haiku/ row, which bills legacy Haiku 3 rates (first match wins).
+  [
+    /haiku-5-5|haiku-5\.5/i,
+    {
+      input: 0.1, output: 0.5, cacheWrite: 0.125, cacheRead: 0.01,
+      longPrompt: { above: 100_000, rates: { input: 0.5, output: 2.5, cacheWrite: 0.625, cacheRead: 0.05 } },
+    },
+  ],
   // Claude Haiku 4.5 priced at 1 / 5
   [/haiku-4/i, { input: 1, output: 5, cacheWrite: 1.25, cacheRead: 0.1 }],
   // Claude Haiku 3.5 priced at 0.8 / 4
@@ -72,7 +87,9 @@ export function estimateCost(
   model: string,
   t: { inputTokens: number; outputTokens: number; cacheCreateTokens: number; cacheReadTokens: number }
 ): number {
-  const p = priceFor(model);
+  const base = priceFor(model);
+  const prompt = t.inputTokens + t.cacheCreateTokens + t.cacheReadTokens;
+  const p = base.longPrompt && prompt > base.longPrompt.above ? base.longPrompt.rates : base;
   return (
     (t.inputTokens * p.input +
       t.outputTokens * p.output +

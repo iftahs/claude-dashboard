@@ -24,6 +24,19 @@ test('specific Claude rows win over their generic family row', () => {
   assert.deepEqual(rates('claude-sonnet-5'), { input: 2, output: 10, cacheWrite: 2.5, cacheRead: 0.2 });
   assert.deepEqual(rates('claude-sonnet-5-5'), { input: 2, output: 10, cacheWrite: 2.5, cacheRead: 0.1 });
   assert.equal(rates('claude-sonnet-4-5').input, 3);
+  assert.deepEqual(rates('claude-haiku-4-5-20251001'), { input: 1, output: 5, cacheWrite: 1.25, cacheRead: 0.1 });
+});
+
+test('Claude Haiku 5.5 is priced by prompt length', () => {
+  const cost = (t: Partial<Record<'inputTokens' | 'outputTokens' | 'cacheCreateTokens' | 'cacheReadTokens', number>>) =>
+    Math.round(estimateCost('claude-haiku-5-5', { inputTokens: 0, outputTokens: 0, cacheCreateTokens: 0, cacheReadTokens: 0, ...t }) * 1e6) / 1e6;
+  // Up to 100K prompt tokens: 0.10 / 0.50, cache write 0.125, cache read 0.01.
+  assert.equal(cost({ inputTokens: 100_000, outputTokens: 1_000_000 }), 0.51);
+  assert.equal(cost({ cacheReadTokens: 100_000 }), 0.001);
+  // Over 100K — cache reads and writes count toward the prompt: every class at the higher rates.
+  assert.equal(cost({ inputTokens: 1_000, cacheReadTokens: 100_000, outputTokens: 1_000_000 }), 2.5055);
+  assert.equal(cost({ cacheCreateTokens: 200_000 }), 0.125);
+  assert.equal(rates('anthropic.claude-haiku-5-5').output, 0.5, 'output tokens are not part of the prompt');
 });
 
 test('gateway-prefixed ids resolve like the bare id', () => {
