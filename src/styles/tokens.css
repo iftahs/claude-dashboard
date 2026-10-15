@@ -61,6 +61,7 @@
   --model-sonnet-1: 0 131 0;
   --model-sonnet-2: 25 158 112;
   --model-haiku-1: 57 135 229;
+  --model-haiku-4: 79 179 224;
   --model-haiku-2: 42 120 214;
   --model-haiku-3: 31 95 168;
   --model-gpt-1: 138 58 240;
@@ -144,6 +145,7 @@
   --model-sonnet-1: 0 131 0;
   --model-sonnet-2: 25 158 112;
   --model-haiku-1: 57 135 229;
+  --model-haiku-4: 0 112 160;
   --model-haiku-2: 42 120 214;
   --model-haiku-3: 31 95 168;
   --model-gpt-1: 138 58 240;

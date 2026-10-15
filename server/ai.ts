@@ -200,7 +200,7 @@ function runViaCli(input: AiCallInput, model: string): Promise<string> {
  * (the default). Fable and Mythos (5 and 5.1) and Opus 5.5 are deliberately absent:
  * they reject `thinking:{type:'disabled'}` with a 400 — see ALWAYS_THINKS below.
  */
-const THINKS_BY_DEFAULT = new Set(['claude-opus-5', 'claude-sonnet-5']);
+const THINKS_BY_DEFAULT = new Set(['claude-opus-5', 'claude-sonnet-5', 'claude-haiku-5-5']);
 
 /**
  * Models that think by default but reject `thinking:{type:'disabled'}` with a 400
