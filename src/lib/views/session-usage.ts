@@ -85,7 +85,7 @@ export interface SessionUsageView {
 
 const TITLE = 'Session usage';
 const HELP =
-  "What one session cost and where it went, priced from local logs at list API prices, so it is an estimate and not a bill. Limits are your plan's live windows. Cache hit is the share of input tokens served from the prompt cache (cache reads over input, cache reads and cache writes). The breakdown lists each model's tokens, and what's contributing ranks the subagents, skills, MCP servers and plugins behind the cost.";
+  "What one session cost and where it went, priced from local logs at list API prices, so it is an estimate and not a bill. Limits are your plan's live windows. Cache hit is the share of input tokens served from the prompt cache (cache reads over input, cache reads and cache writes). The breakdown lists each model's tokens, and what's contributing ranks the subagents, skills, MCP servers and plugins behind the cost. One request can count under several of them, so those shares can add up to more than 100%.";
 const KIND_BADGE: Record<SessionContributor['kind'], string> = { subagent: 'subagent', skill: 'skill', mcp: 'MCP', plugin: 'plugin' };
 
 function percent(share: number): string {
