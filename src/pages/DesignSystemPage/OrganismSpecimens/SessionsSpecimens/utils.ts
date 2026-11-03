@@ -3,6 +3,7 @@ import { buildProjectStats } from '@/lib/project';
 import type { TranscriptState } from '@/lib/sessions';
 import {
   buildProjectBreakdown,
+  buildProjectSessionLists,
   buildSessionDetail,
   buildSessionRow,
   buildSessionSearch,
@@ -72,6 +73,9 @@ function sample(index: number): SessionMeta {
     input_tokens: 0,
     output_tokens: 0,
     effective_tokens: 48_000 + index * 137_000,
+    cost: Math.round((0.4 + index * 3.1) * 100) / 100,
+    last_ts: NOW - index * 7 * HOUR,
+    partial: index === 5 ? true : undefined,
     cache_read_tokens: index % 2 === 0 ? 4_200_000 + index * 310_000 : 0,
     first_prompt: index % 6 === 5 ? '' : `Look at the ${PROJECTS[index % PROJECTS.length].split('\\').pop()} repo and tell me what is slow in the scan pipeline`,
     tool_errors: index % 4 === 0 ? 3 : 0,
@@ -87,6 +91,8 @@ const PROJECT_COSTS: ProjectStat[] = [
   { path: PROJECTS[0], name: 'claude-dashboard', effectiveTokens: 9_400_000, cost: 412.6, sessionCount: 6 },
   { path: PROJECTS[1], name: 'billing-service', effectiveTokens: 5_100_000, cost: 188.25, sessionCount: 6 },
   { path: PROJECTS[2], name: 'a-project-with-a-very-long-folder-name-that-has-to-truncate', effectiveTokens: 2_000_000, cost: 61.4, sessionCount: 6 },
+  { path: PROJECTS[3], name: 'landing-pages', effectiveTokens: 1_300_000, cost: 22.8, sessionCount: 6 },
+  { path: 'C:\\dev\\old-client-site', name: 'old-client-site', effectiveTokens: 640_000, cost: 9.15, sessionCount: 2 },
 ];
 
 const TOTAL: SessionSummaryPart = {
@@ -231,9 +237,10 @@ export const INITIAL_TAGS: TagMap = {
 };
 
 const PROJECT_STATS = buildProjectStats(SAMPLE_SESSIONS, PROJECT_COSTS);
+const PROJECT_LISTS = buildProjectSessionLists(PROJECT_STATS, false);
 
 function projectInput(tags: TagMap, extra: Partial<ProjectViewsInput> = {}): ProjectViewsInput {
-  return { stats: PROJECT_STATS, pending: false, error: null, since: SINCE, platform: 'both', tags, ...extra };
+  return { stats: PROJECT_STATS, error: null, since: SINCE, platform: 'both', tags, lists: PROJECT_LISTS, ...extra };
 }
 
 export function projectsView(sort: ProjectSort, tags: TagMap): ProjectBreakdownView {

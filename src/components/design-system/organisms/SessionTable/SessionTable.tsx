@@ -8,7 +8,7 @@ import { EmptyState } from '@/components/design-system/molecules/EmptyState/Empt
 import { Section } from '@/components/design-system/organisms/Section/Section';
 import { SessionTableRow } from './SessionTableRow/SessionTableRow';
 import type { SessionTableProps } from './types';
-import { DURATION_HEADER, NEXT_LABEL, PAGER_LABEL, PREVIOUS_LABEL, PROJECT_HEADER, START_HEADER, TOKENS_HEADER } from './utils';
+import { COST_HEADER, DURATION_HEADER, NEXT_LABEL, PAGER_LABEL, PREVIOUS_LABEL, PROJECT_HEADER, START_HEADER, TOKENS_HEADER } from './utils';
 
 export const SessionTable = memo(function SessionTable({ view, onOpen, onPageChange, className }: SessionTableProps) {
   return (
@@ -22,7 +22,7 @@ export const SessionTable = memo(function SessionTable({ view, onOpen, onPageCha
         />
       ) : (
         <div className="min-w-0 overflow-x-auto">
-          <Table caption={view.caption} className="min-w-[640px]">
+          <Table caption={view.caption} className="min-w-[720px]">
             <thead>
               <TableRow>
                 <TableCell header>{START_HEADER}</TableCell>
@@ -33,6 +33,9 @@ export const SessionTable = memo(function SessionTable({ view, onOpen, onPageCha
                 </TableCell>
                 <TableCell header numeric>
                   {TOKENS_HEADER}
+                </TableCell>
+                <TableCell header numeric>
+                  {COST_HEADER}
                 </TableCell>
               </TableRow>
             </thead>

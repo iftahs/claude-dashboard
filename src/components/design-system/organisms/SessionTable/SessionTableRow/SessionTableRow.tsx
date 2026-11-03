@@ -41,6 +41,7 @@ export const SessionTableRow = memo(function SessionTableRow({ row, selected, on
         {row.duration}
       </TableCell>
       <TableCell numeric>{row.tokens}</TableCell>
+      <TableCell numeric>{row.cost}</TableCell>
     </TableRow>
   );
 });

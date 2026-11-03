@@ -52,10 +52,15 @@ export interface LocalProjectStat {
   sessionCount: number;
   claudeSessions: number;
   codexSessions: number;
-  cost: number; // from /api/projects
+  cost: number;
+  /** The listed sessions of this project, costliest first. */
+  sessions: SessionMeta[];
 }
 
-export const normalizePath = (p: string) => p.toLowerCase().replace(/[^a-z0-9]/g, '');
+/** Case-insensitive, separator-agnostic key for a full project path. */
+export const pathKey = (p: string) => p.toLowerCase().replace(/\\/g, '/').replace(/\/+$/, '');
+
+const NO_SESSIONS: SessionMeta[] = [];
 
 // A desktop-app scratch folder (chat-only conversation) reads "Codex chat · <title>" / "Claude chat · <title>".
 function projectLabel(path: string, sessions: SessionMeta[]): string {
@@ -65,45 +70,38 @@ function projectLabel(path: string, sessions: SessionMeta[]): string {
   return `${chat.app} chat · ${titled.length === 1 ? titled[0].title : chat.slug}`;
 }
 
-// Shared by ProjectBreakdown and TagBreakdown so both agree on totals; Claude/Codex share project paths, so under Both one repo is one row.
-export function buildProjectStats(
-  sessions: SessionMeta[],
-  projectCosts?: ProjectStat[],
-): LocalProjectStat[] {
-  // Cost lookup keyed by normalized project name AND full path for robust matching.
-  const costByName = new Map<string, number>();
-  for (const p of projectCosts ?? []) {
-    costByName.set(normalizePath(p.name), p.cost);
-    costByName.set(normalizePath(p.path), p.cost);
-  }
-
-  const byPath = new Map<string, SessionMeta[]>();
+// Shared by ProjectBreakdown and TagBreakdown so both agree on totals. One row per /api/projects entry, which owns cost, tokens and session count; the session list only adds active time, files, lines and the chat label.
+export function buildProjectStats(sessions: SessionMeta[], projects: ProjectStat[]): LocalProjectStat[] {
+  const byKey = new Map<string, SessionMeta[]>();
   for (const s of sessions) {
     if (!s.project_path) continue;
-    const list = byPath.get(s.project_path);
+    const key = pathKey(s.project_path);
+    const list = byKey.get(key);
     if (list) list.push(s);
-    else byPath.set(s.project_path, [s]);
+    else byKey.set(key, [s]);
   }
 
-  const out: LocalProjectStat[] = [];
-  for (const [path, list] of byPath) {
+  return projects.map((project) => {
+    const key = pathKey(project.path);
+    const list = byKey.get(key) ?? NO_SESSIONS;
+    byKey.delete(key); // two server paths that differ only in case must not both claim the same sessions
     const stat: LocalProjectStat = {
-      path,
-      name: projectLabel(path, list),
+      path: project.path,
+      name: projectLabel(project.path, list),
       activeMs: 0,
-      effectiveTokens: 0,
+      effectiveTokens: project.effectiveTokens,
       cacheReadTokens: 0,
       filesModified: 0,
       linesAdded: 0,
       linesRemoved: 0,
-      sessionCount: list.length,
+      sessionCount: project.sessionCount,
       claudeSessions: 0,
       codexSessions: 0,
-      cost: costByName.get(normalizePath(path)) ?? costByName.get(normalizePath(projectName(path))) ?? 0,
+      cost: project.cost,
+      sessions: list.length > 1 ? [...list].sort((a, b) => (b.cost ?? 0) - (a.cost ?? 0)) : list,
     };
     for (const s of list) {
       stat.activeMs += s.active_ms ?? 0;
-      stat.effectiveTokens += s.effective_tokens ?? (s.input_tokens ?? 0) + (s.output_tokens ?? 0);
       stat.cacheReadTokens += s.cache_read_tokens ?? 0;
       stat.filesModified += s.files_modified ?? 0;
       stat.linesAdded += s.lines_added ?? 0;
@@ -111,7 +109,6 @@ export function buildProjectStats(
       if (s.source === 'codex') stat.codexSessions++;
       else stat.claudeSessions++;
     }
-    out.push(stat);
-  }
-  return out;
+    return stat;
+  });
 }

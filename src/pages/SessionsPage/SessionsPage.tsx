@@ -44,7 +44,12 @@ export function SessionsPage() {
       >
         {page.view === 'projects' ? (
           <SplitLayout ratio="2:1">
-            <ProjectBreakdown view={page.projects} onSortChange={page.onProjectSortChange} onTagsChange={page.onProjectTagsChange} />
+            <ProjectBreakdown
+              view={page.projects}
+              onSortChange={page.onProjectSortChange}
+              onTagsChange={page.onProjectTagsChange}
+              onOpenSession={page.onOpenSession}
+            />
             <TagBreakdown view={page.tags} />
           </SplitLayout>
         ) : (

@@ -6,5 +6,6 @@ export interface ProjectBreakdownProps {
   view: ProjectBreakdownView;
   onSortChange: (sort: ProjectSort) => void;
   onTagsChange: ProjectTagsHandler;
+  onOpenSession: (sessionId: string) => void;
   className?: string;
 }

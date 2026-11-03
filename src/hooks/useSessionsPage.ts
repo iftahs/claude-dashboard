@@ -16,6 +16,7 @@ import {
   SESSIONS_EXPORT_FILENAME,
   SESSIONS_VIEW_PARAM,
   buildProjectBreakdown,
+  buildProjectSessionLists,
   buildSessionDetail,
   buildSessionRow,
   buildSessionSearch,
@@ -214,21 +215,22 @@ export function useSessionsPage(): SessionsPageView {
   const transcriptState = selectedId ? transcripts.get(selectedId) : undefined;
   const transcript = useMemo(() => buildTranscript(transcriptState, transcriptOpen, noun), [transcriptState, transcriptOpen, noun]);
 
+  // Rows come from /api/projects (cost, tokens, counts); the session list only adds time, files, lines and the expanded lists.
   const projectStats = useMemo(
-    () => (onProjects && sessions.data ? buildProjectStats(sessions.data, projectCosts.data?.projects) : null),
+    () => (onProjects && sessions.data && projectCosts.data ? buildProjectStats(sessions.data, projectCosts.data.projects) : null),
     [onProjects, sessions.data, projectCosts.data],
   );
+  const projectLists = useMemo(() => buildProjectSessionLists(projectStats, hideBadge), [projectStats, hideBadge]);
   const projectInput = useMemo(
     () => ({
       stats: projectStats,
-      // Until the cost poll answers, a cost-sorted list would flash every project as having no cost.
-      pending: onProjects && !projectCosts.data && !projectCosts.error,
-      error: sessions.error,
+      error: sessions.error ?? projectCosts.error,
       since: period.since,
       platform,
       tags: tagMap,
+      lists: projectLists,
     }),
-    [projectStats, onProjects, projectCosts.data, projectCosts.error, sessions.error, period.since, platform, tagMap],
+    [projectStats, sessions.error, projectCosts.error, period.since, platform, tagMap, projectLists],
   );
   const projects = useMemo(() => buildProjectBreakdown(projectInput, projectSort), [projectInput, projectSort]);
   const tags = useMemo(() => buildTagBreakdown(projectInput), [projectInput]);

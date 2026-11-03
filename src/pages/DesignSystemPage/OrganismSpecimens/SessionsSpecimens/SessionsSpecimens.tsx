@@ -109,12 +109,12 @@ export function SessionsSpecimens() {
       </Specimen>
       <Specimen name="ProjectBreakdown and TagBreakdown" note="Sorting and tag edits update both cards. Then loading, empty and failed." layout="stack">
         <SplitLayout ratio="2:1">
-          <ProjectBreakdown view={projects} onSortChange={setSort} onTagsChange={onTagsChange} />
+          <ProjectBreakdown view={projects} onSortChange={setSort} onTagsChange={onTagsChange} onOpenSession={onOpen} />
           <TagBreakdown view={tagBreakdown} />
         </SplitLayout>
         <SplitLayout columns={3}>
           {PROJECT_STATE_VIEWS.map((view, index) => (
-            <ProjectBreakdown key={index} view={view} onSortChange={ignore} onTagsChange={ignore} />
+            <ProjectBreakdown key={index} view={view} onSortChange={ignore} onTagsChange={ignore} onOpenSession={ignore} />
           ))}
         </SplitLayout>
         <SplitLayout columns={3}>
