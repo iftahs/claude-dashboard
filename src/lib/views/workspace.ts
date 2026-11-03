@@ -1,4 +1,4 @@
-import { claudePlanLabel } from '@/lib/plan';
+import { claudePlanLabel, claudeRateTierLabel } from '@/lib/plan';
 import { PLATFORM_NOUN, type Platform } from '@/lib/platform';
 import type { SectionAi, SectionState } from '@/lib/section';
 import type {
@@ -192,8 +192,11 @@ function claudeBody(config: ClaudeConfig, isApi: boolean): ProfileBody {
           ? 'No Claude.ai subscription token found — Claude Code is billed pay-as-you-go (API).'
           : 'Read from ~/.claude/.credentials.json — updates when Claude Code refreshes its login token.',
       }),
-      fact('Rate limit tier', isApi ? UNSET : config.rateLimitTier ? config.rateLimitTier.replace(/_/g, ' ') : DEFAULT, {
+      fact('Rate limit tier', isApi ? UNSET : (claudeRateTierLabel(config.rateLimitTier, config.subscriptionType) ?? DEFAULT), {
         title: isApi ? 'Not applicable in API mode' : config.rateLimitTier ?? DEFAULT,
+        help: isApi
+          ? undefined
+          : 'Your usage allowance in current plan names. Claude Code still stores the old key, such as default_claude_max_20x for what is now Ultra; hover the value to see it.',
       }),
       fact('Permission mode', spaced(mode), { title: mode, capitalize: true }),
       fact('Auto-update channel', config.autoUpdatesChannel ?? 'latest', { capitalize: true }),

@@ -24,3 +24,18 @@ export function claudePlanLabel(subscriptionType: Raw, rateLimitTier: Raw, seatT
   const fallback = type || tier;
   return fallback.trim() ? words(fallback) : null;
 }
+
+const TIER_LABELS: [RegExp, string][] = [
+  [/ultra|20x/i, 'Ultra · 10× Pro weekly'],
+  [/max|5x/i, 'Max · 5× Pro'],
+];
+
+/** A rate limit tier key (such as default_claude_max_20x, from before the Ultra rename) in current plan terms. */
+export function claudeRateTierLabel(rateLimitTier: Raw, subscriptionType?: Raw): string | null {
+  const tier = rateLimitTier?.trim();
+  if (!tier) return null;
+  const known = TIER_LABELS.find(([pattern]) => pattern.test(tier));
+  if (known) return known[1];
+  // default_claude_ai is the shared base tier, so the subscription names it.
+  return claudePlanLabel(subscriptionType, tier.replace(/^default_claude_(ai$)?/i, '')) ?? 'Standard';
+}
