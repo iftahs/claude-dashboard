@@ -164,7 +164,7 @@ export interface SessionUsageInput {
   sessionId: string | null;
   /** The list the session is picked from has not answered yet. */
   pending?: boolean;
-  /** The plan's live limit rows from the Live page; empty hides the block. */
+  /** The plan's live limit rows; empty hides the block. */
   limits: readonly PlanLimitRowView[];
   picker: SessionUsagePickerView | null;
 }

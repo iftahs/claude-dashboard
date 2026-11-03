@@ -5,7 +5,7 @@
 
 ## When to use
 
-- The Live page, once: the plan limits plus the newest session, with a picker over the ten most recent.
+- The Sessions page, once, in the sessions view above the search: the plan limits plus the newest session, with a picker over the ten most recent.
 - Inside `SessionDetail`, so any session can be inspected (without the limits block and the picker).
 
 ## When NOT to use
@@ -31,7 +31,7 @@
 | `description` | `string \| null` | The session's title and project, on one line. |
 | `state` | `SectionState \| null` | Loading (bars), error, or empty (no session, or no priced request); `null` once there is data. |
 | `picker` | `{ label, value, options } \| null` | The ten most recent sessions, each labelled by title and project. |
-| `limits` | `SessionUsageLimitView[]` | The plan's live windows (`key`, `label`, `value`, `percent`, `tone`, `note`), reused from the Live page's plan limits. Empty hides the block. |
+| `limits` | `SessionUsageLimitView[]` | The plan's live windows (`key`, `label`, `value`, `percent`, `tone`, `note`), built from the shared live limits of the session's platform. Empty hides the block. |
 | `facts` | `SessionUsageFactView[]` | Only what the log has: cost, active time, lines (`changes` carries the added and removed halves), web searches, cache hit. |
 | `shares` | `SessionUsageShareView[]` | One legend entry per model with its share of the cost; drawn when there are two or more. |
 | `models` | `SessionUsageModelView[]` | One table row per model: input, output, cache read, cache write, cost. |
@@ -52,10 +52,10 @@
 import { SessionUsagePanel } from '@/components/design-system/organisms/SessionUsagePanel/SessionUsagePanel';
 ```
 
-On the Live page:
+On the Sessions page:
 
 ```tsx
-<SessionUsagePanel view={page.sessionUsage} onSessionChange={page.onSessionUsageChange} />
+<SessionUsagePanel view={page.recentUsage} onSessionChange={page.onRecentUsageChange} />
 ```
 
 In the dialog:
@@ -74,7 +74,7 @@ In the dialog:
 
 ## Notes
 
-- Presentational: polling, the choice of session and the limits come from the page hook; the tip rules are the pure `sessionUsageTip()` in `@/lib/views/session-usage`.
+- Presentational: polling, the choice of session and the limits come from the `useSessionUsageCard` hook; the tip rules are the pure `sessionUsageTip()` in `@/lib/views/session-usage`.
 - Costs are estimates priced from the local log at list API prices. The tip wording is the same on every platform.
 - The tip rules, first match wins: subagents drive 20% or more of the cost; under half of the input came from the cache; the costliest model, Fable or Opus, took 70% or more.
 - A session whose transcript is over the cap keeps its cost and tokens, but its active time, lines and prompts are incomplete, so the card says so.

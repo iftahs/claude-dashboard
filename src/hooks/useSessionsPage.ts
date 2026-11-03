@@ -6,6 +6,7 @@ import { usePolling } from './usePolling';
 import { useSearch } from './useSearch';
 import { useSessionPeriod } from './useSessionPeriod';
 import { useSessionUsage } from './useSessionUsage';
+import { useSessionUsageCard } from './useSessionUsageCard';
 import { useSource } from './useSource';
 import { useTags } from './useTags';
 import { useTranscript } from './useTranscript';
@@ -66,6 +67,8 @@ export interface SessionsPageView {
   detail: SessionDetailView | null;
   transcript: TranscriptView;
   usage: SessionUsageView;
+  recentUsage: SessionUsageView;
+  onRecentUsageChange: (sessionId: string) => void;
   onCloseSession: () => void;
   onToggleTranscript: () => void;
   onRetryTranscript: () => void;
@@ -224,6 +227,8 @@ export function useSessionsPage(): SessionsPageView {
     [usagePoll.data, usagePoll.error, selectedId],
   );
 
+  const { view: recentUsage, onSessionChange: onRecentUsageChange } = useSessionUsageCard(sessions.data, sessions.error, !onProjects);
+
   const transcriptState = selectedId ? transcripts.get(selectedId) : undefined;
   const transcript = useMemo(() => buildTranscript(transcriptState, transcriptOpen, noun), [transcriptState, transcriptOpen, noun]);
 
@@ -268,6 +273,8 @@ export function useSessionsPage(): SessionsPageView {
     detail,
     transcript,
     usage,
+    recentUsage,
+    onRecentUsageChange,
     onCloseSession,
     onToggleTranscript,
     onRetryTranscript,

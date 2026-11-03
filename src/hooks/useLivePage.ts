@@ -5,18 +5,11 @@ import { hasCaps, useLimits, usePlatformLimits } from './useLimits';
 import { useLiteLlmActual } from './useLiteLlmActual';
 import { useLiveData } from './useLiveData';
 import { usePolling } from './usePolling';
-import { useSessionUsage } from './useSessionUsage';
 import { useSource } from './useSource';
 import { buildBudgetRows } from '@/lib/budget';
 import { resolveLimitAlerts } from '@/lib/limits';
 import { claudePlanLabel } from '@/lib/plan';
 import { PLATFORM_NOUN, titleScope } from '@/lib/platform';
-import {
-  buildSessionUsage,
-  buildSessionUsagePicker,
-  recentSessions,
-  type SessionUsageView,
-} from '@/lib/views/session-usage';
 import {
   RECENT_HOUR_OPTIONS,
   buildClaudeGauge,
@@ -37,11 +30,10 @@ import {
   type LimitGaugeView,
   type LimitHitsView,
   type LivePlatform,
-  type PlanLimitRowView,
   type PlanLimitsView,
   type SpendCapsView,
 } from '@/lib/views/live';
-import type { AccountLive, AccountsLiveData, CodexBlock, ContributorsData, LimitHitsData, SessionMeta } from '@/types';
+import type { AccountLive, AccountsLiveData, CodexBlock, ContributorsData, LimitHitsData } from '@/types';
 
 export interface LiveHourOption {
   value: string;
@@ -64,8 +56,6 @@ export interface LivePageView {
   onContribRange: (key: string, range: ContribRange) => void;
   limitHits: LimitHitsView;
   spendCaps: SpendCapsView | null;
-  sessionUsage: SessionUsageView;
-  onSessionUsageChange: (sessionId: string) => void;
 }
 
 const TICK_MS = 1000;
@@ -76,7 +66,6 @@ const DEFAULT_RANGE: ContribRange = 'day';
 const SCOPE_KEY = 'scope';
 const NO_ACCOUNTS: AccountLive[] = [];
 const NO_PLANS: PlanLimitsView[] = [];
-const NO_LIMIT_ROWS: PlanLimitRowView[] = [];
 const HOUR_OPTIONS: readonly LiveHourOption[] = RECENT_HOUR_OPTIONS.map((hours) => ({ value: String(hours), label: `${hours}h` }));
 
 function contributorsUrl(source: LivePlatform): string {
@@ -247,31 +236,6 @@ export function useLivePage(): LivePageView {
 
   const plans = useMemo(() => (codexPlan ? [...claudePlans, codexPlan] : claudePlans), [claudePlans, codexPlan]);
 
-  // Session usage: the platform's newest session by default, any of the ten most recent on request.
-  const sessions = usePolling<SessionMeta[]>(withSrc('/api/sessions'), SLOW_POLL_MS);
-  const [pickedSession, setPickedSession] = useState<string | null>(null);
-  const recentList = useMemo(() => recentSessions(sessions.data), [sessions.data]);
-  const usageSession = recentList.find((s) => s.session_id === pickedSession) ?? recentList[0] ?? null;
-  const usageSessionId = usageSession?.session_id ?? null;
-  const sessionUsagePoll = useSessionUsage(usageSessionId);
-  const usagePlatform: LivePlatform = usageSession?.source === 'codex' ? 'codex' : 'claude';
-  const usageLimits = useMemo(() => {
-    const cards = plans.filter((card) => card.platform === usagePlatform && !card.estimate && !card.state && card.rows.length > 0);
-    return (cards.find((card) => card.active) ?? cards[0])?.rows ?? NO_LIMIT_ROWS;
-  }, [plans, usagePlatform]);
-  const sessionUsage = useMemo(
-    () =>
-      buildSessionUsage({
-        data: sessionUsagePoll.data,
-        error: sessionUsagePoll.error ?? (sessions.data ? null : sessions.error),
-        sessionId: usageSessionId,
-        pending: !sessions.data,
-        limits: usageLimits,
-        picker: buildSessionUsagePicker(recentList, usageSessionId),
-      }),
-    [sessionUsagePoll.data, sessionUsagePoll.error, sessions.data, sessions.error, usageSessionId, usageLimits, recentList],
-  );
-
   const extraUsage = claudePlanMode ? (liveUsage.data?.extra_usage ?? null) : null;
   const spend = liveUsage.data?.spend;
   const orgExtraUsage = !!configData?.hasExtraUsageEnabled;
@@ -388,7 +352,5 @@ export function useLivePage(): LivePageView {
     onContribRange,
     limitHits,
     spendCaps,
-    sessionUsage,
-    onSessionUsageChange: setPickedSession,
   };
 }
