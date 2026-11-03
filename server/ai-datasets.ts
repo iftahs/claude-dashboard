@@ -619,7 +619,7 @@ export const DATASETS: DatasetDef[] = [
   {
     id: 'limits',
     describes:
-      "Anthropic's LIVE rate-limit quota for the account: the 5-hour and 7-day utilization percentages, when they reset, " +
+      "Anthropic's LIVE rate-limit quota for the account: the 5-hour (null on verified Ultra accounts, which have no 5-hour limit) and 7-day utilization percentages, when they reset, " +
       'and any extra-usage/overage credits. This is a percentage of a plan allowance — NOT dollars, and NOT the estimated costs elsewhere.',
     describesFor: {
       codex:

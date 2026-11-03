@@ -412,7 +412,8 @@ export interface LiveSpend {
 }
 
 export interface LiveUsageData {
-  five_hour: LiveLimitInfo;
+  /** Null when the plan has no 5-hour limit (verified Ultra accounts). */
+  five_hour: LiveLimitInfo | null;
   seven_day: LiveLimitInfo;
   seven_day_oauth_apps?: LiveLimitInfo | null;
   seven_day_opus?: LiveLimitInfo | null;
@@ -436,6 +437,7 @@ export interface AccountLive {
   label: string;                    // email, else "<plan> · <key prefix>"
   subscriptionType: string | null;
   rateLimitTier: string | null;
+  seatTier: string | null;
   live: LiveUsageData;              // per-account usage, or { error } (incl. stale)
   expired: boolean;                 // token past its expiresAt — data is a marker
   isActive: boolean;                // the account currently in the shared slot

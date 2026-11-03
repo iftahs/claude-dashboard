@@ -1,3 +1,4 @@
+import { claudePlanLabel } from '@/lib/plan';
 import { PLATFORM_NOUN, type Platform } from '@/lib/platform';
 import type { SectionAi, SectionState } from '@/lib/section';
 import type {
@@ -118,18 +119,6 @@ export interface TasksBody {
 
 export interface TasksSectionView extends WorkspaceSectionHead, TasksBody {}
 
-export function formatPlan(subscriptionType: string | null | undefined): string {
-  if (!subscriptionType) return 'free';
-  const t = subscriptionType.toLowerCase();
-  if (t === 'pro') return 'Pro';
-  if (t === 'max') return 'Max';
-  if (/max.?5/.test(t)) return 'Max 5x';
-  if (/max.?20/.test(t)) return 'Max 20x';
-  if (t === 'enterprise') return 'Enterprise';
-  if (t === 'team') return 'Team';
-  return subscriptionType;
-}
-
 export function formatChatGptPlan(planType: string | null | undefined): string {
   if (!planType) return UNSET;
   return `ChatGPT ${planType.charAt(0).toUpperCase()}${planType.slice(1)}`;
@@ -198,7 +187,7 @@ function claudeBody(config: ClaudeConfig, isApi: boolean): ProfileBody {
     facts: [
       fact('Default model', config.model ?? DEFAULT, { capitalize: true }),
       fact('Effort level', config.effortLevel ?? UNSET, { capitalize: true }),
-      fact(isApi ? 'Billing' : 'Subscription', isApi ? 'API · pay-as-you-go' : formatPlan(config.subscriptionType), {
+      fact(isApi ? 'Billing' : 'Subscription', isApi ? 'API · pay-as-you-go' : (claudePlanLabel(config.subscriptionType, config.rateLimitTier, config.seatTier) ?? 'Free'), {
         help: isApi
           ? 'No Claude.ai subscription token found — Claude Code is billed pay-as-you-go (API).'
           : 'Read from ~/.claude/.credentials.json — updates when Claude Code refreshes its login token.',

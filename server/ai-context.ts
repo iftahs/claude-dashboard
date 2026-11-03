@@ -272,7 +272,7 @@ function claudeBlock(live: LiveRead<any>): LimitsBlock | Unavailable {
     sevenDayPct: u.seven_day?.utilization ?? null,
     fiveHourResetsAt: u.five_hour?.resets_at ?? null,
     sevenDayResetsAt: u.seven_day?.resets_at ?? null,
-    note: 'Live Anthropic account quota, as a percentage of the plan allowance. Covers all surfaces; ignores scope.source. Not dollars.',
+    note: 'Live Anthropic account quota, as a percentage of the plan allowance. Covers all surfaces; ignores scope.source. A null fiveHourPct means the plan has no 5-hour limit (verified Ultra accounts), not 0%. Not dollars.',
   };
 }
 

@@ -137,6 +137,11 @@ const EXTRA_USAGE: LiveExtraUsage = {
   weekly: null,
 };
 
+// A verified Ultra account reports no 5-hour window at all.
+function ultraLive(weekly: number): LiveUsageData {
+  return { ...claudeLive(0, weekly, 0), five_hour: null };
+}
+
 function claudeLive(fiveHour: number, weekly: number, resetsInHours: number): LiveUsageData {
   return {
     five_hour: { utilization: fiveHour, resets_at: iso(resetsInHours) },
@@ -236,6 +241,7 @@ export const GAUGE_VIEWS: LimitGaugeView[] = [
   buildClaudeGauge({ ...GAUGE_BASE, live: claudeLive(40, 83, 2.5) }),
   buildClaudeGauge({ ...GAUGE_BASE, live: claudeLive(83, 50, 0.4), permission: 'ask' }),
   buildClaudeGauge({ ...GAUGE_BASE, live: claudeLive(100, 91, 1.2) }),
+  buildClaudeGauge({ ...GAUGE_BASE, live: ultraLive(38) }),
   buildClaudeGauge({ ...GAUGE_BASE, live: CLAUDE_ERROR, permission: 'blocked' }),
   buildCodexGauge({ ...CODEX_GAUGE_BASE, named: true, live: CODEX_SNAPSHOT }),
   buildCodexGauge({ ...CODEX_GAUGE_BASE, named: true, live: null, liveFailed: 'ChatGPT answered HTTP 500' }),
@@ -264,6 +270,7 @@ function account(key: string, label: string, plan: string, live: LiveUsageData, 
     label,
     subscriptionType: plan,
     rateLimitTier: null,
+    seatTier: null,
     live,
     expired: false,
     isActive,
@@ -271,7 +278,7 @@ function account(key: string, label: string, plan: string, live: LiveUsageData, 
   };
 }
 
-const PLAN_BASE = { accounts: [], liveLoading: false, block: BLOCK, weeklyEffective: 21_000_000, plan: 'max_20x', weekStart: 'monday' as const, now: NOW };
+const PLAN_BASE = { accounts: [], liveLoading: false, block: BLOCK, weeklyEffective: 21_000_000, plan: 'Ultra', weekStart: 'monday' as const, now: NOW };
 
 export const PLAN_WIDE_VIEW: PlanLimitsView = buildClaudePlans({ ...PLAN_BASE, live: claudeLive(40, 83, 2.5) })[0];
 export const PLAN_VIEWS: PlanLimitsView[] = [
@@ -279,12 +286,13 @@ export const PLAN_VIEWS: PlanLimitsView[] = [
     ...PLAN_BASE,
     live: null,
     accounts: [
-      account('org-a', 'first.account.with.a.long.name@example-company.com', 'max_20x', claudeLive(40, 83, 2.5), true),
+      account('org-a', 'first.account.with.a.long.name@example-company.com', 'ultra', claudeLive(40, 83, 2.5), true),
       account('org-b', 'second@example.com', 'team', CLAUDE_ERROR, false),
     ],
   }),
   buildCodexPlan({ live: CODEX_LIVE, failed: null, weekStart: 'monday', now: NOW }),
   buildCodexPlan({ live: { ...CODEX_SNAPSHOT, fiveHour: { usedPct: 98, windowSec: 18_000, resetsAt: iso(1.5) }, limitReached: true }, failed: null, weekStart: 'monday', now: NOW }),
+  ...buildClaudePlans({ ...PLAN_BASE, live: ultraLive(38) }),
   ...buildClaudePlans({ ...PLAN_BASE, live: CLAUDE_ERROR }),
   buildCodexPlan({ live: { ...CODEX_LIVE, error: 'Codex token expired' }, failed: null, weekStart: 'monday', now: NOW }),
   ...buildClaudePlans({ ...PLAN_BASE, live: null, liveLoading: true }),

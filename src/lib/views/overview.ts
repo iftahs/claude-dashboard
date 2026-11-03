@@ -127,6 +127,7 @@ export interface ClaudeLimitsInput {
   loading: boolean;
   // Rough windows from local logs for when live limits fail; null while the local polls are still loading.
   estimate: EstimatedWindow[] | null;
+  /** The plan name, resolved by `claudePlanLabel`. */
   plan: string | null | undefined;
   apiMode: boolean;
   budget: BudgetPeriod[] | null;
@@ -366,7 +367,7 @@ export function buildClaudeLimits({
   pickBinding,
   now,
 }: ClaudeLimitsInput): LimitGlanceView {
-  const base: LimitCardBase = { platform: 'claude', name: PLATFORM_NOUN.claude, plan: apiMode ? API_PLAN : planLabel(plan) };
+  const base: LimitCardBase = { platform: 'claude', name: PLATFORM_NOUN.claude, plan: apiMode ? API_PLAN : (plan ?? null) };
   if (apiMode) return capsCard(base, budget, budgetFailed, true, null, now);
   if (live && !live.error) return windowsCard(base, claudeWindows(live, pickBinding, now), null, 'Claude.ai');
   if (live?.error) {

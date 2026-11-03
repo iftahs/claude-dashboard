@@ -329,6 +329,7 @@ app.get('/api/accounts/live', async (_req, res) => {
           label,
           subscriptionType: sub.subscriptionType,
           rateLimitTier: sub.rateLimitTier,
+          seatTier: sub.seatTier,
           live,
           expired: r.expired,
           isActive: r.token.isActive,

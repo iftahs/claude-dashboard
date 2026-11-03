@@ -70,7 +70,7 @@ export function ContentAtoms() {
       <SplitLayout>
         <div className="flex min-w-0 flex-col gap-6">
           <Specimen name="GroupLabel" note="Section heading with a quiet note" layout="stack">
-            <GroupLabel as="span" note="Max 20x">
+            <GroupLabel as="span" note="Ultra">
               Plan limits
             </GroupLabel>
             <GroupLabel as="span">Running now</GroupLabel>

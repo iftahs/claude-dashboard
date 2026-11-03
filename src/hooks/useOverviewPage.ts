@@ -14,6 +14,7 @@ import { buildBudgetRows, type BudgetInput, type BudgetPeriod } from '@/lib/budg
 import { coverageDays } from '@/lib/coverage';
 import { estimatedWindows } from '@/lib/gauge';
 import type { Limits } from '@/lib/limits';
+import { claudePlanLabel } from '@/lib/plan';
 import {
   TREND_DAYS,
   buildClaudeLimits,
@@ -131,7 +132,7 @@ export function useOverviewPage(): OverviewPageView {
   const weeklyFailed = !liveWeekly.data && !!liveWeekly.error;
   const claudeBudgetFailed = both ? !claudeScoped.data && !!claudeScoped.error : weeklyFailed;
   const codexBudgetFailed = both ? !codexScoped.data && !!codexScoped.error : weeklyFailed;
-  const plan = configData?.subscriptionType ?? configData?.rateLimitTier;
+  const plan = claudePlanLabel(configData?.subscriptionType, configData?.rateLimitTier, configData?.seatTier);
   const claudeLoading = configPending || liveUsage.loading;
   const block = recent.data?.activeBlock ?? null;
   const weekSplit = both ? liveWeekly.data?.bySource : undefined;

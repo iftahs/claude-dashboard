@@ -8,6 +8,7 @@ import { usePolling } from './usePolling';
 import { useSource } from './useSource';
 import { buildBudgetRows } from '@/lib/budget';
 import { resolveLimitAlerts } from '@/lib/limits';
+import { claudePlanLabel } from '@/lib/plan';
 import { PLATFORM_NOUN, titleScope } from '@/lib/platform';
 import {
   RECENT_HOUR_OPTIONS,
@@ -207,7 +208,7 @@ export function useLivePage(): LivePageView {
     : both && bySource
       ? bySource.code.effectiveTokens + bySource.cowork.effectiveTokens
       : liveWeekly.data.totals.effectiveTokens;
-  const plan = configData?.subscriptionType ?? configData?.rateLimitTier ?? null;
+  const plan = claudePlanLabel(configData?.subscriptionType, configData?.rateLimitTier, configData?.seatTier);
 
   const freshClaudePlans = useMemo(
     () =>

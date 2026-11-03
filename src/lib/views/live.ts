@@ -19,6 +19,7 @@ import {
 import { LIMIT_DANGER_PCT, LIMIT_WARN_PCT, limitReadings, limitTone, windowName } from '@/lib/limits';
 import { PLATFORM_NOUN, SURFACE_COLOR, titleScope, type Platform } from '@/lib/platform';
 import type { SectionState } from '@/lib/section';
+import { claudePlanLabel } from '@/lib/plan';
 import { capViews, planLabel, resetClock, type LimitCapView } from '@/lib/views/overview';
 import { nextWeekReset, startOfWeek, type WeekStart } from '@/lib/week';
 import type {
@@ -379,6 +380,8 @@ interface GaugeCopy {
   rowsLabel: string;
   previous: string;
   tokensHelp: string;
+  /** Set when the plan has no limit for this window: the card shows local tokens only, with no meter. */
+  noLimit?: string;
 }
 
 interface GaugeCore extends GaugeInputBase {
@@ -390,6 +393,8 @@ interface GaugeCore extends GaugeInputBase {
 
 const CLAUDE_GAUGE_HELP =
   "The percentage is the live share of your account's 5-hour limit from Claude.ai (every device). The rows cover the current 5-hour block of your most recent Claude Code session, from local logs: a block opens at its first message, and the first message after it ends opens the next (how Anthropic starts a 5-hour window). Tokens are effective tokens (input, output and cache writes). The limit estimate extrapolates the live percentage at its average pace since the window opened.";
+const CLAUDE_GAUGE_UNLIMITED_HELP =
+  'Your plan reports no 5-hour limit (verified Ultra accounts have none), so there is no percentage here. The rows cover the current 5-hour block of your most recent Claude Code session, from local logs. Tokens are effective tokens (input, output and cache writes). Your weekly limit is in Claude plan limits below.';
 const CLAUDE_GAUGE_API_HELP =
   "Estimated cost of your current 5-hour usage block in your most recent session: a window opens at its first message, and the first message after it ends opens the next. Dollar figures use Anthropic's published API rates and are computed from local logs. The bar fills against your daily spending cap when one is set in Settings.";
 const CLAUDE_GAUGE_GATEWAY_HELP =
@@ -447,11 +452,14 @@ function gaugeView(copy: GaugeCopy, status: GaugeStatus, core: GaugeCore): Limit
   });
 
   const left = reading.noActiveBlock ? NEXT_MESSAGE.toLowerCase() : `${untilFull(reading.resetsAt)} left`;
+  const started = reading.startsAt !== null ? `Started ${windowClock(reading.startsAt, now)}` : null;
   const description = reading.noActiveBlock
     ? NEXT_MESSAGE
-    : reading.startsAt !== null
-      ? `Started ${windowClock(reading.startsAt, now)}, resets ${windowClock(reading.resetsAt, now)}`
-      : `Resets ${windowClock(reading.resetsAt, now)}`;
+    : copy.noLimit
+      ? (started ?? NEXT_MESSAGE)
+      : started
+        ? `${started}, resets ${windowClock(reading.resetsAt, now)}`
+        : `Resets ${windowClock(reading.resetsAt, now)}`;
 
   let value: string;
   let caption: string;
@@ -470,8 +478,8 @@ function gaugeView(copy: GaugeCopy, status: GaugeStatus, core: GaugeCore): Limit
           };
   } else if (reading.tokPct === null) {
     value = compact(reading.effective);
-    caption = 'effective tokens, limit unknown';
-    meter = { label: copy.title, percent: 0, tone: 'neutral', caption: null };
+    caption = copy.noLimit ?? 'effective tokens, limit unknown';
+    meter = copy.noLimit ? null : { label: copy.title, percent: 0, tone: 'neutral', caption: null };
   } else if (!reading.hasLive) {
     value = estimateLabel(Math.round(reading.tokPct));
     caption = `estimated, ${left}`;
@@ -546,8 +554,9 @@ function gaugeView(copy: GaugeCopy, status: GaugeStatus, core: GaugeCore): Limit
 
 export function buildClaudeGauge(input: ClaudeGaugeInput): LimitGaugeView {
   const { isApi } = input;
-  const usable = input.live && !input.live.error && input.live.five_hour ? input.live : null;
-  const live: GaugeLive | null = usable ? { pct: usable.five_hour.utilization, resetsAt: usable.five_hour.resets_at } : null;
+  const fiveHour = input.live && !input.live.error ? input.live.five_hour : null;
+  const live: GaugeLive | null = fiveHour ? { pct: fiveHour.utilization, resetsAt: fiveHour.resets_at } : null;
+  const noLimit = !isApi && !!input.live && !input.live.error && !fiveHour;
   const liveError = input.live?.error ?? null;
   const gateway = input.todayActualCost !== null;
 
@@ -562,6 +571,12 @@ export function buildClaudeGauge(input: ClaudeGaugeInput): LimitGaugeView {
     };
   } else if (live) {
     status = { badge: { label: 'Live', tone: 'success', live: true }, source: 'Live from Claude.ai, across every device.', notice: null };
+  } else if (noLimit) {
+    status = {
+      badge: { label: 'Live', tone: 'success', live: true },
+      source: 'Live from Claude.ai. Your plan has no 5-hour limit, so this shows local usage only. The weekly limit is in Claude plan limits below.',
+      notice: null,
+    };
   } else if (liveError) {
     status = {
       badge: { label: 'Estimate', tone: 'neutral', live: false },
@@ -578,14 +593,15 @@ export function buildClaudeGauge(input: ClaudeGaugeInput): LimitGaugeView {
 
   const copy: GaugeCopy = {
     platform: 'claude',
-    title: sentence(`${input.named ? 'Claude ' : ''}${isApi ? 'spend this block' : '5-hour window'}`),
-    help: isApi ? (gateway ? CLAUDE_GAUGE_GATEWAY_HELP : CLAUDE_GAUGE_API_HELP) : CLAUDE_GAUGE_HELP,
+    title: sentence(`${input.named ? 'Claude ' : ''}${isApi ? 'spend this block' : noLimit ? 'current block' : '5-hour window'}`),
+    help: isApi ? (gateway ? CLAUDE_GAUGE_GATEWAY_HELP : CLAUDE_GAUGE_API_HELP) : noLimit ? CLAUDE_GAUGE_UNLIMITED_HELP : CLAUDE_GAUGE_HELP,
     rowsLabel: 'This session, from local logs',
     previous: 'Previous session',
     tokensHelp: CLAUDE_TOKENS_HELP,
+    ...(noLimit ? { noLimit: 'effective tokens, no 5-hour limit' } : {}),
   };
 
-  return gaugeView(copy, status, { ...input, live, blockLimit: DEFAULT_BLOCK_LIMIT, windowMs: BLOCK_MS });
+  return gaugeView(copy, status, { ...input, live, blockLimit: noLimit ? null : DEFAULT_BLOCK_LIMIT, windowMs: BLOCK_MS });
 }
 
 function snapshotAge(live: CodexLiveData): string {
@@ -717,7 +733,7 @@ interface PlanRowsInput {
 }
 
 const CLAUDE_PLAN_HELP =
-  "Your live subscription rate-limit ceilings from Claude.ai: the 5-hour window plus the weekly all-models, per-model and Cowork caps, each with the share used and the time to reset. Pulled from Anthropic's usage API. These are surfaced for awareness, not enforced.";
+  "Your live subscription rate-limit ceilings from Claude.ai: the 5-hour window (verified Ultra accounts have none) plus the weekly all-models, per-model and Cowork caps, each with the share used and the time to reset. Fable can use up to 50% of the weekly limits on Max, Ultra and premium seats; on Pro and standard seats it runs on usage credits. Pulled from Anthropic's usage API. These are surfaced for awareness, not enforced.";
 const CODEX_PLAN_HELP = `Your ChatGPT plan's Codex rate-limit windows: the 5-hour window and the weekly window, each with the share used and the time to reset, plus any premium model the plan gates separately. Read from OpenAI's usage API with the token the ChatGPT desktop app stores locally. Surfaced for awareness, never enforced or refreshed by this dashboard. ${CODEX_COVERAGE}`;
 const CLAUDE_PLAN_TITLE = 'Claude plan limits';
 const CLAUDE_PLAN_LABELS: PlanLabels = { block: '5-hour limit', weekly: 'Weekly limit, all models' };
@@ -912,7 +928,7 @@ export function buildClaudePlans({
         key: account.key,
         platform: 'claude',
         title: CLAUDE_PLAN_TITLE,
-        plan: planLabel(account.subscriptionType ?? account.rateLimitTier),
+        plan: claudePlanLabel(account.subscriptionType, account.rateLimitTier, account.seatTier),
         active: account.isActive,
         help: CLAUDE_PLAN_HELP,
       };
@@ -938,7 +954,7 @@ export function buildClaudePlans({
     key: 'claude',
     platform: 'claude',
     title: CLAUDE_PLAN_TITLE,
-    plan: planLabel(plan),
+    plan: plan ?? null,
     active: false,
     help: CLAUDE_PLAN_HELP,
   };
