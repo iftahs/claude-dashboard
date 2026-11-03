@@ -29,8 +29,9 @@ import { scanRoots, type ScanRoot, type UsageSource } from './scan.ts';
  * Bump when the shape of FileRows — or what a parser puts in it — changes;
  * invalidates every cached blob.
  *   2: Codex rollouts (scan-pass-codex.ts) join the store; `source: 'codex'` rows.
+ *   8: usage rows carry cacheWrite1hTokens / webSearchRequests; oversized files emit session partials and titles.
  */
-const SCHEMA_VERSION = 7;
+const SCHEMA_VERSION = 8;
 
 export function cacheDir(): string {
   return process.env.DASHBOARD_CACHE_DIR || join(homedir(), '.claude-dashboard-cache');

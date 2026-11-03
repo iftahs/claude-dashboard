@@ -30,7 +30,7 @@
 | `platform` | `'claude' \| 'codex'` | Which platform the plan belongs to. |
 | `title` | `string` | "Claude plan limits", "Codex plan limits". |
 | `account` | `string \| null` | The account's e-mail or label, shown under the title when several accounts are listed. Truncates. |
-| `plan` | `string \| null` | Plan badge: "Max 20x", "Pro". Hidden when null. |
+| `plan` | `string \| null` | Plan badge: "Ultra", "Pro". Hidden when null. |
 | `active` | `boolean` | The account currently signed in: an accent border and an "Active" badge. |
 | `help` | `string` | Where the limits come from. |
 | `state` | `SectionState \| null` | Loading, or an empty state that says why the limits cannot be read. |

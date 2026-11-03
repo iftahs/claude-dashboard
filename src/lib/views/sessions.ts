@@ -76,6 +76,7 @@ export interface SessionRowView {
   durationTitle: string;
   durationActive: boolean;
   tokens: string;
+  cost: string;
 }
 
 export interface SessionTableNoMatches {
@@ -207,7 +208,26 @@ export const PROJECT_SORT_OPTIONS: readonly ProjectSortOption[] = [
   { value: 'files', label: 'Files' },
 ];
 
-export interface ProjectRowView {
+export interface ProjectSessionView {
+  id: string;
+  headline: string;
+  headlineKind: SessionHeadlineKind;
+  headlineTitle: string;
+  date: string;
+  tokens: string;
+  cost: string;
+  partial: boolean;
+  badge: string | null;
+}
+
+/** One project's expandable session list: the costliest sessions, how many were left out and the large-transcript note. */
+export interface ProjectSessionList {
+  sessions: ProjectSessionView[];
+  more: string | null;
+  partialNote: string | null;
+}
+
+export interface ProjectRowView extends ProjectSessionList {
   path: string;
   name: string;
   value: string;
@@ -224,6 +244,10 @@ export interface ProjectBreakdownView {
   help: string;
   state: SectionState | null;
   sort: ProjectSort;
+  /** 'sessions' or 'threads': names the expand control and the list. */
+  noun: SessionNoun;
+  /** Estimated cost summed over every project, whatever the sort: "~$15,172". Null while loading or when nothing is priced. */
+  total: string | null;
   rows: ProjectRowView[];
   suggestions: string[];
 }
@@ -419,22 +443,36 @@ export function pageSlice<T>(items: readonly T[], page: number): T[] {
   return items.slice(start, start + SESSIONS_PER_PAGE);
 }
 
+export const PARTIAL_NOTE = 'Transcript over 64 MB: cost and tokens are complete, prompts and tools are not';
+
+// An oversized transcript is never read for prompts, so "No prompt" would mislead there.
+function sessionHeadline(s: SessionMeta): { kind: SessionHeadlineKind; text: string; title: string } {
+  const kind: SessionHeadlineKind = s.title ? 'title' : s.first_prompt ? 'prompt' : 'none';
+  const text = kind === 'title' ? s.title ?? '' : kind === 'prompt' ? `“${s.first_prompt}”` : s.partial ? 'Untitled, large transcript' : 'No prompt';
+  return { kind, text, title: s.first_prompt || s.title || (s.partial ? PARTIAL_NOTE : '') };
+}
+
+function costLabel(s: SessionMeta): string {
+  return s.cost !== undefined && s.cost > 0 ? `~${usd(s.cost)}` : DASH;
+}
+
 export function buildSessionRow(s: SessionMeta, hideBadge: boolean): SessionRowView {
   const label = sessionLabel(s);
   const duration = durationCell(s);
-  const kind: SessionHeadlineKind = s.title ? 'title' : s.first_prompt ? 'prompt' : 'none';
+  const headline = sessionHeadline(s);
   return {
     id: s.session_id,
     started: formatDate(s.start_time),
     project: label.name,
     badge: hideBadge ? null : label.badge,
-    headline: kind === 'title' ? s.title ?? '' : kind === 'prompt' ? `“${s.first_prompt}”` : 'No prompt',
-    headlineKind: kind,
-    headlineTitle: s.first_prompt || s.title || '',
+    headline: headline.text,
+    headlineKind: headline.kind,
+    headlineTitle: headline.title,
     duration: duration.text,
     durationTitle: duration.tooltip,
     durationActive: duration.active,
     tokens: compact(sessionTokens(s)),
+    cost: costLabel(s),
   };
 }
 
@@ -657,15 +695,24 @@ export function buildTranscript(state: TranscriptState | undefined, open: boolea
 export function sessionCountLabel(p: LocalProjectStat, platform: Platform): string {
   if (platform === 'codex') return `${p.sessionCount} thread${p.sessionCount !== 1 ? 's' : ''}`;
   const base = `${p.sessionCount} session${p.sessionCount !== 1 ? 's' : ''}`;
-  if (platform === 'both' && p.claudeSessions > 0 && p.codexSessions > 0) {
+  if (platform === 'both' && p.claudeSessions > 0 && p.codexSessions > 0 && p.claudeSessions + p.codexSessions === p.sessionCount) {
     return `${base} · Claude ${p.claudeSessions} · Codex ${p.codexSessions}`;
   }
   return base;
 }
 
+const PROJECT_ESTIMATE_NOTE: Record<Platform, string> = {
+  claude:
+    "Costs are estimates priced from local logs, over the last year. Claude Code's /usage shows its own counter for a single session, so its numbers are not expected to match a project total.",
+  codex:
+    "Costs are estimates priced from local rollouts at OpenAI list prices, over the last year. OpenAI's own usage figures cover the whole account, so they are not expected to match a project total.",
+  both:
+    "Costs are estimates priced from local logs, over the last year. Claude Code's /usage shows its own counter for a single session, and OpenAI's usage figures cover the whole account, so neither is expected to match a project total.",
+};
+
 export function projectsHelp(platform: Platform): string {
   const noun = sessionNoun(platform);
-  const base = `Per-project rollup of the ${noun} in the history: estimated cost, active time (prompt to answer, idle time excluded), effective tokens and files changed, one row per working directory. Sort with the control. Tag projects to group their cost in Spend by tag.`;
+  const base = `Per-project rollup: estimated cost, effective tokens and ${noun} counts for each working directory, plus active time (prompt to answer, idle time excluded) and files changed from the ${noun} in the history. Sort with the control; open a project with its arrow to see its ${noun}, costliest first. Tag projects to group their cost in Spend by tag. ${PROJECT_ESTIMATE_NOTE[platform]}`;
   if (platform === 'codex') return `${base} Codex chat-only threads each get their own scratch folder, labelled with the thread title.`;
   if (platform === 'both') {
     return `${base} Claude and Codex sessions in the same folder share one row. Cowork sessions run in a sandbox with no host project, so they are excluded.`;
@@ -707,28 +754,63 @@ export function allTags(tags: TagMap): string[] {
   return [...set].sort((a, b) => a.localeCompare(b));
 }
 
+export const PROJECT_SESSIONS_SHOWN = 25;
+const NO_LIST: ProjectSessionList = { sessions: [], more: null, partialNote: null };
+
+function projectSession(s: SessionMeta, hideBadge: boolean): ProjectSessionView {
+  const headline = sessionHeadline(s);
+  return {
+    id: s.session_id,
+    headline: headline.text,
+    headlineKind: headline.kind,
+    headlineTitle: headline.title,
+    date: formatDate(s.start_time),
+    tokens: `${compact(sessionTokens(s))} tok`,
+    cost: costLabel(s),
+    partial: !!s.partial,
+    badge: hideBadge ? null : sessionLabel(s).badge,
+  };
+}
+
+/** Each project's session list, keyed by project path; rebuilt only when the stats change so memoised rows keep their arrays. */
+export function buildProjectSessionLists(stats: LocalProjectStat[] | null, hideBadge: boolean): ReadonlyMap<string, ProjectSessionList> {
+  const lists = new Map<string, ProjectSessionList>();
+  for (const p of stats ?? []) {
+    if (p.sessions.length === 0) continue;
+    const shown = p.sessions.slice(0, PROJECT_SESSIONS_SHOWN);
+    const hidden = p.sessions.length - shown.length;
+    lists.set(p.path, {
+      sessions: shown.map((s) => projectSession(s, hideBadge)),
+      more: hidden > 0 ? `${hidden.toLocaleString()} more, lower cost` : null,
+      partialNote: shown.some((s) => s.partial) ? PARTIAL_NOTE : null,
+    });
+  }
+  return lists;
+}
+
 export interface ProjectViewsInput {
   stats: LocalProjectStat[] | null;
-  pending: boolean;
   error: string | null;
   since: number | null;
   platform: Platform;
   tags: TagMap;
+  lists: ReadonlyMap<string, ProjectSessionList>;
 }
 
 function listState(input: ProjectViewsInput, rows: number, errorTitle: string): SectionState | null {
-  if (input.stats && !input.pending) return null;
-  if (!input.stats && input.error) return { kind: 'error', title: errorTitle, description: SERVER_DOWN };
+  if (input.stats) return null;
+  if (input.error) return { kind: 'error', title: errorTitle, description: SERVER_DOWN };
   return { kind: 'loading', skeleton: 'bars', rows };
 }
 
 export function buildProjectBreakdown(input: ProjectViewsInput, sort: ProjectSort): ProjectBreakdownView {
-  const { stats, since, platform, tags } = input;
+  const { stats, since, platform, tags, lists } = input;
   const sinceText = sinceLabel(since);
   const metric = PROJECT_METRIC[sort];
   const sorted = stats ? [...stats].sort((a, b) => metric(b) - metric(a)) : [];
   const top = sorted.reduce((max, p) => Math.max(max, metric(p)), 0);
   const max = sort === 'cost' ? Math.max(top, 0.0001) : top || 1;
+  const totalCost = sorted.reduce((sum, p) => sum + p.cost, 0);
 
   let state = listState(input, 6, 'Could not load projects');
   if (!state && sorted.length === 0) {
@@ -741,9 +823,12 @@ export function buildProjectBreakdown(input: ProjectViewsInput, sort: ProjectSor
     help: projectsHelp(platform),
     state,
     sort,
+    noun: sessionNoun(platform),
+    total: state || totalCost <= 0 ? null : `~${usd(totalCost)}`,
     rows: state
       ? []
       : sorted.map((p) => ({
+          ...(lists.get(p.path) ?? NO_LIST),
           path: p.path,
           name: p.name,
           value: projectValue(p, sort),

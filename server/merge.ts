@@ -102,6 +102,8 @@ function toEvent(r: UsageRow, projectPathOf: ProjectPathResolver): UsageEvent {
     outputTokens: r.outputTokens,
     cacheCreateTokens: r.cacheCreateTokens,
     cacheReadTokens: r.cacheReadTokens,
+    cacheWrite1hTokens: r.cacheWrite1hTokens ?? 0,
+    webSearchRequests: r.webSearchRequests ?? 0,
     tools: r.tools,
     isSidechain: r.isSidechain,
     rootSessionId: r.rootSessionId,
@@ -171,6 +173,8 @@ function sessionCost(r: UsageRow): number {
     outputTokens: r.outputTokens,
     cacheCreateTokens: r.cacheCreateTokens,
     cacheReadTokens: 0,
+    cacheWrite1hTokens: r.cacheWrite1hTokens,
+    webSearchRequests: r.webSearchRequests,
   });
 }
 
@@ -253,11 +257,16 @@ function collect(files: FileRows[]): MergeParts {
   for (const f of files) {
     for (const u of f.usage) {
       p.allUsage.push(u);
-      if (!f.insightsSkipped) p.insightUsage.push(u);
+      p.insightUsage.push(u);
     }
     // Limit hits and rate-limit snapshots are cheap and matter for every file.
     if (f.limitHits) p.limitHitRows.push(...f.limitHits);
     if (f.rateLimitSnaps) p.rateLimitRows.push(...f.rateLimitSnaps);
+    // An oversized file still lists its session (assistant-line partial) and names it.
+    for (const t of [...(f.titles ?? [])].sort((a, b) => a.seq - b.seq)) {
+      (t.kind === 'custom' ? p.customTitle : p.aiTitle).set(t.sessionId, t.title);
+    }
+    p.sessionPartials.push(...f.sessions);
     if (f.insightsSkipped) continue;
     if (f.lineChanges) p.lineChangeRows.push(...f.lineChanges);
     if (f.prLinks) p.prLinkRows.push(...f.prLinks);
@@ -265,12 +274,8 @@ function collect(files: FileRows[]): MergeParts {
       const relayed = f.source === 'cowork' && DISPATCH_ORCHESTRATOR.test(f.path);
       (relayed ? p.relayedTurnRows : p.turnRows).push(...f.turns);
     }
-    for (const t of [...(f.titles ?? [])].sort((a, b) => a.seq - b.seq)) {
-      (t.kind === 'custom' ? p.customTitle : p.aiTitle).set(t.sessionId, t.title);
-    }
     p.toolCallRows.push(...f.toolCalls);
     p.taskSpawnRows.push(...f.taskSpawns);
-    p.sessionPartials.push(...f.sessions);
     p.corpusRows.push(...f.corpus);
     for (const r of f.toolResults) {
       // Last write wins, matching the original `toolResults.set(...)` per line.
@@ -496,6 +501,7 @@ export function mergeRows(files: FileRows[], sessionMetas: any[], archive: Reduc
     if (p.client && !sm.client) sm.client = p.client;
     if (p.clientVersion && !sm.clientVersion) sm.clientVersion = p.clientVersion;
     if (p.repoUrl && !sm.repoUrl) sm.repoUrl = p.repoUrl;
+    if (p.oversized && !p.fileIsSidechain) sm.partial = true;
     sm.turns += p.turns;
     sm.compactions += p.compactions;
     sm.errorCount += p.errorCount;
@@ -553,8 +559,7 @@ export function mergeRows(files: FileRows[], sessionMetas: any[], archive: Reduc
     if (sm) sm.subagentSpawns++;
   }
 
-  // Per-session tokens and cost from globally deduped usage, restricted to the
-  // files insights actually reads (<= INSIGHTS_MAX_FILE_BYTES), preserving the original scope.
+  // Per-session tokens and cost from globally deduped usage. Oversized files count too: their assistant lines carry the usage.
   const addUsage = (sm: SessionMetaRecord, r: UsageRow, cost: number) => {
     const eff = effective(r);
     sm.effectiveTokens += eff;

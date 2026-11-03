@@ -4,6 +4,7 @@ export const START_HEADER = 'Start time';
 export const PROJECT_HEADER = 'Project';
 export const DURATION_HEADER = 'Duration';
 export const TOKENS_HEADER = 'Tokens';
+export const COST_HEADER = 'Est. cost';
 export const PREVIOUS_LABEL = 'Previous';
 export const NEXT_LABEL = 'Next';
 export const PAGER_LABEL = 'Pages';

@@ -45,7 +45,7 @@ import { SectionStackLayout } from '@/components/design-system/templates/Section
 A titled section with two rows:
 
 ```tsx
-<SectionStackLayout title={<GroupLabel note="Max 20x">Plan limits</GroupLabel>}>
+<SectionStackLayout title={<GroupLabel note="Ultra">Plan limits</GroupLabel>}>
   {limitsCard}
   <SplitLayout>
     {contributorsCard}

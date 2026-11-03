@@ -4,11 +4,12 @@ import { Chip } from '@/components/design-system/atoms/Chip/Chip';
 import { GroupLabel } from '@/components/design-system/atoms/GroupLabel/GroupLabel';
 import { Icon } from '@/components/design-system/atoms/Icon/Icon';
 import { KeyValueRow } from '@/components/design-system/molecules/KeyValueRow/KeyValueRow';
+import { SessionUsagePanel } from '@/components/design-system/organisms/SessionUsagePanel/SessionUsagePanel';
 import { TranscriptPane } from '@/components/design-system/organisms/TranscriptPane/TranscriptPane';
 import { LINES_UNIT, LINK_CLASS, PRS_LABEL, TOOLS_LABEL, TRANSCRIPT_LABEL } from '../utils';
 import type { SessionDetailBodyProps } from './types';
 
-export function SessionDetailBody({ view, transcript, onToggleTranscript, onRetryTranscript }: SessionDetailBodyProps) {
+export function SessionDetailBody({ view, transcript, usage, onToggleTranscript, onRetryTranscript }: SessionDetailBodyProps) {
   const transcriptId = useId();
 
   return (
@@ -82,6 +83,8 @@ export function SessionDetailBody({ view, transcript, onToggleTranscript, onRetr
           )}
         </div>
       </div>
+
+      <SessionUsagePanel view={usage} as="h3" />
 
       <div className="flex min-w-0 flex-col gap-3 border-t border-line pt-3">
         <div className="flex min-w-0 items-center gap-2">

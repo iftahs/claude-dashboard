@@ -5,6 +5,25 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.3] - 2026-11-03
+
+### Added
+- Price 1h cache writes and web search, list oversized sessions, add per-session usage
+- Name Claude plans Free/Pro/Max/Ultra/Team and handle plans with no 5-hour limit
+- Add a /usage-style session usage panel to the Live page and the session dialog
+- Move the Session usage card from the Live page to the Sessions page
+- Name the rate limit tier with current plan names in Workspace
+
+### Changed
+- Mention 1-hour cache writes and web search in the Models pricing note
+- Note that LimitGauge draws no meter for a plan without that limit
+- Say contributor shares can overlap in the session usage help
+- Note that oversized transcripts still count session tokens and cost
+
+### Fixed
+- Count oversized transcripts in session cost, read scoped weekly limits for AI
+- Build Projects rows from /api/projects, add a total, expandable sessions and a cost column
+
 ## [1.0.2] - 2026-10-15
 
 ### Added
@@ -466,6 +485,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Live-API fallback to the local logs when there is no active block
   (`resets_at = null`).
 
+[1.0.3]: https://github.com/iftahs/claude-dashboard/releases/tag/v1.0.3
 [1.0.2]: https://github.com/iftahs/claude-dashboard/releases/tag/v1.0.2
 [1.0.1]: https://github.com/iftahs/claude-dashboard/releases/tag/v1.0.1
 [1.0.0]: https://github.com/iftahs/claude-dashboard/releases/tag/v1.0.0

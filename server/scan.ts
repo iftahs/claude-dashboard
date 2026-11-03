@@ -20,6 +20,8 @@ export interface UsageEvent {
   outputTokens: number;
   cacheCreateTokens: number;
   cacheReadTokens: number;
+  cacheWrite1hTokens?: number; // part of cacheCreateTokens written with the 1-hour TTL (billed at 2x input)
+  webSearchRequests?: number; // server-side web searches this request ran ($0.01 each)
   tools: string[]; // tool_use names invoked in this assistant message
   isSidechain: boolean; // true when this message is a subagent (Task) sub-response
   rootSessionId: string; // top-level session — for subagents, the parent that spawned them

@@ -31,7 +31,7 @@ import { parseCodexFileRows } from './scan-pass-codex.ts';
 /** Measured optimum on an NVMe SSD: 1→4.28s, 8→3.11s, 16→3.27s, 24→3.74s. */
 export const PARSE_CONCURRENCY = 8;
 
-/** Files above this size feed usage rows only, not insights — the cap only guards against pathological transcripts. */
+/** Files above this size feed usage rows, a session partial (assistant lines only) and titles, but no other insight rows — the cap only guards against pathological transcripts. */
 export const INSIGHTS_MAX_FILE_BYTES = 64 * 1024 * 1024;
 
 /** Per-session search-corpus cap applied at parse time (and again globally in merge.ts). */
@@ -51,6 +51,9 @@ export interface UsageRow {
   outputTokens: number;
   cacheCreateTokens: number;
   cacheReadTokens: number;
+  /** Part of cacheCreateTokens written with the 1-hour TTL (Claude only; absent = 0). */
+  cacheWrite1hTokens?: number;
+  webSearchRequests?: number;
   tools: string[];
   isSidechain: boolean;
   rootSessionId: string;
@@ -132,6 +135,8 @@ export interface SessionPartialRow {
   clientVersion?: string;
   /** Git remote of the working directory, when the log records it (Codex session_meta.git). */
   repoUrl?: string;
+  /** The file was over INSIGHTS_MAX_FILE_BYTES: only assistant lines were read, so turns, prompt and tool counts are missing. */
+  oversized?: boolean;
 }
 
 // Per-item rows added for history features; each carries its own identity so merge.ts can dedup across files — never pre-sum these per file.
@@ -213,7 +218,7 @@ export interface FileRows {
   source: UsageSource;
   mtimeMs: number;
   size: number;
-  /** True when the file exceeded INSIGHTS_MAX_FILE_BYTES — usage rows only. */
+  /** True when the file exceeded INSIGHTS_MAX_FILE_BYTES — usage rows, session partials and titles only. */
   insightsSkipped: boolean;
   usage: UsageRow[];
   toolCalls: ToolCallRow[];
@@ -705,6 +710,7 @@ export async function parseFileRows(file: ScannedFile): Promise<FileRows> {
         firstPrompt: '', gitBranch, projectPath, file: path, agentId, source,
         assistantKeys: [], gitCommitIds: [], gitPushIds: [], nonErrorResultIds: [],
         cwd: '', client: '', clientVersion: '',
+        ...(insightsSkipped ? { oversized: true } : {}),
       };
       sessions.set(sessionId, sm);
     }
@@ -712,6 +718,20 @@ export async function parseFileRows(file: ScannedFile): Promise<FileRows> {
     if (ts > sm.lastTs) sm.lastTs = ts;
     if (gitBranch && !sm.gitBranch) sm.gitBranch = gitBranch;
     return sm;
+  };
+
+  // assistantMsgs must count distinct message identities, not lines: streaming
+  // retries repeat the same message 3x on average. Keyless lines cannot be
+  // deduped, so they are counted individually.
+  const noteAssistantKey = (sessionId: string, obj: any) => {
+    const key = `${obj.requestId ?? ''}:${obj.message?.id ?? ''}`;
+    if (key === ':') {
+      keylessAssistant++;
+      return;
+    }
+    let set = assistantKeys.get(sessionId);
+    if (!set) { set = new Set(); assistantKeys.set(sessionId, set); }
+    set.add(key);
   };
 
   const addCorpus = (sessionId: string, snippet: string) => {
@@ -730,7 +750,7 @@ export async function parseFileRows(file: ScannedFile): Promise<FileRows> {
     // Fast path: when only usage rows are wanted, skip lines that cannot be an
     // assistant message without paying for a full parse. Measured 2x on the
     // usage-only corpus. Files that also feed insights need every line parsed.
-    if (insightsSkipped && line.indexOf('"assistant"') === -1) continue;
+    if (insightsSkipped && line.indexOf('"assistant"') === -1 && line.indexOf('-title"') === -1) continue;
 
     let obj: any;
     try {
@@ -743,7 +763,7 @@ export async function parseFileRows(file: ScannedFile): Promise<FileRows> {
     if (obj.type === 'custom-title' || obj.type === 'ai-title') {
       const custom = obj.type === 'custom-title';
       const title = custom ? obj.customTitle : obj.aiTitle;
-      if (!insightsSkipped && typeof title === 'string' && title.trim() && typeof obj.sessionId === 'string' && obj.sessionId) {
+      if (typeof title === 'string' && title.trim() && typeof obj.sessionId === 'string' && obj.sessionId) {
         titles.push({ sessionId: obj.sessionId, title: title.trim().slice(0, 200), kind: custom ? 'custom' : 'ai', seq });
       }
       continue;
@@ -768,13 +788,16 @@ export async function parseFileRows(file: ScannedFile): Promise<FileRows> {
         }
       }
 
+      const cacheCreateTokens = num(usage.cache_creation_input_tokens);
       const row: UsageRow = {
         dedupKey, ts, sessionId,
         model: obj.message?.model ?? 'unknown',
         inputTokens: num(usage.input_tokens),
         outputTokens: num(usage.output_tokens),
-        cacheCreateTokens: num(usage.cache_creation_input_tokens),
+        cacheCreateTokens,
         cacheReadTokens: num(usage.cache_read_input_tokens),
+        cacheWrite1hTokens: Math.min(num(usage.cache_creation?.ephemeral_1h_input_tokens), cacheCreateTokens),
+        webSearchRequests: num(usage.server_tool_use?.web_search_requests),
         tools,
         isSidechain: fileIsSidechain || obj.isSidechain === true,
         rootSessionId: fileIsSidechain && parentFromPath ? parentFromPath : sessionId,
@@ -830,14 +853,20 @@ export async function parseFileRows(file: ScannedFile): Promise<FileRows> {
       }
     }
 
-    if (insightsSkipped) continue;
+    // An oversized file reads assistant lines only (the fast path above): enough for a listed session, nothing else.
+    if (insightsSkipped && obj.type !== 'assistant') continue;
 
-    // ---- insight rows (files <= INSIGHTS_MAX_FILE_BYTES only) ----
+    // ---- session partial (every file) and insight rows (files <= INSIGHTS_MAX_FILE_BYTES only) ----
     const sm = sessionRow(sessionId, ts, gitBranch);
     // First value wins. The cwd is a real host path only for Claude Code; a Cowork cwd is sandbox-internal, like its projectPath.
     if (!sm.cwd && source === 'code' && typeof obj.cwd === 'string') sm.cwd = obj.cwd;
     if (!sm.client && typeof obj.entrypoint === 'string') sm.client = obj.entrypoint;
     if (!sm.clientVersion && typeof obj.version === 'string') sm.clientVersion = obj.version;
+
+    if (insightsSkipped) {
+      if (obj.message?.role === 'assistant') noteAssistantKey(sessionId, obj);
+      continue;
+    }
 
     if (trackTurns && obj.isSidechain !== true) {
       if (obj.type === 'queue-operation') {
@@ -956,17 +985,7 @@ export async function parseFileRows(file: ScannedFile): Promise<FileRows> {
     }
 
     if (obj.type === 'assistant' && obj.message?.role === 'assistant') {
-      // assistantMsgs must count distinct message identities, not lines: streaming
-      // retries repeat the same message 3x on average. Keyless lines cannot be
-      // deduped, so they are counted individually.
-      const key = `${obj.requestId ?? ''}:${obj.message?.id ?? ''}`;
-      if (key === ':') {
-        keylessAssistant++;
-      } else {
-        let set = assistantKeys.get(sessionId);
-        if (!set) { set = new Set(); assistantKeys.set(sessionId, set); }
-        set.add(key);
-      }
+      noteAssistantKey(sessionId, obj);
 
       const content = obj.message?.content;
       if (!Array.isArray(content)) continue;

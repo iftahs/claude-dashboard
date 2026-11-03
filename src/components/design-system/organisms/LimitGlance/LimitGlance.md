@@ -29,7 +29,7 @@
 |---|---|---|
 | `platform` | `'claude' \| 'codex'` | Picks the swatch colour (`platform-claude` / `platform-codex`). |
 | `name` | `string` | The platform name in the header. |
-| `plan` | `string \| null` | Plan badge text (`Max 20x`, `Pro`, `API`). Hidden when null. |
+| `plan` | `string \| null` | Plan badge text (`Ultra`, `Pro`, `API`). Hidden when null. |
 | `status` | `'loading' \| 'error' \| 'ready'` | Which state the body shows. |
 | `windows` | `LimitWindowView[]` | One row per provider window: `label`, `percent`, `tone`, `reset` (the reset line as short phrases), `binding`. |
 | `caps` | `LimitCapView[]` | Spending cap rows (`label`, `value`, `percent`, `tone`, `note`); a null `percent` draws a plain value line. |

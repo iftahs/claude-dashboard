@@ -1,7 +1,7 @@
 # SessionTable
 
 **Level:** Organism
-**Purpose:** Card with the session history as a paged table: start time, project, title or first prompt, duration and effective tokens per row, where a row opens that session's detail.
+**Purpose:** Card with the session history as a paged table: start time, project, title or first prompt, duration, effective tokens and estimated cost per row, where a row opens that session's detail.
 
 ## When to use
 
@@ -29,7 +29,7 @@
 | `caption` | `string` | The table's hidden caption. |
 | `subject` | `string` | Header of the title column: "Session" or "Thread". |
 | `state` | `SectionState \| null` | Loading (table skeleton), error or empty; `null` once there are sessions. |
-| `rows` | `SessionRowView[]` | `id`, `started`, `project`, `badge`, `headline`, `headlineKind`, `headlineTitle`, `duration`, `durationTitle`, `durationActive`, `tokens`. |
+| `rows` | `SessionRowView[]` | `id`, `started`, `project`, `badge`, `headline`, `headlineKind`, `headlineTitle`, `duration`, `durationTitle`, `durationActive`, `tokens`, `cost` ("~$4.20", or a dash when unpriced). |
 | `noMatches` | `{ title, description } \| null` | Set when the search filters every session out; replaces the table. |
 | `range` | `string` | "Showing 1 to 20 of 1,204 sessions". |
 | `page`, `pageCount`, `pageLabel` | `number`, `number`, `string` | The pager: "Page 1 of 61". Hidden when there is one page. |
@@ -64,9 +64,9 @@ import { SessionTable } from '@/components/design-system/organisms/SessionTable/
 ## Notes
 
 - Presentational: filtering, paging and row formatting happen in the page hook, which builds view models for one page only, so the DOM stays bounded however long the history is.
-- The table is at least 640px wide and scrolls sideways inside its card below that; the page never scrolls sideways.
+- The table is at least 720px wide and scrolls sideways inside its card below that; the page never scrolls sideways.
 - The title column takes the free width and truncates with the first prompt in `title`; it is `dir="auto"`. Project names truncate at 192px.
-- A titled session shows its title in `fg`, an untitled one its first prompt in quotes in `fg-muted`, and one with neither "No prompt" in `fg-subtle`.
+- A titled session shows its title in `fg`, an untitled one its first prompt in quotes in `fg-muted`, and one with neither "No prompt" in `fg-subtle`; a session whose transcript was over the size cap reads "Untitled, large transcript" instead.
 
 ## Private parts
 

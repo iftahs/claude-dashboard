@@ -348,6 +348,12 @@ export function billingBlurb(platform: Platform): string {
   return 'Anthropic charges based on the number of tokens processed. Cache reads are discounted by 90% (95% on Opus 5.5, 97.5% on Fable 5.1 and Mythos 5.1).';
 }
 
+function cachingNote(platform: Platform): string {
+  if (platform === 'claude') return `${CACHING_NOTE}${CACHING_NOTE_CLAUDE_EXTRA}`;
+  if (platform === 'codex') return `${CACHING_NOTE}${CACHING_NOTE_OPENAI}`;
+  return `${CACHING_NOTE}${CACHING_NOTE_CLAUDE_EXTRA}${CACHING_NOTE_OPENAI}`;
+}
+
 export interface TokenCounts {
   input: number;
   output: number;
@@ -459,6 +465,8 @@ const PRICING_HELP =
   "Reference pay-as-you-go API prices (per 1M tokens, by model). Your subscription has no per-token bill — these power the 'estimated equivalent cost' figures. Use the calculator to price a hypothetical request; cache reads are billed at a fraction of input (usually 10%).";
 const CACHING_NOTE =
   'Cache reads usually cost 10% of the standard input price (5% on Opus 5.5, 2.5% on Fable 5.1 and Mythos 5.1). Designing your prompts to reuse systemic instructions, codebase maps, or tool schemas leverages this pricing to achieve massive savings.';
+const CACHING_NOTE_CLAUDE_EXTRA =
+  ' The cache-write rate above is the 5-minute one. A 1-hour cache write costs 2x the input price, and each web search adds $0.01. The estimates bill both, but the calculator prices only the tokens you enter.';
 const CACHING_NOTE_OPENAI =
   ' OpenAI applies the same discount to cached input. GPT-5.6 and GPT-6 list a cache-write rate, but Codex never reports cache writes, so it never changes an estimate; older GPT models have no write rate and read “—”.';
 const FIELD_LABEL: Record<TokenField, string> = {
@@ -515,7 +523,7 @@ export function buildCostCalculation({ platform, groups, selected, expanded, inp
       };
     }),
     cachingTitle: 'Prompt caching benefit',
-    cachingNote: platform === 'claude' ? CACHING_NOTE : `${CACHING_NOTE}${CACHING_NOTE_OPENAI}`,
+    cachingNote: cachingNote(platform),
     modelOptions: groups.flatMap((group) => [...group.current, ...group.legacy].map((model) => ({ value: model.name, label: model.name }))),
     selected: selected.name,
     fields: FIELD_ORDER.map((field) => ({

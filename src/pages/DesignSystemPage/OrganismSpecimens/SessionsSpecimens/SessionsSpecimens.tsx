@@ -5,6 +5,7 @@ import { SessionDetail } from '@/components/design-system/organisms/SessionDetai
 import { SessionSearchStrip } from '@/components/design-system/organisms/SessionSearchStrip/SessionSearchStrip';
 import { SessionStatsGrid } from '@/components/design-system/organisms/SessionStatsGrid/SessionStatsGrid';
 import { SessionTable } from '@/components/design-system/organisms/SessionTable/SessionTable';
+import { SessionUsagePanel } from '@/components/design-system/organisms/SessionUsagePanel/SessionUsagePanel';
 import { TagBreakdown } from '@/components/design-system/organisms/TagBreakdown/TagBreakdown';
 import { TranscriptPane } from '@/components/design-system/organisms/TranscriptPane/TranscriptPane';
 import { SplitLayout } from '@/components/design-system/templates/SplitLayout/SplitLayout';
@@ -13,6 +14,7 @@ import type { TagMap } from '@/hooks/useTags';
 import type { ProjectSort } from '@/lib/views/sessions';
 import { Specimen } from '../../Specimen/Specimen';
 import {
+  EMBEDDED_USAGE_VIEW,
   INITIAL_TAGS,
   PROJECT_STATE_VIEWS,
   SEARCH_STATE_VIEWS,
@@ -21,9 +23,12 @@ import {
   TAG_STATE_VIEWS,
   TAG_SUGGESTIONS,
   TRANSCRIPT_VIEWS,
+  USAGE_INITIAL_ID,
+  USAGE_STATE_VIEWS,
   detailView,
   projectsView,
   searchView,
+  sessionUsageView,
   tableView,
   tagsView,
   transcriptView,
@@ -39,6 +44,7 @@ export function SessionsSpecimens() {
   const [sort, setSort] = useState<ProjectSort>('cost');
   const [tags, setTags] = useState<TagMap>(INITIAL_TAGS);
   const [looseTags, setLooseTags] = useState<string[]>(['client-a']);
+  const [usageId, setUsageId] = useState(USAGE_INITIAL_ID);
 
   const onQueryChange = useCallback((next: string) => {
     setQuery(next);
@@ -65,6 +71,7 @@ export function SessionsSpecimens() {
   const transcript = useMemo(() => transcriptView(transcriptOpen), [transcriptOpen]);
   const projects = useMemo(() => projectsView(sort, tags), [sort, tags]);
   const tagBreakdown = useMemo(() => tagsView(tags), [tags]);
+  const usage = useMemo(() => sessionUsageView(usageId), [usageId]);
 
   return (
     <>
@@ -97,10 +104,23 @@ export function SessionsSpecimens() {
         <SessionDetail
           view={detail}
           transcript={transcript}
+          usage={EMBEDDED_USAGE_VIEW}
           onClose={onClose}
           onToggleTranscript={onToggleTranscript}
           onRetryTranscript={ignore}
         />
+      </Specimen>
+      <Specimen
+        name="SessionUsagePanel"
+        note="Limits on top, then the session facts, the model breakdown, what is contributing and a tip. Pick a session: each one triggers a different tip, or the large-transcript note. Then loading, failed and no session."
+        layout="stack"
+      >
+        <SessionUsagePanel view={usage} onSessionChange={setUsageId} />
+        <SplitLayout columns={3}>
+          {USAGE_STATE_VIEWS.map((view, index) => (
+            <SessionUsagePanel key={index} view={view} />
+          ))}
+        </SplitLayout>
       </Specimen>
       <Specimen name="TranscriptPane" note="A truncated transcript with tool calls and a step with no text, then loading, failed, archived and empty" layout="stack">
         {TRANSCRIPT_VIEWS.map((specimen) => (
@@ -109,12 +129,12 @@ export function SessionsSpecimens() {
       </Specimen>
       <Specimen name="ProjectBreakdown and TagBreakdown" note="Sorting and tag edits update both cards. Then loading, empty and failed." layout="stack">
         <SplitLayout ratio="2:1">
-          <ProjectBreakdown view={projects} onSortChange={setSort} onTagsChange={onTagsChange} />
+          <ProjectBreakdown view={projects} onSortChange={setSort} onTagsChange={onTagsChange} onOpenSession={onOpen} />
           <TagBreakdown view={tagBreakdown} />
         </SplitLayout>
         <SplitLayout columns={3}>
           {PROJECT_STATE_VIEWS.map((view, index) => (
-            <ProjectBreakdown key={index} view={view} onSortChange={ignore} onTagsChange={ignore} />
+            <ProjectBreakdown key={index} view={view} onSortChange={ignore} onTagsChange={ignore} onOpenSession={ignore} />
           ))}
         </SplitLayout>
         <SplitLayout columns={3}>

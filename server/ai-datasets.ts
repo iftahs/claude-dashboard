@@ -619,7 +619,7 @@ export const DATASETS: DatasetDef[] = [
   {
     id: 'limits',
     describes:
-      "Anthropic's LIVE rate-limit quota for the account: the 5-hour and 7-day utilization percentages, when they reset, " +
+      "Anthropic's LIVE rate-limit quota for the account: the 5-hour (null on verified Ultra accounts, which have no 5-hour limit) and 7-day utilization percentages, when they reset, " +
       'and any extra-usage/overage credits. This is a percentage of a plan allowance — NOT dollars, and NOT the estimated costs elsewhere.',
     describesFor: {
       codex:
@@ -746,6 +746,24 @@ function inventoryDetail(inv: InventoryData) {
   };
 }
 
+/** Every per-model weekly window the live payload reports, keyed by lower-cased model name: the `seven_day_<model>` keys, then the newer `limits[]` scoped entries (which win). */
+export function perModelWeeklyPct(usage: any): Record<string, number | null> {
+  const out: Record<string, number | null> = {};
+  for (const [key, win] of Object.entries(usage ?? {})) {
+    const model = /^seven_day_(.+)$/.exec(key)?.[1];
+    if (!model || model === 'breakdown' || !win || typeof win !== 'object' || !('utilization' in win)) continue;
+    out[model] = typeof win.utilization === 'number' ? win.utilization : null;
+  }
+  if (Array.isArray(usage?.limits)) {
+    for (const limit of usage.limits) {
+      const name = limit?.kind === 'weekly_scoped' ? limit.scope?.model?.display_name : null;
+      if (typeof name !== 'string' || !name.trim()) continue;
+      out[name.trim().toLowerCase()] = typeof limit.percent === 'number' ? limit.percent : null;
+    }
+  }
+  return out;
+}
+
 function claudeLimitsDetail(live: LiveRead<any>) {
   if (!('usage' in live)) return live;
   const u = live.usage;
@@ -758,6 +776,7 @@ function claudeLimitsDetail(live: LiveRead<any>) {
     sevenDayPct: u.seven_day?.utilization ?? null,
     sevenDayResetsAt: u.seven_day?.resets_at ?? null,
     sevenDayOpusPct: u.seven_day_opus?.utilization ?? null,
+    sevenDayByModelPct: perModelWeeklyPct(u),
     extraUsageEnabled: u.extra_usage?.is_enabled ?? null,
     extraUsagePct: u.extra_usage?.utilization ?? null,
   };

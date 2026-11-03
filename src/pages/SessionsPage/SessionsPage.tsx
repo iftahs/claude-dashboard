@@ -6,6 +6,7 @@ import { SessionDetail } from '@/components/design-system/organisms/SessionDetai
 import { SessionSearchStrip } from '@/components/design-system/organisms/SessionSearchStrip/SessionSearchStrip';
 import { SessionStatsGrid } from '@/components/design-system/organisms/SessionStatsGrid/SessionStatsGrid';
 import { SessionTable } from '@/components/design-system/organisms/SessionTable/SessionTable';
+import { SessionUsagePanel } from '@/components/design-system/organisms/SessionUsagePanel/SessionUsagePanel';
 import { TagBreakdown } from '@/components/design-system/organisms/TagBreakdown/TagBreakdown';
 import { PageLayout } from '@/components/design-system/templates/PageLayout/PageLayout';
 import { SplitLayout } from '@/components/design-system/templates/SplitLayout/SplitLayout';
@@ -44,11 +45,17 @@ export function SessionsPage() {
       >
         {page.view === 'projects' ? (
           <SplitLayout ratio="2:1">
-            <ProjectBreakdown view={page.projects} onSortChange={page.onProjectSortChange} onTagsChange={page.onProjectTagsChange} />
+            <ProjectBreakdown
+              view={page.projects}
+              onSortChange={page.onProjectSortChange}
+              onTagsChange={page.onProjectTagsChange}
+              onOpenSession={page.onOpenSession}
+            />
             <TagBreakdown view={page.tags} />
           </SplitLayout>
         ) : (
           <>
+            <SessionUsagePanel view={page.recentUsage} onSessionChange={page.onRecentUsageChange} />
             <SessionSearchStrip view={page.search} onQueryChange={page.onSearchChange} onOpen={page.onOpenSession} />
             <SessionTable view={page.table} onOpen={page.onOpenSession} onPageChange={page.onPageChange} />
           </>
@@ -58,6 +65,7 @@ export function SessionsPage() {
       <SessionDetail
         view={page.detail}
         transcript={page.transcript}
+        usage={page.usage}
         onClose={page.onCloseSession}
         onToggleTranscript={page.onToggleTranscript}
         onRetryTranscript={page.onRetryTranscript}

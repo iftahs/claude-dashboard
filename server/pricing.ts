@@ -83,19 +83,34 @@ export function hasPrice(model: string): boolean {
   return p.input > 0 || p.output > 0 || p.cacheWrite > 0 || p.cacheRead > 0;
 }
 
+/** Anthropic bills a 1-hour cache write at 2x the input rate (the 5-minute write is the 1.25x `cacheWrite`). */
+const CACHE_WRITE_1H_INPUT_MULTIPLE = 2;
+const WEB_SEARCH_USD = 0.01;
+
 export function estimateCost(
   model: string,
-  t: { inputTokens: number; outputTokens: number; cacheCreateTokens: number; cacheReadTokens: number }
+  t: {
+    inputTokens: number;
+    outputTokens: number;
+    cacheCreateTokens: number;
+    cacheReadTokens: number;
+    /** Part of cacheCreateTokens written with the 1-hour TTL. */
+    cacheWrite1hTokens?: number;
+    webSearchRequests?: number;
+  }
 ): number {
   const base = priceFor(model);
   const prompt = t.inputTokens + t.cacheCreateTokens + t.cacheReadTokens;
   const p = base.longPrompt && prompt > base.longPrompt.above ? base.longPrompt.rates : base;
+  const write1h = Math.min(Math.max(t.cacheWrite1hTokens ?? 0, 0), t.cacheCreateTokens);
   return (
     (t.inputTokens * p.input +
       t.outputTokens * p.output +
-      t.cacheCreateTokens * p.cacheWrite +
+      (t.cacheCreateTokens - write1h) * p.cacheWrite +
+      write1h * p.input * CACHE_WRITE_1H_INPUT_MULTIPLE +
       t.cacheReadTokens * p.cacheRead) /
-    1_000_000
+      1_000_000 +
+    (t.webSearchRequests ?? 0) * WEB_SEARCH_USD
   );
 }
 

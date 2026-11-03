@@ -160,6 +160,13 @@ test('live files merge before archived ones, archived ones by archive time', () 
   assert.equal(sm.get('s2')!.firstPrompt, 'older', 'the earlier archive wins among archived files');
 });
 
+test("an oversized transcript's usage still prices and sizes its session", () => {
+  const big = { ...fileRows('/p/big.jsonl', 's1', 'x', T), insightsSkipped: true };
+  const sm = mergeRows([big], []).insights.sessionsMeta.get('s1')!;
+  assert.ok(sm.cost > 0);
+  assert.equal(sm.effectiveTokens, 10 + 20 + 5);
+});
+
 test('an archived file live again, at its path or moved, or from another data set, never merges', () => {
   const rows = fileRows('/p/new-name/S.jsonl', 's1', 'x', T);
   const archived: ArchivedFile[] = [
@@ -183,7 +190,7 @@ test('merging a reduced archive gives exactly what merging its files after the l
   a2.usage.push({ ...live[1].usage[0] }); // a tie: the live copy stays
   a2.usage.push(usage('s2', ':', T + 1000), usage('s2', ':', T + 1000)); // keyless rows are all kept
   a2.usage.push({ ...a3.usage[0] });
-  a3.usage[0] = { ...a3.usage[0], inputTokens: 500 }; // bigger only in a file insights skip
+  a3.usage[0] = { ...a3.usage[0], inputTokens: 500 }; // bigger only in an oversized file
   a2.toolCalls.push({ ...a2.toolCalls[0], toolId: 'toolu_arch', ts: T + 5000 }); // same ts as a live call
   a2.toolCalls.push({ ...a2.toolCalls[0], toolId: '', ts: T - 1 });
   a1.sessions[0].assistantKeys.push(live[0].sessions[0].assistantKeys[0], 'arch-only');
