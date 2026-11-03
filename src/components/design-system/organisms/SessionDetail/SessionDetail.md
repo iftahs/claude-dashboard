@@ -19,6 +19,7 @@
 |---|---|---|---|
 | `view` | `SessionDetailView \| null` | required | The open session's view model from `buildSessionDetail()` in `@/lib/views/sessions`. `null` keeps the dialog closed. |
 | `transcript` | `TranscriptView` | required | The transcript's view model from `buildTranscript()`; it carries whether the pane is open and the message count. |
+| `usage` | `SessionUsageView` | required | The session's usage card from `buildSessionUsage()`, drawn as `SessionUsagePanel` between the facts and the transcript toggle (no limits, no picker). |
 | `onClose` | `() => void` | required | Called on Escape, a click on the overlay or the close button. |
 | `onToggleTranscript` | `() => void` | required | Called by the "Transcript" button. The page hook opens the pane and asks for the transcript. |
 | `onRetryTranscript` | `() => void` | - | Passed to the transcript's error state as its retry action. |
@@ -56,6 +57,7 @@ import { SessionDetail } from '@/components/design-system/organisms/SessionDetai
 <SessionDetail
   view={page.detail}
   transcript={page.transcript}
+  usage={page.usage}
   onClose={page.onCloseSession}
   onToggleTranscript={page.onToggleTranscript}
   onRetryTranscript={page.onRetryTranscript}
@@ -71,14 +73,14 @@ import { SessionDetail } from '@/components/design-system/organisms/SessionDetai
 
 ## Notes
 
-- Presentational: the page hook owns which session is open, whether the transcript is shown and the fetch.
+- Presentational: the page hook owns which session is open, whether the transcript is shown and the fetch. The usage card is polled only while the dialog is open.
 - The largest `Dialog` size (720px). The facts and the tools sit side by side from `md` up and stack below.
 - A pull request whose URL is not http(s) is shown as plain text, never as a link.
 - The dialog title is a plain string, so a right-to-left title keeps left alignment; the project, the first prompt and the transcript text are `dir="auto"`.
 
 ## Private parts
 
-- `SessionDetailBody` - the dialog's content: the first prompt, the facts, the pull requests, the tool counts and the transcript section.
+- `SessionDetailBody` - the dialog's content: the first prompt, the facts, the pull requests, the tool counts, the usage card and the transcript section.
 
 ## Motion
 

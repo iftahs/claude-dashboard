@@ -7,6 +7,7 @@ import { LimitContributors } from '@/components/design-system/organisms/LimitCon
 import { LimitGauge } from '@/components/design-system/organisms/LimitGauge/LimitGauge';
 import { LimitHitsCard } from '@/components/design-system/organisms/LimitHitsCard/LimitHitsCard';
 import { PlanLimitsCard } from '@/components/design-system/organisms/PlanLimitsCard/PlanLimitsCard';
+import { SessionUsagePanel } from '@/components/design-system/organisms/SessionUsagePanel/SessionUsagePanel';
 import { SpendCapsCard } from '@/components/design-system/organisms/SpendCapsCard/SpendCapsCard';
 import { PageLayout } from '@/components/design-system/templates/PageLayout/PageLayout';
 import { SectionStackLayout } from '@/components/design-system/templates/SectionStackLayout/SectionStackLayout';
@@ -89,6 +90,8 @@ export function LivePage() {
           </SectionStackLayout>
         </ReservedBlock>
       ) : null}
+
+      <SessionUsagePanel view={view.sessionUsage} onSessionChange={view.onSessionUsageChange} />
 
       <SectionStackLayout title={<GroupLabel>Drivers</GroupLabel>}>
         {both && contributors.length > 1 ? <SplitLayout>{contributors}</SplitLayout> : null}

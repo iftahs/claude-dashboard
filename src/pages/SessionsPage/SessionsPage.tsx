@@ -63,6 +63,7 @@ export function SessionsPage() {
       <SessionDetail
         view={page.detail}
         transcript={page.transcript}
+        usage={page.usage}
         onClose={page.onCloseSession}
         onToggleTranscript={page.onToggleTranscript}
         onRetryTranscript={page.onRetryTranscript}

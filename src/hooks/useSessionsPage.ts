@@ -5,6 +5,7 @@ import { useRegisterPageExport } from './usePageActions';
 import { usePolling } from './usePolling';
 import { useSearch } from './useSearch';
 import { useSessionPeriod } from './useSessionPeriod';
+import { useSessionUsage } from './useSessionUsage';
 import { useSource } from './useSource';
 import { useTags } from './useTags';
 import { useTranscript } from './useTranscript';
@@ -12,6 +13,7 @@ import { useViewFade } from './useViewFade';
 import type { ViewFade } from './useViewFade';
 import type { ExportFormat } from '@/lib/export';
 import { buildProjectStats } from '@/lib/project';
+import { buildSessionUsage, type SessionUsageView } from '@/lib/views/session-usage';
 import {
   SESSIONS_EXPORT_FILENAME,
   SESSIONS_VIEW_PARAM,
@@ -44,6 +46,7 @@ import {
   type TagBreakdownView,
   type TranscriptView,
 } from '@/lib/views/sessions';
+import type { PlanLimitRowView } from '@/lib/views/live';
 import type { ProjectData, SessionMeta, SessionSummary } from '@/types';
 
 export interface SessionsPageView {
@@ -62,6 +65,7 @@ export interface SessionsPageView {
   onOpenSession: (sessionId: string) => void;
   detail: SessionDetailView | null;
   transcript: TranscriptView;
+  usage: SessionUsageView;
   onCloseSession: () => void;
   onToggleTranscript: () => void;
   onRetryTranscript: () => void;
@@ -74,6 +78,7 @@ export interface SessionsPageView {
 const SESSIONS_POLL_MS = 10_000;
 const SUMMARY_POLL_MS = 30_000;
 const PROJECTS_POLL_MS = 30_000;
+const NO_LIMIT_ROWS: readonly PlanLimitRowView[] = [];
 
 export function useSessionsPage(): SessionsPageView {
   const { platform, effectiveSource, withSrc } = useSource();
@@ -212,6 +217,13 @@ export function useSessionsPage(): SessionsPageView {
   );
   const detail = useMemo(() => buildSessionDetail(current, noun, hideBadge), [current, noun, hideBadge]);
 
+  // Polled only while the dialog is open: closing it clears the selection.
+  const usagePoll = useSessionUsage(selectedId);
+  const usage = useMemo(
+    () => buildSessionUsage({ data: usagePoll.data, error: usagePoll.error, sessionId: selectedId, limits: NO_LIMIT_ROWS, picker: null }),
+    [usagePoll.data, usagePoll.error, selectedId],
+  );
+
   const transcriptState = selectedId ? transcripts.get(selectedId) : undefined;
   const transcript = useMemo(() => buildTranscript(transcriptState, transcriptOpen, noun), [transcriptState, transcriptOpen, noun]);
 
@@ -255,6 +267,7 @@ export function useSessionsPage(): SessionsPageView {
     onOpenSession,
     detail,
     transcript,
+    usage,
     onCloseSession,
     onToggleTranscript,
     onRetryTranscript,

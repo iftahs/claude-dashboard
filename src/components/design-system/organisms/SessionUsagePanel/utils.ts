@@ -1,0 +1,9 @@
+export const LIMITS_LABEL = 'Limits';
+export const THIS_SESSION_LABEL = 'This session';
+export const BREAKDOWN_LABEL = 'Breakdown';
+export const CONTRIBUTING_LABEL = "What's contributing";
+export const MODEL_SHARES_LABEL = 'Cost by model';
+export const BREAKDOWN_CAPTION = 'Tokens and cost by model';
+export const CONTRIBUTORS_ARIA = 'Share of the session cost by what drove it';
+export const TIP_TITLE = 'Tip';
+export const LINES_UNIT = 'lines';

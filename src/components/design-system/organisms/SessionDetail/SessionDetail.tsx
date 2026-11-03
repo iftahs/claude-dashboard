@@ -5,12 +5,13 @@ import { SessionDetailBody } from './SessionDetailBody/SessionDetailBody';
 import type { SessionDetailProps } from './types';
 import { CLOSE_LABEL, FALLBACK_TITLE } from './utils';
 
-export function SessionDetail({ view, transcript, onClose, onToggleTranscript, onRetryTranscript }: SessionDetailProps) {
+export function SessionDetail({ view, transcript, usage, onClose, onToggleTranscript, onRetryTranscript }: SessionDetailProps) {
   // The dialog stays mounted while it animates out, so it keeps showing the session it was closed on.
-  const last = useRef({ view, transcript });
-  if (view) last.current = { view, transcript };
+  const last = useRef({ view, transcript, usage });
+  if (view) last.current = { view, transcript, usage };
   const shown = view ?? last.current.view;
   const shownTranscript = view ? transcript : last.current.transcript;
+  const shownUsage = view ? usage : last.current.usage;
 
   return (
     <Dialog
@@ -40,6 +41,7 @@ export function SessionDetail({ view, transcript, onClose, onToggleTranscript, o
         <SessionDetailBody
           view={shown}
           transcript={shownTranscript}
+          usage={shownUsage}
           onToggleTranscript={onToggleTranscript}
           onRetryTranscript={onRetryTranscript}
         />

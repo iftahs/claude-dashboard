@@ -1,6 +1,13 @@
 import type { TagMap } from '@/hooks/useTags';
 import { buildProjectStats } from '@/lib/project';
+import {
+  buildSessionUsage,
+  buildSessionUsagePicker,
+  type SessionUsageInput,
+  type SessionUsageView,
+} from '@/lib/views/session-usage';
 import type { TranscriptState } from '@/lib/sessions';
+import type { PlanLimitRowView } from '@/lib/views/live';
 import {
   buildProjectBreakdown,
   buildProjectSessionLists,
@@ -25,7 +32,7 @@ import {
   type TagBreakdownView,
   type TranscriptView,
 } from '@/lib/views/sessions';
-import type { ProjectStat, SearchResult, SessionMeta, SessionSummary, SessionSummaryPart, SessionTranscript } from '@/types';
+import type { ProjectStat, SearchResult, SessionMeta, SessionSummary, SessionSummaryPart, SessionTranscript, SessionUsageData } from '@/types';
 
 const NOW = Date.now();
 const MINUTE = 60_000;
@@ -264,3 +271,104 @@ export const TAG_STATE_VIEWS: TagBreakdownView[] = [
 ];
 
 export const TAG_SUGGESTIONS = ['client-a', 'dashboards', 'internal'];
+
+const USAGE_MODEL = {
+  inputTokens: 0,
+  outputTokens: 0,
+  cacheReadTokens: 0,
+  cacheWriteTokens: 0,
+  cacheWrite1hTokens: 0,
+  cost: 0,
+  share: 0,
+  model: '',
+};
+
+const SAMPLE_USAGE: SessionUsageData = {
+  sessionId: 'sample-0',
+  source: 'code',
+  title: TITLES[0],
+  projectName: 'claude-dashboard',
+  firstTs: NOW - 3 * HOUR,
+  lastTs: NOW - 20 * MINUTE,
+  totalCost: 118.4,
+  activeMs: 94 * MINUTE,
+  linesAdded: 2140,
+  linesRemoved: 366,
+  webSearches: 4,
+  cacheHitRate: 0.93,
+  partial: false,
+  models: [
+    { ...USAGE_MODEL, model: 'claude-opus-5-5', cost: 82.3, share: 0.695, inputTokens: 410_000, outputTokens: 640_000, cacheReadTokens: 61_000_000, cacheWriteTokens: 3_900_000, cacheWrite1hTokens: 1_200_000 },
+    { ...USAGE_MODEL, model: 'claude-fable-5-1', cost: 24.6, share: 0.208, inputTokens: 90_000, outputTokens: 180_000, cacheReadTokens: 9_400_000, cacheWriteTokens: 800_000 },
+    { ...USAGE_MODEL, model: 'claude-sonnet-5-5', cost: 11.5, share: 0.097, inputTokens: 220_000, outputTokens: 310_000, cacheReadTokens: 14_000_000, cacheWriteTokens: 1_100_000 },
+  ],
+  contributors: [
+    { kind: 'subagent', name: 'Explore', share: 0.24 },
+    { kind: 'skill', name: 'atomic-design', share: 0.11 },
+    { kind: 'mcp', name: 'chrome-devtools', share: 0.07 },
+    { kind: 'plugin', name: 'caveman', share: 0.02 },
+  ],
+};
+
+const LOW_CACHE_USAGE: SessionUsageData = {
+  ...SAMPLE_USAGE,
+  sessionId: 'sample-2',
+  title: null,
+  totalCost: 6.2,
+  cacheHitRate: 0.31,
+  webSearches: 0,
+  contributors: [],
+  models: [{ ...USAGE_MODEL, model: 'claude-sonnet-5-5', cost: 6.2, share: 1, inputTokens: 900_000, outputTokens: 120_000, cacheReadTokens: 400_000, cacheWriteTokens: 300_000 }],
+};
+
+const COSTLY_MODEL_USAGE: SessionUsageData = {
+  ...SAMPLE_USAGE,
+  sessionId: 'sample-1',
+  contributors: [{ kind: 'skill', name: 'atomic-design', share: 0.06 }],
+  cacheHitRate: 0.88,
+  models: SAMPLE_USAGE.models.slice(0, 2).map((model, index) => ({ ...model, share: index === 0 ? 0.82 : 0.18 })),
+};
+
+const OVERSIZED_USAGE: SessionUsageData = {
+  ...SAMPLE_USAGE,
+  sessionId: 'sample-5',
+  title: null,
+  totalCost: 4597.4,
+  activeMs: null,
+  linesAdded: 0,
+  linesRemoved: 0,
+  webSearches: 0,
+  partial: true,
+  contributors: [],
+  cacheHitRate: 0.96,
+  models: [{ ...USAGE_MODEL, model: 'claude-fable-5-1', cost: 4597.4, share: 0.99, inputTokens: 12_000_000, outputTokens: 9_000_000, cacheReadTokens: 2_100_000_000, cacheWriteTokens: 180_000_000, cacheWrite1hTokens: 90_000_000 }],
+};
+
+const LIMIT_ROWS: PlanLimitRowView[] = [
+  { key: 'weekly', label: 'Weekly limit, all models', value: '38%', percent: 38, tone: 'accent', note: 'Resets in 3d 4h, Thursday 01:00', forecast: null, surfaces: [] },
+  { key: 'fable', label: 'Weekly limit, Fable', value: '74%', percent: 74, tone: 'warning', note: 'Resets in 3d 4h, Thursday 01:00', forecast: null, surfaces: [] },
+];
+
+function usageView(data: SessionUsageData | null, extra: Partial<SessionUsageInput> = {}): SessionUsageView {
+  return buildSessionUsage({ data, error: null, sessionId: data?.sessionId ?? 'sample-0', limits: [], picker: null, ...extra });
+}
+
+const USAGE_SAMPLES = [SAMPLE_USAGE, COSTLY_MODEL_USAGE, LOW_CACHE_USAGE, OVERSIZED_USAGE];
+const USAGE_SESSIONS = USAGE_SAMPLES.flatMap((data) => SAMPLE_SESSIONS.filter((session) => session.session_id === data.sessionId));
+
+export const USAGE_INITIAL_ID = SAMPLE_USAGE.sessionId;
+
+/** The Live page's panel: limits on top, and a picker over four sessions that each trigger a different tip. */
+export function sessionUsageView(sessionId: string): SessionUsageView {
+  const data = USAGE_SAMPLES.find((candidate) => candidate.sessionId === sessionId) ?? SAMPLE_USAGE;
+  return usageView(data, { limits: LIMIT_ROWS, picker: buildSessionUsagePicker(USAGE_SESSIONS, data.sessionId) });
+}
+
+/** The panel as the session dialog embeds it: no limits, no picker. */
+export const EMBEDDED_USAGE_VIEW: SessionUsageView = usageView(SAMPLE_USAGE);
+
+export const USAGE_STATE_VIEWS: SessionUsageView[] = [
+  usageView(null),
+  usageView(null, { error: 'Error: HTTP 500' }),
+  usageView(null, { sessionId: null }),
+];
