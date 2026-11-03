@@ -163,8 +163,58 @@ test('limit hits are collected from files too large for insights', async () => {
   assert.equal(rows.insightsSkipped, true);
   assert.equal(rows.limitHits?.length, 1);
   assert.equal(rows.limitHits?.[0].model, 'claude-demo');
-  // merge.ts reads the other history rows only from insight-eligible files.
-  assert.deepEqual([rows.turns?.length, rows.titles?.length, rows.lineChanges?.length], [0, 0, 0]);
+  // merge.ts reads the other history rows only from insight-eligible files; the title still names the session.
+  assert.deepEqual([rows.turns?.length, rows.titles?.length, rows.lineChanges?.length], [0, 1, 0]);
+  assert.equal(rows.titles?.[0].title, 'Big one');
+});
+
+test('an oversized transcript still lists its session, from assistant lines only', async () => {
+  const lines = [
+    prompt(0, 'my first prompt'),
+    reply(1, 'a'),
+    toolUse(2, 'b', 'toolu_1'),
+    toolResult(3, 'toolu_1', { type: 'create', filePath: '/w/x', content: 'one line', structuredPatch: [] }),
+    reply(60, 'c'),
+    { type: 'ai-title', aiTitle: 'Generated name', sessionId: 'sess-1' },
+  ];
+  const rows = await parse(lines, { size: INSIGHTS_MAX_FILE_BYTES + 1 });
+  assert.equal(rows.sessions.length, 1);
+  const s = rows.sessions[0];
+  assert.deepEqual(
+    [s.oversized, s.fileIsSidechain, s.firstTs, s.lastTs, s.assistantKeys.length, s.turns, s.firstPrompt],
+    [true, false, T0 + 1000, T0 + 60_000, 3, 0, ''],
+  );
+  assert.deepEqual([s.cwd, s.client, s.clientVersion], ['/work/demo', 'cli', '2.1.0']);
+  assert.deepEqual([rows.toolCalls.length, rows.corpus.length, rows.toolResults.length], [0, 0, 0]);
+  assert.equal(rows.usage.length, 3, 'usage rows are unchanged');
+  assert.equal(rows.titles?.[0].title, 'Generated name');
+  const small = await parse(lines);
+  assert.equal(small.sessions[0].oversized, undefined);
+});
+
+test('an oversized main transcript is listed and flagged partial; a subagent file alone is not a listed session', async () => {
+  const main = await parse([prompt(0), reply(1, 'a'), reply(2, 'b')], { size: INSIGHTS_MAX_FILE_BYTES + 1, rel: 'proj/sess-1.jsonl' });
+  const sub = await parse([reply(3, 'c')], { rel: 'proj/sess-1/subagents/agent-x.jsonl' });
+  const both = mergeRows([sub, main], []).insights.sessionsMeta.get('sess-1')!;
+  assert.deepEqual([both.isSidechain, both.partial, both.assistantMsgs], [false, true, 3]);
+  assert.equal(both.file, main.path, 'the transcript to show is the main one');
+  const only = mergeRows([sub], []).insights.sessionsMeta.get('sess-1')!;
+  assert.deepEqual([only.isSidechain, only.partial], [true, undefined]);
+});
+
+test('cache_creation.ephemeral_1h and server_tool_use.web_search_requests are captured, the 1h part clamped to the writes', async () => {
+  const usage = (extra: object) => ({ input_tokens: 5, output_tokens: 7, cache_creation_input_tokens: 1000, ...extra });
+  const rows = await parse([
+    reply(0, 'a', { usage: usage({ cache_creation: { ephemeral_1h_input_tokens: 800, ephemeral_5m_input_tokens: 200 }, server_tool_use: { web_search_requests: 2 } }) }),
+    reply(1, 'b', { usage: usage({ cache_creation: { ephemeral_1h_input_tokens: 5000 } }) }),
+    reply(2, 'c', { usage: usage({}) }),
+  ]);
+  assert.deepEqual(
+    rows.usage.map((u) => [u.cacheCreateTokens, u.cacheWrite1hTokens, u.webSearchRequests]),
+    [[1000, 800, 2], [1000, 1000, 0], [1000, 0, 0]],
+  );
+  const events = mergeRows([rows], []).events;
+  assert.deepEqual(events.map((e) => [e.cacheWrite1hTokens, e.webSearchRequests]), [[800, 2], [1000, 0], [0, 0]]);
 });
 
 test('limitHitOf ignores non-assistant lines and assistant lines that are not refusals', () => {

@@ -117,7 +117,13 @@ test('insight rows come from files up to INSIGHTS_MAX_FILE_BYTES', async () => {
     const huge = await parseFileRows({ path, source: 'code', mtimeMs: 0, size: INSIGHTS_MAX_FILE_BYTES + 1 });
     assert.equal(huge.insightsSkipped, true);
     assert.equal(huge.toolCalls.length, 0);
-    assert.equal(huge.sessions.length, 0);
+    assert.equal(huge.corpus.length, 0);
+    // Still listed: a partial built from the assistant lines alone.
+    assert.equal(huge.sessions.length, 1);
+    assert.equal(huge.sessions[0].oversized, true);
+    assert.equal(huge.sessions[0].turns, 0);
+    assert.equal(huge.sessions[0].fileIsSidechain, false);
+    assert.equal(huge.sessions[0].assistantKeys.length > 0, true);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

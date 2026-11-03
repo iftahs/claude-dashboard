@@ -1,5 +1,6 @@
 import { sourceMatches, type SourceFilter } from './aggregate.ts';
 import { codexTitleOf } from './codex-titles.ts';
+import { estimateCost } from './pricing.ts';
 import { legacyProjectPathFromFile, normalizeProjectPath, projectNameOf } from './project-path.ts';
 import type { UsageEvent, UsageSource } from './scan.ts';
 import type { TurnRow } from './scan-pass.ts';
@@ -31,6 +32,12 @@ export interface SessionRow {
   cache_read_tokens: number;
   effective_tokens: number;
   total_tokens: number;
+  /** Estimated equivalent API cost of every request in the session, subagents included. */
+  cost: number;
+  /** Last record (epoch ms). */
+  last_ts: number;
+  /** The main transcript was over the size cap: turn, prompt and tool counts are incomplete (tokens and cost are not). */
+  partial?: true;
   first_prompt: string;
   user_interruption_count?: number;
   tool_errors?: number;
@@ -59,6 +66,7 @@ interface TokenStats {
   output: number;
   cacheCreate: number;
   cacheRead: number;
+  cost: number;
 }
 
 export function buildSessionRows(
@@ -68,16 +76,18 @@ export function buildSessionRows(
   source: SourceFilter,
   codexTitles: Map<string, string>,
 ): SessionRow[] {
-  // Token splits per session from the main (globally deduped) event scan.
+  // Token splits and cost per session from the main (globally deduped) event scan — every file, oversized ones included, so they agree with /api/projects. Subagent requests fold into their root session.
   const tokens = new Map<string, TokenStats>();
   for (const e of events) {
-    if (!e.sessionId) continue;
-    let t = tokens.get(e.sessionId);
-    if (!t) { t = { input: 0, output: 0, cacheCreate: 0, cacheRead: 0 }; tokens.set(e.sessionId, t); }
+    const id = e.rootSessionId || e.sessionId;
+    if (!id || !sourceMatches(e.source, source)) continue;
+    let t = tokens.get(id);
+    if (!t) { t = { input: 0, output: 0, cacheCreate: 0, cacheRead: 0, cost: 0 }; tokens.set(id, t); }
     t.input += e.inputTokens;
     t.output += e.outputTokens;
     t.cacheCreate += e.cacheCreateTokens;
     t.cacheRead += e.cacheReadTokens;
+    t.cost += estimateCost(e.model, e);
   }
 
   // Tool counts from main-thread calls; modified files from every write (subagents included), the same scope as the line counts beside them.
@@ -140,6 +150,9 @@ export function buildSessionRows(
       cache_read_tokens: t?.cacheRead ?? 0,
       effective_tokens: effective,
       total_tokens: total,
+      cost: t?.cost ?? sm.cost,
+      last_ts: sm.lastTs,
+      ...(sm.partial ? { partial: true as const } : {}),
       first_prompt: (typeof side?.first_prompt === 'string' && side.first_prompt) || sm.firstPrompt || '',
       user_interruption_count: side?.user_interruptions,
       tool_errors: sm.errorCount,
@@ -180,6 +193,8 @@ export function buildSessionRows(
         cache_read_tokens: t?.cacheRead ?? 0,
         effective_tokens: t ? t.input + t.output + t.cacheCreate : inTok + outTok,
         total_tokens: t ? t.input + t.output + t.cacheCreate + t.cacheRead : inTok + outTok,
+        cost: t?.cost ?? 0,
+        last_ts: Number.isNaN(Date.parse(s.start_time)) ? 0 : Date.parse(s.start_time) + (s.duration_minutes ?? 0) * 60000,
         first_prompt: typeof s.first_prompt === 'string' ? s.first_prompt : '',
         user_interruption_count: s.user_interruptions,
         tool_errors: s.tool_errors,

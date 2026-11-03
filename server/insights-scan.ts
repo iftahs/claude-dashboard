@@ -87,6 +87,8 @@ export interface SessionMetaRecord {
   title?: string;
   linesAdded: number;
   linesRemoved: number;
+  /** The main transcript was over the insights size cap: counts that need every line (turns, prompt, tools) are missing. */
+  partial?: boolean;
   /** Sum of recorded turn durations — active time, unlike lastTs − firstTs. */
   activeMs: number;
   prUrls: string[];

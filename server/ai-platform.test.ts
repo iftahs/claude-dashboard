@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { chatSystem, sectionSystem, suggestSystem, buildSuggestMessage, type AiPayload } from './ai-context.ts';
 import {
-  CATALOG, aiSource, catalogFor, codexLimitFields, contributorsDetail, lexicalRoute, loadDatasets, platformOf, rejectionsDetail,
+  CATALOG, aiSource, catalogFor, codexLimitFields, contributorsDetail, lexicalRoute, loadDatasets, perModelWeeklyPct, platformOf, rejectionsDetail,
 } from './ai-datasets.ts';
 import { routerCatalog, routerSystem } from './ai-router.ts';
 import type { ContribWindow } from './contributors.ts';
@@ -165,4 +165,18 @@ test('codexLimitFields: Codex windows in the Claude field names, no PII', () => 
   assert.equal(f.limitReached, true);
   assert.equal(f.planType, 'plus');
   assert.match(f.provider, /OpenAI/);
+});
+
+test('perModelWeeklyPct: every seven_day_<model> window, not just Opus', () => {
+  const live = {
+    five_hour: { utilization: 10 },
+    seven_day: { utilization: 20 },
+    seven_day_opus: { utilization: 30 },
+    seven_day_sonnet: { utilization: 5, resets_at: 'x' },
+    seven_day_fable: { utilization: null },
+    seven_day_breakdown: { rows: [] },
+    seven_day_oauth_apps: null,
+  };
+  assert.deepEqual(perModelWeeklyPct(live), { opus: 30, sonnet: 5, fable: null });
+  assert.deepEqual(perModelWeeklyPct(null), {});
 });

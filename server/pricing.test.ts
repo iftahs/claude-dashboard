@@ -61,3 +61,31 @@ test('bundled Codex models are deliberately unpriced', () => {
   assert.equal(hasPrice('gpt-5.4-mini'), true);
   assert.equal(hasPrice('some-unknown-model'), true, 'DEFAULT counts as priced');
 });
+
+test('1-hour cache writes bill at 2x input, 5-minute ones at the cache-write rate', () => {
+  const t = { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0 };
+  const cost = (model: string, cacheCreateTokens: number, cacheWrite1hTokens?: number) =>
+    estimateCost(model, { ...t, cacheCreateTokens, cacheWrite1hTokens });
+  assert.equal(cost('claude-opus-5-5', 1_000_000, 1_000_000), 8, 'Opus 5.5: 2 x 4');
+  assert.equal(cost('claude-opus-5-5', 1_000_000, 0), 5);
+  assert.equal(cost('claude-opus-5-5', 1_000_000), 5, 'absent = all 5-minute');
+  assert.equal(cost('claude-opus-5-5', 1_000_000, 250_000), 0.75 * 5 + 0.25 * 8, 'mixed request');
+  assert.equal(cost('claude-sonnet-4-6', 1_000_000, 1_000_000), 6);
+  assert.equal(cost('claude-opus-5-5', 1_000_000, 5_000_000), 8, '1h part is clamped to the writes');
+  assert.equal(cost('claude-opus-5-5', 1_000_000, -5), 5, 'a negative 1h part is ignored');
+  assert.equal(cost('gpt-6-astra', 0), 0);
+});
+
+test('1-hour writes use the long-prompt rates once the prompt is over the threshold', () => {
+  const cost = (cacheCreateTokens: number, cacheWrite1hTokens: number) =>
+    estimateCost('claude-haiku-5-5', { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheCreateTokens, cacheWrite1hTokens });
+  assert.equal(Math.round(cost(100_000, 100_000) * 1e6) / 1e6, 0.02, 'short prompt: 2 x 0.10');
+  assert.equal(Math.round(cost(200_000, 200_000) * 1e6) / 1e6, 0.2, 'long prompt: 2 x 0.50');
+  assert.equal(Math.round(cost(200_000, 100_000) * 1e6) / 1e6, 0.1 + 0.0625, 'long prompt, half 1h');
+});
+
+test('each web search request adds one cent', () => {
+  const t = { inputTokens: 1_000_000, outputTokens: 0, cacheCreateTokens: 0, cacheReadTokens: 0 };
+  assert.equal(estimateCost('claude-opus-5-5', { ...t, webSearchRequests: 3 }), 4 + 0.03);
+  assert.equal(estimateCost('claude-opus-5-5', t), 4);
+});

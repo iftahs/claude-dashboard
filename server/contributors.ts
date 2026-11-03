@@ -64,8 +64,13 @@ function platformOf(events: UsageEvent[]): Platform {
 }
 
 /** Any Codex usage switches to effective-token weighting, or the $0 Guardian would vanish from a mixed scope's split. */
-function weightOf(events: UsageEvent[]): ContributorsData['weight'] {
+export function weightOf(events: UsageEvent[]): ContributorsData['weight'] {
   return events.some((e) => e.source === 'codex') ? 'effectiveTokens' : 'cost';
+}
+
+/** One request's share-of-limit weight under `weightBy`; `cost` is its estimateCost when the caller already has it. */
+export function eventWeight(e: UsageEvent, weightBy: ContributorsData['weight'], cost = estimateCost(e.model, e)): number {
+  return weightBy === 'effectiveTokens' ? e.inputTokens + e.outputTokens + e.cacheCreateTokens : cost;
 }
 
 const COPY: Record<Platform, Record<BehaviourKey, { headline: (p: number) => string; body: string }>> = {
@@ -173,7 +178,7 @@ function buildWindow(events: UsageEvent[], platform: Platform, weightBy: Contrib
   let totalWeight = 0;
   for (const e of events) {
     const cost = estimateCost(e.model, e);
-    const weight = weightBy === 'effectiveTokens' ? e.inputTokens + e.outputTokens + e.cacheCreateTokens : cost;
+    const weight = eventWeight(e, weightBy, cost);
     if (weight <= 0) continue;
     totalCost += cost;
     totalWeight += weight;

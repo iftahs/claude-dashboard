@@ -746,6 +746,17 @@ function inventoryDetail(inv: InventoryData) {
   };
 }
 
+/** Every per-model weekly window the live payload reports (`seven_day_opus`, `seven_day_sonnet`, …), keyed by the suffix. */
+export function perModelWeeklyPct(usage: any): Record<string, number | null> {
+  const out: Record<string, number | null> = {};
+  for (const [key, win] of Object.entries(usage ?? {})) {
+    const model = /^seven_day_(.+)$/.exec(key)?.[1];
+    if (!model || model === 'breakdown' || !win || typeof win !== 'object' || !('utilization' in win)) continue;
+    out[model] = typeof win.utilization === 'number' ? win.utilization : null;
+  }
+  return out;
+}
+
 function claudeLimitsDetail(live: LiveRead<any>) {
   if (!('usage' in live)) return live;
   const u = live.usage;
@@ -758,6 +769,7 @@ function claudeLimitsDetail(live: LiveRead<any>) {
     sevenDayPct: u.seven_day?.utilization ?? null,
     sevenDayResetsAt: u.seven_day?.resets_at ?? null,
     sevenDayOpusPct: u.seven_day_opus?.utilization ?? null,
+    sevenDayByModelPct: perModelWeeklyPct(u),
     extraUsageEnabled: u.extra_usage?.is_enabled ?? null,
     extraUsagePct: u.extra_usage?.utilization ?? null,
   };

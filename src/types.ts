@@ -334,6 +334,12 @@ export interface SessionMeta {
   cache_read_tokens?: number;
   effective_tokens?: number;
   total_tokens?: number;
+  /** Estimated equivalent API cost of the whole session, subagents included. */
+  cost?: number;
+  /** Last record (epoch ms). */
+  last_ts?: number;
+  /** The main transcript was over the scan's size cap: turn, prompt and tool counts are incomplete (tokens and cost are not). */
+  partial?: boolean;
   first_prompt: string;
   user_interruption_count?: number;
   tool_errors?: number;
@@ -978,6 +984,51 @@ export interface SessionTranscript {
   /** The transcript file is gone (Claude Code cleanup); `turns` is empty and `message` says why. */
   archived?: boolean;
   message?: string;
+}
+
+/** GET /api/sessions/:id/usage — one session's cost split by model and by what drove it. */
+export interface SessionUsageData {
+  sessionId: string;
+  source: UsageSource;
+  title: string | null;
+  /** Last path segment of the project, never the full path ('' when unknown). */
+  projectName: string;
+  firstTs: number;
+  lastTs: number;
+  totalCost: number;
+  /** Sum of recorded turn durations; null when no turn was recorded. */
+  activeMs: number | null;
+  linesAdded: number;
+  linesRemoved: number;
+  webSearches: number;
+  /** cache reads / (input + cache reads + cache writes), 0..1. */
+  cacheHitRate: number;
+  /** The main transcript was over the size cap: active time, lines and counts are incomplete (cost and tokens are not). */
+  partial: boolean;
+  /** By cost, highest first; no `<synthetic>` and no zero-token models. */
+  models: SessionUsageModel[];
+  /** Highest share first. */
+  contributors: SessionContributor[];
+}
+
+export interface SessionUsageModel {
+  model: string;
+  cost: number;
+  /** Share of the session's cost, 0..1. */
+  share: number;
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadTokens: number;
+  cacheWriteTokens: number;
+  /** Part of cacheWriteTokens written with the 1-hour TTL (billed at 2x input). */
+  cacheWrite1hTokens: number;
+}
+
+export interface SessionContributor {
+  kind: 'subagent' | 'skill' | 'mcp' | 'plugin';
+  name: string;
+  /** Share of the session's cost (Codex: effective tokens), 0..1. */
+  share: number;
 }
 
 export interface SearchResult {

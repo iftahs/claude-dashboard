@@ -21,7 +21,7 @@ import { readCodexConfig } from './codex-config.ts';
 import { getLiveSubagents } from './subagents-live.ts';
 import { fetchCodexUsage, fetchCodexProfile } from './codex-live.ts';
 import { getLiveCodexAgents } from './codex-agents-live.ts';
-import { readFile } from 'node:fs/promises';
+import { readFile, stat } from 'node:fs/promises';
 import { computeCodexBlock, buildLimitHits } from './aggregate.ts';
 import { codexDir, scanRoots } from './scan.ts';
 import { hasCodexEvents, summarizeSources } from './sources.ts';
@@ -30,6 +30,9 @@ import { getWorkflows, getWorkflowStats } from './workflows.ts';
 import { readCodexTitles } from './codex-titles.ts';
 import { buildSessionRows, buildSessionSummary, legacyProjectPaths, searchSessions } from './sessions.ts';
 import { readTranscript } from './transcript.ts';
+import { buildSessionUsage } from './session-usage.ts';
+import { classifySubscription } from './subscription.ts';
+import { INSIGHTS_MAX_FILE_BYTES } from './scan-pass.ts';
 import { getAgentDetail } from './workflow-agent-detail.ts';
 import { runAi, runAiStream, resolveBackend, AiUnavailableError, AiTokenRejectedError, AiCallError, type AiCreds } from './ai.ts';
 import { buildAiPayload, buildChatUserMessage, chatSystem, buildSectionUserMessage, sectionSystem, suggestSystem, buildSuggestMessage, type AiScope, type ChatTurn } from './ai-context.ts';
@@ -116,50 +119,6 @@ app.post('/api/update/pull', async (_req, res) => {
   }
 });
 
-interface SubscriptionInfo {
-  subscriptionType: string | null;
-  rateLimitTier: string | null;
-  seatTier: string | null;
-  hasExtraUsageEnabled: boolean;
-  email: string | null;
-}
-
-/**
- * Classify a live OAuth `/profile` response into plan/tier fields, falling back
- * to the values baked into the local credential blob when the profile is
- * unavailable (offline / expired token → pass `null`). Shared by `/api/config`
- * and `/api/accounts/live` so the has_claude_max / 5x / team / … rules live once.
- */
-function classifySubscription(
-  profile: any,
-  fallback: { subscriptionType?: string | null; rateLimitTier?: string | null },
-): SubscriptionInfo {
-  let subscriptionType: string | null = fallback.subscriptionType ?? null;
-  let rateLimitTier: string | null = fallback.rateLimitTier ?? null;
-  const account = profile?.account ?? {};
-  const org = profile?.organization ?? {};
-  const tier = String(org.rate_limit_tier ?? '');
-  if (account.has_claude_max) {
-    subscriptionType = /20x/.test(tier) ? 'max_20x' : /5x/.test(tier) ? 'max_5x' : 'max';
-  } else if (account.has_claude_pro) {
-    subscriptionType = 'pro';
-  } else if (/team/i.test(String(org.organization_type))) {
-    subscriptionType = 'team';
-  } else if (/enterprise/i.test(String(org.organization_type))) {
-    subscriptionType = 'enterprise';
-  } else if (account.uuid) {
-    subscriptionType = 'free';
-  }
-  if (org.rate_limit_tier) rateLimitTier = org.rate_limit_tier;
-  return {
-    subscriptionType,
-    rateLimitTier,
-    seatTier: org.seat_tier ?? null,
-    hasExtraUsageEnabled: !!org.has_extra_usage_enabled,
-    email: account.email ?? account.email_address ?? null,
-  };
-}
-
 app.get('/api/config', async (_req, res) => {
   try {
     const config = await readConfig();
@@ -232,6 +191,20 @@ app.get('/api/sessions', async (req, res) => {
   try {
     const { rows } = await sessionRowsFor(parseSource(req.query.source));
     res.json(wrap(rows, Date.now()));
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+// One session's cost split by model and by what drove it. The id is untrusted: shape-checked here, then only ever a Map key.
+app.get('/api/sessions/:id/usage', async (req, res) => {
+  try {
+    const sessionId = req.params.id;
+    if (!/^[A-Za-z0-9_-]{1,128}$/.test(sessionId)) return void res.status(400).json({ error: 'Invalid session id' });
+    const [{ events }, { insights }, codexTitles] = await Promise.all([getEvents(), getInsights(), readCodexTitles()]);
+    const usage = buildSessionUsage(sessionId, events, insights, codexTitles);
+    if (!usage) return void res.status(404).json({ error: 'Session not found' });
+    res.json(wrap(usage, Date.now()));
   } catch (e) {
     res.status(500).json({ error: String(e) });
   }
@@ -1145,6 +1118,19 @@ app.get('/api/sessions/:id/transcript', async (req, res) => {
         message: sm.source === 'codex'
           ? "This thread's rollout file is no longer on disk; only its usage history is kept."
           : 'This transcript was removed by Claude Code cleanup; only its usage history is kept.',
+      }, Date.now()));
+      return;
+    }
+
+    // A Claude transcript past the scan's size cap is never parsed: the pane would hold every turn of it. (Codex rollouts have no cap.)
+    if (sm.source !== 'codex' && (await stat(sm.file)).size > INSIGHTS_MAX_FILE_BYTES) {
+      res.json(wrap({
+        sessionId,
+        turns: [],
+        compactions: 0,
+        totalTurns: 0,
+        archived: true,
+        message: 'This transcript is too large to display; its usage and cost are still counted.',
       }, Date.now()));
       return;
     }
