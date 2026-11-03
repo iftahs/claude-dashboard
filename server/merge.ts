@@ -257,7 +257,7 @@ function collect(files: FileRows[]): MergeParts {
   for (const f of files) {
     for (const u of f.usage) {
       p.allUsage.push(u);
-      if (!f.insightsSkipped) p.insightUsage.push(u);
+      p.insightUsage.push(u);
     }
     // Limit hits and rate-limit snapshots are cheap and matter for every file.
     if (f.limitHits) p.limitHitRows.push(...f.limitHits);
@@ -559,8 +559,7 @@ export function mergeRows(files: FileRows[], sessionMetas: any[], archive: Reduc
     if (sm) sm.subagentSpawns++;
   }
 
-  // Per-session tokens and cost from globally deduped usage, restricted to the
-  // files insights actually reads (<= INSIGHTS_MAX_FILE_BYTES), preserving the original scope.
+  // Per-session tokens and cost from globally deduped usage. Oversized files count too: their assistant lines carry the usage.
   const addUsage = (sm: SessionMetaRecord, r: UsageRow, cost: number) => {
     const eff = effective(r);
     sm.effectiveTokens += eff;

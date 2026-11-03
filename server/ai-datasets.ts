@@ -746,13 +746,20 @@ function inventoryDetail(inv: InventoryData) {
   };
 }
 
-/** Every per-model weekly window the live payload reports (`seven_day_opus`, `seven_day_sonnet`, …), keyed by the suffix. */
+/** Every per-model weekly window the live payload reports, keyed by lower-cased model name: the `seven_day_<model>` keys, then the newer `limits[]` scoped entries (which win). */
 export function perModelWeeklyPct(usage: any): Record<string, number | null> {
   const out: Record<string, number | null> = {};
   for (const [key, win] of Object.entries(usage ?? {})) {
     const model = /^seven_day_(.+)$/.exec(key)?.[1];
     if (!model || model === 'breakdown' || !win || typeof win !== 'object' || !('utilization' in win)) continue;
     out[model] = typeof win.utilization === 'number' ? win.utilization : null;
+  }
+  if (Array.isArray(usage?.limits)) {
+    for (const limit of usage.limits) {
+      const name = limit?.kind === 'weekly_scoped' ? limit.scope?.model?.display_name : null;
+      if (typeof name !== 'string' || !name.trim()) continue;
+      out[name.trim().toLowerCase()] = typeof limit.percent === 'number' ? limit.percent : null;
+    }
   }
   return out;
 }

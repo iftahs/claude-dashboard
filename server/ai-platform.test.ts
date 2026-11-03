@@ -180,3 +180,17 @@ test('perModelWeeklyPct: every seven_day_<model> window, not just Opus', () => {
   assert.deepEqual(perModelWeeklyPct(live), { opus: 30, sonnet: 5, fable: null });
   assert.deepEqual(perModelWeeklyPct(null), {});
 });
+
+test('perModelWeeklyPct: reads the newer limits[] scoped weekly windows and lets them win', () => {
+  const live = {
+    seven_day_opus: { utilization: 30 },
+    limits: [
+      { kind: 'session', group: 'session', percent: 4, scope: null },
+      { kind: 'weekly_all', group: 'weekly', percent: 21, scope: null },
+      { kind: 'weekly_scoped', group: 'weekly', percent: 12, scope: { model: { id: null, display_name: 'Fable' } } },
+      { kind: 'weekly_scoped', group: 'weekly', percent: 35, scope: { model: { id: null, display_name: 'Opus' } } },
+      { kind: 'weekly_scoped', group: 'weekly', percent: 9, scope: { model: null } },
+    ],
+  };
+  assert.deepEqual(perModelWeeklyPct(live), { opus: 35, fable: 12 });
+});
