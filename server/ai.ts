@@ -197,7 +197,7 @@ function runViaCli(input: AiCallInput, model: string): Promise<string> {
  * Models that think by default when `thinking` is omitted. They share `max_tokens`
  * between the thinking and the visible answer, so at our small budget the reply
  * would truncate — we turn thinking off instead, which is legal at effort ≤ high
- * (the default). Fable and Mythos (5 and 5.1) and Opus 5.5 are deliberately absent:
+ * (the default). Fable and Mythos (5, 5.1 and 5.2) and Opus 5.5 are deliberately absent:
  * they reject `thinking:{type:'disabled'}` with a 400 — see ALWAYS_THINKS below.
  */
 const THINKS_BY_DEFAULT = new Set(['claude-opus-5', 'claude-sonnet-5', 'claude-haiku-5-5']);
@@ -218,8 +218,10 @@ const THINKS_BETWEEN_TOOLS = new Set(['claude-sonnet-5-5']);
 const ALWAYS_THINKS = new Set([
   'claude-fable-5',
   'claude-fable-5-1',
+  'claude-fable-5-2',
   'claude-mythos-5',
   'claude-mythos-5-1',
+  'claude-mythos-5-2',
   // Opus 5.5 rejects `thinking:{type:'disabled'}` at every effort level.
   'claude-opus-5-5',
 ]);

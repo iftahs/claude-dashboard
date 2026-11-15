@@ -13,9 +13,9 @@ const token = (name: string) => `rgb(var(--${name}))`;
 
 // First match wins, so a specific pattern sits above its family fallback (mirrors TABLE in server/pricing.ts).
 const MODEL_TABLE: Array<[RegExp, string]> = [
-  [/fable-5-1|fable-5\.1/i, token('model-fable-1')],
+  [/fable-5-2|fable-5\.2/i, token('model-fable-1')],
   [/fable/i, token('model-fable-2')],
-  [/mythos-5-1|mythos-5\.1/i, token('model-mythos-1')],
+  [/mythos-5-2|mythos-5\.2/i, token('model-mythos-1')],
   [/mythos/i, token('model-mythos-2')],
   [/opus-5-5|opus-5\.5/i, token('model-opus-1')],
   [/opus-5|opus-4-[5-8]|opus-4\.[5-8]/i, token('model-opus-2')],
