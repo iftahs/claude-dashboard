@@ -250,8 +250,10 @@ export interface PriceGroup {
 // Mirrors the regex table in server/pricing.ts: change a rate there and here together, or the calculator disagrees with every cost figure.
 export const PRICING_DATA: ModelPrice[] = [
   // ── Anthropic ────────────────────────────────────────────────────────────
-  { name: 'Claude Fable 5.1', family: 'fable-5-1', platform: 'claude', input: 10, output: 50, cacheWrite: 12.5, cacheRead: 0.25, popular: true },
+  { name: 'Claude Fable 5.2', family: 'fable-5-2', platform: 'claude', input: 8, output: 40, cacheWrite: 10, cacheRead: 0.2, popular: true },
+  { name: 'Claude Fable 5.1', family: 'fable-5-1', platform: 'claude', input: 10, output: 50, cacheWrite: 12.5, cacheRead: 0.25 },
   { name: 'Claude Fable 5', family: 'fable', platform: 'claude', input: 10, output: 50, cacheWrite: 12.5, cacheRead: 1.0 },
+  { name: 'Claude Mythos 5.2 (limited availability)', family: 'mythos-5-2', platform: 'claude', input: 8, output: 40, cacheWrite: 10, cacheRead: 0.2 },
   { name: 'Claude Mythos 5.1 (limited availability)', family: 'mythos-5-1', platform: 'claude', input: 10, output: 50, cacheWrite: 12.5, cacheRead: 0.25 },
   { name: 'Claude Mythos 5 (limited availability)', family: 'mythos', platform: 'claude', input: 10, output: 50, cacheWrite: 12.5, cacheRead: 1.0 },
   { name: 'Claude Opus 5.5', family: 'opus-5-5', platform: 'claude', input: 4, output: 20, cacheWrite: 5, cacheRead: 0.2, popular: true },
@@ -345,7 +347,7 @@ export function billingBlurb(platform: Platform): string {
   if (platform === 'both') {
     return 'Both vendors charge by tokens processed and discount cached input (usually by ~90%). Anthropic bills cache writes; OpenAI lists them for GPT-5.6 and GPT-6, but Codex never reports any.';
   }
-  return 'Anthropic charges based on the number of tokens processed. Cache reads are discounted by 90% (95% on Opus 5.5, 97.5% on Fable 5.1 and Mythos 5.1).';
+  return 'Anthropic charges based on the number of tokens processed. Cache reads are discounted by 90% (95% on Opus 5.5, 97.5% on Fable 5.2, Mythos 5.2, Fable 5.1 and Mythos 5.1).';
 }
 
 function cachingNote(platform: Platform): string {
@@ -464,7 +466,7 @@ interface CostCalculationInput {
 const PRICING_HELP =
   "Reference pay-as-you-go API prices (per 1M tokens, by model). Your subscription has no per-token bill — these power the 'estimated equivalent cost' figures. Use the calculator to price a hypothetical request; cache reads are billed at a fraction of input (usually 10%).";
 const CACHING_NOTE =
-  'Cache reads usually cost 10% of the standard input price (5% on Opus 5.5, 2.5% on Fable 5.1 and Mythos 5.1). Designing your prompts to reuse systemic instructions, codebase maps, or tool schemas leverages this pricing to achieve massive savings.';
+  'Cache reads usually cost 10% of the standard input price (5% on Opus 5.5, 2.5% on Fable 5.2, Mythos 5.2, Fable 5.1 and Mythos 5.1). Designing your prompts to reuse systemic instructions, codebase maps, or tool schemas leverages this pricing to achieve massive savings.';
 const CACHING_NOTE_CLAUDE_EXTRA =
   ' The cache-write rate above is the 5-minute one. A 1-hour cache write costs 2x the input price, and each web search adds $0.01. The estimates bill both, but the calculator prices only the tokens you enter.';
 const CACHING_NOTE_OPENAI =
